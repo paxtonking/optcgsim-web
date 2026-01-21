@@ -3,6 +3,8 @@ import { socketService } from '../services/socket';
 
 export type LobbyStatus = 'idle' | 'creating' | 'joining' | 'waiting' | 'ready' | 'starting';
 export type QueueStatus = 'idle' | 'searching' | 'matched' | 'starting';
+export type AIGameStatus = 'idle' | 'starting' | 'playing';
+export type AIDifficulty = 'basic' | 'medium' | 'hard';
 
 interface LobbyPlayer {
   id: string;
@@ -35,6 +37,12 @@ interface LobbyStore {
   queueTime: number;
   queueError: string | null;
 
+  // AI Game state
+  aiGameStatus: AIGameStatus;
+  aiGameId: string | null;
+  aiDifficulty: AIDifficulty | null;
+  aiError: string | null;
+
   // Selected deck
   selectedDeckId: string | null;
 
@@ -52,6 +60,10 @@ interface LobbyStore {
   joinQueue: () => void;
   leaveQueue: () => void;
 
+  // AI Game actions
+  startAIGame: (difficulty: AIDifficulty) => void;
+  handleAIGameStart: (gameId: string) => void;
+
   // Internal
   handleLobbyUpdate: (lobby: Lobby) => void;
   handleLobbyStart: (gameId: string) => void;
@@ -66,6 +78,10 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
   queueStatus: 'idle',
   queueTime: 0,
   queueError: null,
+  aiGameStatus: 'idle',
+  aiGameId: null,
+  aiDifficulty: null,
+  aiError: null,
   selectedDeckId: null,
 
   setSelectedDeck: (deckId) => {
@@ -154,6 +170,25 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
     set({ queueStatus: 'idle', queueTime: 0 });
   },
 
+  startAIGame: (difficulty: AIDifficulty) => {
+    const { selectedDeckId } = get();
+    if (!selectedDeckId) {
+      set({ aiError: 'Please select a deck first' });
+      return;
+    }
+
+    set({ aiGameStatus: 'starting', aiDifficulty: difficulty, aiError: null });
+
+    socketService.emit('ai:start', {
+      deckId: selectedDeckId,
+      difficulty,
+    });
+  },
+
+  handleAIGameStart: (gameId: string) => {
+    set({ aiGameStatus: 'playing', aiGameId: gameId });
+  },
+
   handleLobbyUpdate: (lobby) => {
     set({ lobby, lobbyStatus: 'waiting' });
   },
@@ -176,6 +211,10 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
       queueStatus: 'idle',
       queueTime: 0,
       queueError: null,
+      aiGameStatus: 'idle',
+      aiGameId: null,
+      aiDifficulty: null,
+      aiError: null,
     });
   },
 }));
@@ -200,12 +239,23 @@ export function setupLobbySocketListeners() {
     // Optional: show queue position
   });
 
+  // AI game events
+  socketService.on<{ gameId: string; state: unknown; isAIGame: boolean }>('lobby:start', (data) => {
+    if (data.isAIGame) {
+      store.handleAIGameStart(data.gameId);
+    } else {
+      store.handleLobbyStart(data.gameId);
+    }
+  });
+
   socketService.on<{ message: string }>('error', ({ message }: { message: string }) => {
     useLobbyStore.setState({
       lobbyError: message,
       queueError: message,
+      aiError: message,
       lobbyStatus: 'idle',
       queueStatus: 'idle',
+      aiGameStatus: 'idle',
     });
   });
 }

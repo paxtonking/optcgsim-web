@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "fetch": "tsx src/fetch-cards.ts",
     "import": "tsx src/index.ts",
     "import:cards": "tsx src/import-cards.ts",
     "import:translations": "tsx src/import-translations.ts"

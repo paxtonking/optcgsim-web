@@ -1,13 +1,14 @@
 import type { Server as SocketServer, Socket } from 'socket.io';
 import { v4 as uuidv4 } from 'uuid';
-import { 
-  WS_EVENTS, 
-  GameState, 
-  GameAction, 
+import {
+  WS_EVENTS,
+  GameState,
+  GameAction,
   GameStateManager,
-  GamePhase 
+  GamePhase
 } from '@optcgsim/shared';
 import { prisma } from '../services/prisma.js';
+import { cardLoaderService } from '../services/CardLoaderService.js';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -34,14 +35,33 @@ export class GameManager {
   private io: SocketServer;
   private games: Map<string, GameRoom> = new Map();
   private playerToGame: Map<string, string> = new Map();
+  private cardsLoaded = false;
 
   constructor(io: SocketServer) {
     this.io = io;
+    this.initializeCardData();
+  }
+
+  private async initializeCardData() {
+    try {
+      console.log('[GameManager] Loading card definitions...');
+      await cardLoaderService.loadAllCards();
+      this.cardsLoaded = true;
+      console.log('[GameManager] Card definitions loaded successfully');
+    } catch (error) {
+      console.error('[GameManager] Failed to load card definitions:', error);
+    }
   }
 
   async startGame(lobby: any, socket: AuthenticatedSocket) {
     if (lobby.players.length !== 2) return;
     if (lobby.hostId !== socket.userId) return;
+
+    // Ensure cards are loaded
+    if (!this.cardsLoaded) {
+      await cardLoaderService.loadAllCards();
+      this.cardsLoaded = true;
+    }
 
     const gameId = uuidv4();
     const player1 = lobby.players[0];
@@ -49,6 +69,11 @@ export class GameManager {
 
     // Initialize game state manager
     const stateManager = new GameStateManager(gameId, player1.id, player2.id);
+
+    // Load card definitions into the effect engine
+    const cardDefinitions = cardLoaderService.getAllCards();
+    stateManager.loadCardDefinitions(cardDefinitions);
+    console.log(`[GameManager] Loaded ${cardDefinitions.length} card definitions for game ${gameId}`);
 
     // Load player decks from database
     const [deck1, deck2] = await Promise.all([

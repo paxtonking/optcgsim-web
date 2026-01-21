@@ -1,16 +1,12 @@
-// Re-export all types (except the ones we're replacing)
+// Re-export all types (except the ones we're replacing with effects system)
 export type {
   CardType,
   CardColor,
   CardAttribute,
   Card,
   CardEffect,
-  EffectTrigger,
-  EffectCondition,
-  EffectAction,
   Zone,
   Player,
-  ActiveEffect,
   PendingAction,
   AttackState,
   GameActionType,
@@ -35,3 +31,6 @@ export * from './constants/index.js';
 // Re-export new game types and classes (these override the old ones)
 export * from './types/game.js';
 export * from './game/GameStateManager.js';
+
+// Re-export effect system
+export * from './effects/index.js';

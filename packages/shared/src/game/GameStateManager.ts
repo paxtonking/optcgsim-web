@@ -1,20 +1,41 @@
-import { 
-  GameState, 
-  GamePhase, 
-  PlayerState, 
-  GameCard, 
-  CardZone, 
+import {
+  GameState,
+  GamePhase,
+  PlayerState,
+  GameCard,
+  CardZone,
   CardState,
   GameAction,
   ActionType,
   DEFAULT_GAME_CONFIG
 } from '../types/game';
 
+import {
+  EffectEngine,
+  CardDefinition,
+  EffectContext,
+  TriggerEvent,
+  EffectTrigger,
+  PendingEffect,
+  StateChange,
+} from '../effects';
+
 export class GameStateManager {
   private state: GameState;
+  private effectEngine: EffectEngine;
   
   constructor(gameId: string, player1Id: string, player2Id: string) {
     this.state = this.initializeGameState(gameId, player1Id, player2Id);
+    this.effectEngine = new EffectEngine();
+  }
+
+  // Load card definitions for effect resolution
+  public loadCardDefinitions(cards: CardDefinition[]): void {
+    this.effectEngine.loadCardDefinitions(cards);
+  }
+
+  public getEffectEngine(): EffectEngine {
+    return this.effectEngine;
   }
 
   private initializeGameState(gameId: string, player1Id: string, player2Id: string): GameState {
@@ -150,13 +171,91 @@ export class GameStateManager {
     card.state = CardState.ACTIVE;
     card.turnPlayed = this.state.turn;
 
+    // Check for Rush keyword
+    const cardDef = this.effectEngine.getCardDefinition(card.cardId);
+    if (cardDef && cardDef.keywords.includes('Rush')) {
+      if (!card.keywords) card.keywords = [];
+      card.keywords.push('Rush');
+    }
+
+    // Check for Blocker keyword
+    if (cardDef && cardDef.keywords.includes('Blocker')) {
+      if (!card.keywords) card.keywords = [];
+      card.keywords.push('Blocker');
+    }
+
     if (targetZone === CardZone.FIELD) {
       player.field.push(card);
+
+      // Trigger ON_PLAY effects
+      const triggerEvent: TriggerEvent = {
+        type: EffectTrigger.ON_PLAY,
+        cardId: card.id,
+        playerId: playerId,
+      };
+      this.processTriggers(triggerEvent);
     } else if (targetZone === CardZone.TRASH) {
       player.trash.push(card);
     }
 
     return true;
+  }
+
+  // Process triggered effects
+  private processTriggers(event: TriggerEvent): PendingEffect[] {
+    const pendingEffects = this.effectEngine.checkTriggers(this.state, event);
+
+    // Add to pending effects for resolution
+    pendingEffects.forEach(effect => {
+      this.effectEngine.addPendingEffect(effect);
+    });
+
+    return pendingEffects;
+  }
+
+  // Resolve a pending effect
+  public resolveEffect(effectId: string, selectedTargets?: string[]): StateChange[] {
+    const pending = this.effectEngine.getPendingEffects().find(e => e.id === effectId);
+    if (!pending) return [];
+
+    const player = this.state.players[pending.playerId];
+    const card = this.findCard(pending.sourceCardId);
+    if (!player || !card) return [];
+
+    const context: EffectContext = {
+      gameState: this.state,
+      sourceCard: card,
+      sourcePlayer: player,
+      selectedTargets,
+    };
+
+    const result = this.effectEngine.resolveEffect(pending.effect, context);
+    this.effectEngine.removePendingEffect(effectId);
+
+    return result.changes;
+  }
+
+  // Get pending effects for UI to display
+  public getPendingEffects(): PendingEffect[] {
+    return this.effectEngine.getPendingEffects();
+  }
+
+  // Get valid targets for an effect
+  public getValidTargetsForEffect(effectId: string): string[] {
+    const pending = this.effectEngine.getPendingEffects().find(e => e.id === effectId);
+    if (!pending || !pending.effect.effects[0]?.target) return [];
+
+    const player = this.state.players[pending.playerId];
+    const card = this.findCard(pending.sourceCardId);
+    if (!player || !card) return [];
+
+    const context: EffectContext = {
+      gameState: this.state,
+      sourceCard: card,
+      sourcePlayer: player,
+    };
+
+    return this.effectEngine.getValidTargets(pending.effect.effects[0], context);
   }
 
   public attachDon(playerId: string, donId: string, targetId: string): boolean {
@@ -178,6 +277,14 @@ export class GameStateManager {
     const attacker = this.findCard(attackerId);
     if (!attacker || attacker.state !== CardState.ACTIVE) return false;
 
+    // Check if card can attack (Rush check)
+    if (attacker.turnPlayed === this.state.turn) {
+      // Card was played this turn, needs Rush to attack
+      if (!this.effectEngine.canAttackOnPlayTurn(attacker, this.state.turn)) {
+        return false;
+      }
+    }
+
     // Rest the attacker
     attacker.state = CardState.RESTED;
     attacker.hasAttacked = true;
@@ -195,6 +302,16 @@ export class GameStateManager {
     };
 
     this.state.phase = GamePhase.COUNTER_STEP;
+
+    // Trigger ON_ATTACK effects
+    const triggerEvent: TriggerEvent = {
+      type: EffectTrigger.ON_ATTACK,
+      cardId: attackerId,
+      playerId: attacker.owner,
+      targetId: targetId,
+    };
+    this.processTriggers(triggerEvent);
+
     return true;
   }
 
@@ -204,13 +321,25 @@ export class GameStateManager {
     const blocker = this.findCard(blockerId);
     if (!blocker || blocker.state !== CardState.ACTIVE) return false;
 
-    // Check if card has blocker keyword
-    if (!blocker.keywords?.includes('Blocker')) return false;
+    // Check if card can block using effect engine
+    if (!this.effectEngine.canBlock(blocker)) return false;
+
+    // Check if attacker is unblockable
+    const attacker = this.findCard(this.state.currentCombat.attackerId);
+    if (attacker && this.effectEngine.isUnblockable(attacker)) return false;
 
     blocker.state = CardState.RESTED;
     this.state.currentCombat.isBlocked = true;
     this.state.currentCombat.targetId = blockerId;
     this.state.currentCombat.targetType = 'character';
+
+    // Trigger ON_BLOCK effects
+    const triggerEvent: TriggerEvent = {
+      type: EffectTrigger.ON_BLOCK,
+      cardId: blockerId,
+      playerId: blocker.owner,
+    };
+    this.processTriggers(triggerEvent);
 
     return true;
   }
@@ -218,15 +347,33 @@ export class GameStateManager {
   public resolveCombat(): void {
     if (!this.state.currentCombat) return;
 
-    const { targetId, targetType, attackPower, counterPower = 0 } = this.state.currentCombat;
+    const { attackerId, targetId, targetType, attackPower, counterPower = 0 } = this.state.currentCombat;
+    const attacker = this.findCard(attackerId);
 
     if (targetType === 'leader') {
       // Damage to leader
       const targetPlayer = this.findCardOwner(targetId!);
       if (targetPlayer) {
-        const damage = Math.max(0, attackPower - counterPower);
-        if (damage > 0) {
-          this.takeDamage(targetPlayer.id, damage);
+        // Check for Double Attack
+        let damageMultiplier = 1;
+        if (attacker && this.effectEngine.hasDoubleAttack(attacker)) {
+          damageMultiplier = 2;
+        }
+
+        // Check if attack succeeds
+        const leaderPower = targetPlayer.leaderCard?.power || 0;
+        if (attackPower >= leaderPower + counterPower) {
+          // Deal damage
+          this.takeDamage(targetPlayer.id, damageMultiplier, attacker);
+
+          // Trigger HIT_LEADER
+          const triggerEvent: TriggerEvent = {
+            type: EffectTrigger.HIT_LEADER,
+            cardId: attackerId,
+            playerId: attacker?.owner,
+            targetId: targetId,
+          };
+          this.processTriggers(triggerEvent);
         }
       }
     } else if (targetType === 'character') {
@@ -236,32 +383,80 @@ export class GameStateManager {
         const targetPower = (target.power || 0) + (counterPower || 0);
         if (attackPower >= targetPower) {
           this.koCharacter(targetId!);
+
+          // Trigger ON_KO
+          const triggerEvent: TriggerEvent = {
+            type: EffectTrigger.ON_KO,
+            cardId: targetId,
+            playerId: target.owner,
+          };
+          this.processTriggers(triggerEvent);
+
+          // Also trigger ANY_CHARACTER_KOD
+          const anyKOTrigger: TriggerEvent = {
+            type: EffectTrigger.ANY_CHARACTER_KOD,
+            cardId: targetId,
+          };
+          this.processTriggers(anyKOTrigger);
         }
       }
     }
+
+    // Trigger AFTER_BATTLE
+    const afterBattleTrigger: TriggerEvent = {
+      type: EffectTrigger.AFTER_BATTLE,
+      cardId: attackerId,
+      playerId: attacker?.owner,
+    };
+    this.processTriggers(afterBattleTrigger);
 
     this.state.currentCombat = undefined;
     this.state.phase = GamePhase.MAIN_PHASE;
   }
 
-  private takeDamage(playerId: string, damage: number): void {
+  private takeDamage(playerId: string, damage: number, attacker?: GameCard): void {
     const player = this.state.players[playerId];
     if (!player) return;
+
+    // Check if attacker has Banish - cards go to trash instead of hand
+    const hasBanish = attacker && this.effectEngine.hasBanish(attacker);
 
     for (let i = 0; i < damage; i++) {
       if (player.lifeCards.length > 0) {
         const lifeCard = player.lifeCards.pop();
         if (lifeCard) {
-          lifeCard.zone = CardZone.HAND;
           lifeCard.faceUp = true;
-          player.hand.push(lifeCard);
           player.life--;
 
-          // Check for trigger
-          if (this.hasTriggr(lifeCard)) {
-            this.state.phase = GamePhase.TRIGGER_STEP;
-            // Handle trigger resolution
+          if (hasBanish) {
+            // Banish: card goes to trash
+            lifeCard.zone = CardZone.TRASH;
+            player.trash.push(lifeCard);
+          } else {
+            // Normal: card goes to hand
+            lifeCard.zone = CardZone.HAND;
+            player.hand.push(lifeCard);
+
+            // Check for trigger effect
+            if (this.hasTrigger(lifeCard)) {
+              // Trigger TRIGGER effect
+              const triggerEvent: TriggerEvent = {
+                type: EffectTrigger.TRIGGER,
+                cardId: lifeCard.id,
+                playerId: playerId,
+              };
+              this.processTriggers(triggerEvent);
+              this.state.phase = GamePhase.TRIGGER_STEP;
+            }
           }
+
+          // Trigger LIFE_ADDED_TO_HAND
+          const lifeEvent: TriggerEvent = {
+            type: EffectTrigger.LIFE_ADDED_TO_HAND,
+            cardId: lifeCard.id,
+            playerId: playerId,
+          };
+          this.processTriggers(lifeEvent);
         }
       }
     }
@@ -271,6 +466,13 @@ export class GameStateManager {
       const opponentId = Object.keys(this.state.players).find(id => id !== playerId);
       this.state.winner = opponentId;
       this.state.phase = GamePhase.GAME_OVER;
+
+      // Trigger LIFE_REACHES_ZERO
+      const lifeZeroEvent: TriggerEvent = {
+        type: EffectTrigger.LIFE_REACHES_ZERO,
+        playerId: playerId,
+      };
+      this.processTriggers(lifeZeroEvent);
     }
   }
 
@@ -307,8 +509,18 @@ export class GameStateManager {
     this.state.phase = GamePhase.UNTAP_PHASE;
     player.isActive = true;
 
+    // Cleanup expired effects from previous turn
+    this.effectEngine.cleanupExpiredEffects(this.state);
+
     // Untap all cards
     this.untapAll(playerId);
+
+    // Trigger START_OF_TURN effects
+    const startTurnEvent: TriggerEvent = {
+      type: EffectTrigger.START_OF_TURN,
+      playerId: playerId,
+    };
+    this.processTriggers(startTurnEvent);
 
     // Move to draw phase
     this.state.phase = GamePhase.DRAW_PHASE;
@@ -337,6 +549,13 @@ export class GameStateManager {
 
     player.isActive = false;
     this.state.phase = GamePhase.END_PHASE;
+
+    // Trigger END_OF_TURN effects
+    const endTurnEvent: TriggerEvent = {
+      type: EffectTrigger.END_OF_TURN,
+      playerId: playerId,
+    };
+    this.processTriggers(endTurnEvent);
 
     // Find next player
     const nextPlayerId = Object.keys(this.state.players).find(id => id !== playerId);
@@ -416,9 +635,13 @@ export class GameStateManager {
     return owner.donField.filter(don => don.attachedTo === cardId);
   }
 
-  private hasTriggr(_card: GameCard): boolean {
-    // TODO: Check card definition for trigger keyword
-    return false;
+  private hasTrigger(card: GameCard): boolean {
+    // Check card definition for trigger effect
+    const cardDef = this.effectEngine.getCardDefinition(card.cardId);
+    if (!cardDef) return false;
+
+    // Check if any effect has TRIGGER as its trigger type
+    return cardDef.effects.some(e => e.trigger === EffectTrigger.TRIGGER);
   }
 
   private shuffleArray<T>(array: T[]): T[] {

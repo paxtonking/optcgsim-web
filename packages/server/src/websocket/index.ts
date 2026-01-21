@@ -5,6 +5,7 @@ import { prisma } from '../services/prisma.js';
 import { LobbyManager } from './LobbyManager.js';
 import { GameManager } from './GameManager.js';
 import { QueueManager } from './QueueManager.js';
+import { AIGameManager } from './AIGameManager.js';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -15,6 +16,7 @@ export function setupWebSocket(io: SocketServer) {
   const lobbyManager = new LobbyManager(io);
   const gameManager = new GameManager(io);
   const queueManager = new QueueManager(io, gameManager);
+  const aiGameManager = new AIGameManager(io);
 
   // Authentication middleware
   io.use(async (socket: AuthenticatedSocket, next) => {
@@ -120,12 +122,37 @@ export function setupWebSocket(io: SocketServer) {
       gameManager.removeSpectator(socket, gameId);
     });
 
+    // AI Game events
+    socket.on('ai:start', (data, callback) => {
+      const { deckId, difficulty = 'basic' } = data;
+      aiGameManager.startAIGame(socket, deckId, difficulty, callback);
+    });
+
+    socket.on('ai:action', (data, callback) => {
+      aiGameManager.handleAction(socket, data.action, callback);
+    });
+
+    socket.on('ai:surrender', () => {
+      aiGameManager.handleSurrender(socket);
+    });
+
+    socket.on('ai:getState', (data) => {
+      const gameId = data.gameId;
+      const state = aiGameManager.getGameState(socket, gameId);
+      if (state) {
+        socket.emit('game:state', { gameState: state });
+      } else {
+        socket.emit('game:error', { error: 'AI game not found' });
+      }
+    });
+
     // Disconnect
     socket.on('disconnect', () => {
       console.log(`User disconnected: ${socket.username}`);
       lobbyManager.handleDisconnect(socket);
       queueManager.leaveQueue(socket);
       gameManager.handleDisconnect(socket);
+      aiGameManager.handleDisconnect(socket);
     });
   });
 }

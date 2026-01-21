@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { GameController } from '../game/GameController';
 import { useAuthStore } from '../stores/authStore';
+import { socketService } from '../services/socket';
 
 export default function GamePage() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const gameControllerRef = useRef<GameController | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const isAIGame = searchParams.get('ai') === 'true';
 
   useEffect(() => {
     if (!id || !user) {
@@ -19,7 +23,7 @@ export default function GamePage() {
 
     // Initialize game controller
     if (gameContainerRef.current && !gameControllerRef.current) {
-      gameControllerRef.current = new GameController();
+      gameControllerRef.current = new GameController(isAIGame);
       gameControllerRef.current.initialize(gameContainerRef.current, id, user.id);
       setIsLoading(false);
     }
@@ -39,13 +43,21 @@ export default function GamePage() {
       <div className="bg-gray-900 border-b border-gray-800 px-4 py-2 flex justify-between items-center">
         <div className="flex items-center space-x-4">
           <h1 className="text-xl font-bold">Game Room</h1>
-          <span className="text-sm text-gray-400">ID: {id}</span>
+          {isAIGame && (
+            <span className="px-2 py-1 bg-purple-600 text-xs rounded">VS AI</span>
+          )}
+          <span className="text-sm text-gray-400">ID: {id?.slice(0, 8)}...</span>
         </div>
         <button
-          onClick={() => navigate('/lobby')}
+          onClick={() => {
+            if (isAIGame) {
+              socketService.emit('ai:surrender', {});
+            }
+            navigate('/lobby');
+          }}
           className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded transition"
         >
-          Leave Game
+          {isAIGame ? 'Surrender' : 'Leave Game'}
         </button>
       </div>
 

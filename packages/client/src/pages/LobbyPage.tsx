@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useDeckStore } from '../stores/deckStore';
-import { useLobbyStore } from '../stores/lobbyStore';
+import { useLobbyStore, type AIDifficulty } from '../stores/lobbyStore';
 import { CardDisplay } from '../components/CardDisplay';
 
 function formatTime(seconds: number): string {
@@ -160,6 +160,94 @@ function LobbyRoom() {
             </button>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function AIPanel() {
+  const navigate = useNavigate();
+  const {
+    aiGameStatus,
+    aiGameId,
+    aiDifficulty,
+    aiError,
+    selectedDeckId,
+    startAIGame,
+  } = useLobbyStore();
+
+  // Compute disabled state before any narrowing
+  const isStarting = aiGameStatus === 'starting';
+  const isDisabled = !selectedDeckId || isStarting;
+
+  // Navigate to game when AI game starts
+  useEffect(() => {
+    if (aiGameStatus === 'playing' && aiGameId) {
+      navigate(`/game/${aiGameId}?ai=true`);
+    }
+  }, [aiGameStatus, aiGameId, navigate]);
+
+  const handleStartAI = (difficulty: AIDifficulty) => {
+    startAIGame(difficulty);
+  };
+
+  const getDifficultyLabel = (diff: AIDifficulty) => {
+    switch (diff) {
+      case 'basic': return 'Easy';
+      case 'medium': return 'Medium';
+      case 'hard': return 'Hard';
+    }
+  };
+
+  if (isStarting) {
+    return (
+      <div className="bg-gray-800 rounded-lg p-6 text-center">
+        <div className="animate-pulse mb-4">
+          <div className="w-16 h-16 mx-auto rounded-full bg-blue-600/30 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-full bg-blue-600/50 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-blue-600"></div>
+            </div>
+          </div>
+        </div>
+        <h3 className="text-xl font-medium text-white mb-2">
+          Starting {aiDifficulty ? getDifficultyLabel(aiDifficulty) : ''} AI Game...
+        </h3>
+        <p className="text-gray-400">Preparing your opponent</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-gray-800 rounded-lg p-6">
+      <h2 className="text-xl font-semibold mb-4">Practice vs AI</h2>
+      <p className="text-gray-400 mb-6">
+        Practice your deck against an AI opponent. No ranking impact.
+      </p>
+      {aiError && (
+        <p className="text-red-400 text-sm mb-4">{aiError}</p>
+      )}
+      <div className="flex gap-4">
+        <button
+          onClick={() => handleStartAI('basic')}
+          disabled={isDisabled}
+          className="flex-1 bg-green-700 hover:bg-green-600 text-white py-3 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          Easy AI
+        </button>
+        <button
+          onClick={() => handleStartAI('medium')}
+          disabled={isDisabled}
+          className="flex-1 bg-yellow-700 hover:bg-yellow-600 text-white py-3 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          Medium AI
+        </button>
+        <button
+          onClick={() => handleStartAI('hard')}
+          disabled={isDisabled}
+          className="flex-1 bg-red-700 hover:bg-red-600 text-white py-3 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          Hard AI
+        </button>
       </div>
     </div>
   );
@@ -363,32 +451,7 @@ export default function LobbyPage() {
           </div>
 
           {/* Practice vs AI */}
-          <div className="bg-gray-800 rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Practice vs AI</h2>
-            <p className="text-gray-400 mb-6">
-              Practice your deck against an AI opponent. No ranking impact.
-            </p>
-            <div className="flex gap-4">
-              <button
-                disabled={!selectedDeckId}
-                className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Easy AI
-              </button>
-              <button
-                disabled={!selectedDeckId}
-                className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Medium AI
-              </button>
-              <button
-                disabled={!selectedDeckId}
-                className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Hard AI
-              </button>
-            </div>
-          </div>
+          <AIPanel />
 
           {/* Selected deck info */}
           {!selectedDeckId && validDecks.length > 0 && (

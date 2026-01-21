@@ -65,6 +65,13 @@ function transformCard(apiCard: APICard): TransformedCard {
   const setCode = parts[0] || '';
   const cardNumber = parts[1] || '';
 
+  // Use external image URL from API, or fallback to en.onepiece-cardgame.com
+  let imageUrl = apiCard.card_image;
+  if (!imageUrl || imageUrl === 'NULL') {
+    // Fallback to official card game site format
+    imageUrl = `https://en.onepiece-cardgame.com/images/cardlist/card/${id}.png`;
+  }
+
   return {
     id,
     name: apiCard.card_name.replace(/\s*\(\d+\)$/, ''), // Remove trailing (001) etc
@@ -80,7 +87,7 @@ function transformCard(apiCard: APICard): TransformedCard {
     attribute: apiCard.card_attribute && apiCard.card_attribute !== 'NULL' ? apiCard.card_attribute : null,
     effect: apiCard.card_effect && apiCard.card_effect !== 'NULL' ? apiCard.card_effect : null,
     trigger: apiCard.card_trigger && apiCard.card_trigger !== 'NULL' ? apiCard.card_trigger : null,
-    imageUrl: `/cards/${setCode}/${id}.png`, // Local path to our images
+    imageUrl, // Use external image URL
   };
 }
 

@@ -9,8 +9,10 @@ export class GameController {
   private stateManager?: GameStateManager;
   private gameId?: string;
   private playerId?: string;
-  
-  constructor() {
+  private isAIGame: boolean;
+
+  constructor(isAIGame: boolean = false) {
+    this.isAIGame = isAIGame;
     this.setupSocketListeners();
   }
 
@@ -43,9 +45,10 @@ export class GameController {
     this.game.events.once('ready', () => {
       this.gameScene = this.game?.scene.getScene('GameScene') as GameScene;
       this.setupSceneListeners();
-      
-      // Request initial game state
-      socket?.emit('game:getState', { gameId: this.gameId });
+
+      // Request initial game state using appropriate event for AI or regular games
+      const getStateEvent = this.isAIGame ? 'ai:getState' : 'game:getState';
+      socket?.emit(getStateEvent, { gameId: this.gameId });
     });
   }
 
@@ -136,8 +139,10 @@ export class GameController {
 
   private sendAction(action: GameAction) {
     if (!this.gameId) return;
-    
-    socket?.emit('game:action', {
+
+    // Use appropriate event for AI or regular games
+    const actionEvent = this.isAIGame ? 'ai:action' : 'game:action';
+    socket?.emit(actionEvent, {
       gameId: this.gameId,
       action: action
     });
