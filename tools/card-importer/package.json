@@ -1,0 +1,23 @@
+{
+  "name": "@optcgsim/card-importer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "import": "tsx src/index.ts",
+    "import:cards": "tsx src/import-cards.ts",
+    "import:translations": "tsx src/import-translations.ts"
+  },
+  "dependencies": {
+    "@optcgsim/shared": "*",
+    "@prisma/client": "^5.14.0",
+    "commander": "^12.0.0",
+    "dotenv": "^16.4.5",
+    "glob": "^10.3.12"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "tsx": "^4.10.5",
+    "typescript": "^5.4.5"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "optcgsim-web",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "tools/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "clean": "turbo run clean",
+    "dev:client": "npm run dev --workspace=@optcgsim/client",
+    "dev:server": "npm run dev --workspace=@optcgsim/server",
+    "db:push": "npm run db:push --workspace=@optcgsim/server",
+    "db:studio": "npm run db:studio --workspace=@optcgsim/server"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "packageManager": "npm@11.6.2"
+}

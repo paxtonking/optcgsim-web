@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  username      String    @unique
+  passwordHash  String?
+  oauthProvider String?
+  oauthId       String?
+  eloRating     Int       @default(1000)
+  gamesPlayed   Int       @default(0)
+  gamesWon      Int       @default(0)
+  isAdmin       Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  decks         Deck[]
+  matchesAsP1   Match[]   @relation("Player1")
+  matchesAsP2   Match[]   @relation("Player2")
+  sessions      Session[]
+
+  @@index([email])
+  @@index([username])
+  @@index([eloRating])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  refreshToken String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([refreshToken])
+}
+
+model Deck {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  leaderId  String
+  cards     Json     // Array of {cardId, count}
+  isPublic  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isPublic])
+  @@index([leaderId])
+}
+
+model Card {
+  id         String   @id // e.g., "OP01-001"
+  setCode    String
+  cardNumber String
+  name       String
+  type       String   // LEADER, CHARACTER, EVENT, STAGE
+  colors     String[] // Array of colors
+  cost       Int?
+  power      Int?
+  counter    Int?
+  attribute  String?
+  traits     String[]
+  effects    Json     // Array of effect definitions
+  effectText String   // Human-readable effect text
+  imageUrl   String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([setCode])
+  @@index([type])
+  @@index([name])
+}
+
+model CardSet {
+  id          String   @id @default(uuid())
+  code        String   @unique // e.g., "OP01"
+  name        String
+  releaseDate DateTime
+  isActive    Boolean  @default(true)
+  cardCount   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([code])
+}
+
+model Match {
+  id        String   @id @default(uuid())
+  player1Id String
+  player2Id String
+  winnerId  String?
+  gameLog   Json     // Array of game actions
+  ranked    Boolean  @default(false)
+  duration  Int?     // Duration in seconds
+  createdAt DateTime @default(now())
+
+  player1 User @relation("Player1", fields: [player1Id], references: [id])
+  player2 User @relation("Player2", fields: [player2Id], references: [id])
+
+  @@index([player1Id])
+  @@index([player2Id])
+  @@index([createdAt])
+  @@index([ranked])
+}
+
+model Leaderboard {
+  id        String   @id @default(uuid())
+  season    String   // e.g., "2024-Q1"
+  userId    String
+  username  String
+  eloRating Int
+  rank      Int
+  gamesWon  Int
+  gamesLost Int
+  updatedAt DateTime @updatedAt
+
+  @@unique([season, userId])
+  @@index([season, rank])
+}

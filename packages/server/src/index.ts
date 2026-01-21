@@ -1,0 +1,65 @@
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import { createServer } from 'http';
+import { Server as SocketServer } from 'socket.io';
+import dotenv from 'dotenv';
+
+import { authRouter } from './api/auth.js';
+import { usersRouter } from './api/users.js';
+import { decksRouter } from './api/decks.js';
+import { cardsRouter } from './api/cards.js';
+import { matchesRouter } from './api/matches.js';
+import { setupWebSocket } from './websocket/index.js';
+import { errorHandler } from './middleware/errorHandler.js';
+import { requestLogger } from './middleware/requestLogger.js';
+
+dotenv.config();
+
+const app = express();
+const httpServer = createServer(app);
+
+// Socket.IO setup
+const io = new SocketServer(httpServer, {
+  cors: {
+    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+});
+
+// Middleware
+app.use(helmet());
+app.use(cors({
+  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  credentials: true,
+}));
+app.use(express.json());
+app.use(requestLogger);
+
+// Health check
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// API Routes
+app.use('/api/auth', authRouter);
+app.use('/api/users', usersRouter);
+app.use('/api/decks', decksRouter);
+app.use('/api/cards', cardsRouter);
+app.use('/api/matches', matchesRouter);
+
+// Error handling
+app.use(errorHandler);
+
+// WebSocket setup
+setupWebSocket(io);
+
+// Start server
+const PORT = process.env.PORT || 4000;
+httpServer.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`WebSocket server ready`);
+});
+
+export { app, io };

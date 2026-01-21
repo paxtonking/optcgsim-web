@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Card Asset Placeholder Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #1a1a1a;
+            color: white;
+        }
+        canvas {
+            border: 1px solid #444;
+            margin: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            background: #4444ff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #5555ff;
+        }
+    </style>
+</head>
+<body>
+    <h1>One Piece TCG Card Placeholder Generator</h1>
+    <div>
+        <button onclick="generateCardBack()">Generate Card Back</button>
+        <button onclick="generateDonToken()">Generate DON! Token</button>
+        <button onclick="generateLifeShield()">Generate Life Shield</button>
+        <button onclick="generatePlaymat()">Generate Playmat</button>
+        <button onclick="downloadAll()">Download All</button>
+    </div>
+    <div id="canvases"></div>
+
+    <script>
+        function generateCardBack() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 315;
+            canvas.height = 440;
+            const ctx = canvas.getContext('2d');
+            
+            // Background gradient
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#2a2a4a');
+            gradient.addColorStop(1, '#1a1a2e');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Border
+            ctx.strokeStyle = '#gold';
+            ctx.lineWidth = 5;
+            ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+            
+            // Center design
+            ctx.fillStyle = '#gold';
+            ctx.font = 'bold 48px serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('ONE PIECE', canvas.width / 2, canvas.height / 2 - 30);
+            ctx.font = '24px serif';
+            ctx.fillText('CARD GAME', canvas.width / 2, canvas.height / 2 + 10);
+            
+            // Pattern
+            ctx.strokeStyle = 'rgba(255, 215, 0, 0.3)';
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 10; i++) {
+                ctx.beginPath();
+                ctx.arc(canvas.width / 2, canvas.height / 2, 30 + i * 20, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            
+            downloadCanvas(canvas, 'card-back.png');
+        }
+        
+        function generateDonToken() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 100;
+            canvas.height = 100;
+            const ctx = canvas.getContext('2d');
+            
+            // Circle background
+            ctx.fillStyle = '#ff6b6b';
+            ctx.beginPath();
+            ctx.arc(50, 50, 45, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Inner circle
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(50, 50, 35, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // DON! text
+            ctx.fillStyle = '#ff0000';
+            ctx.font = 'bold 24px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('DON!', 50, 45);
+            ctx.font = '16px Arial';
+            ctx.fillText('+1000', 50, 65);
+            
+            downloadCanvas(canvas, 'don-token.png');
+        }
+        
+        function generateLifeShield() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 80;
+            canvas.height = 100;
+            const ctx = canvas.getContext('2d');
+            
+            // Shield shape
+            ctx.fillStyle = '#4169e1';
+            ctx.beginPath();
+            ctx.moveTo(40, 10);
+            ctx.lineTo(70, 30);
+            ctx.lineTo(70, 60);
+            ctx.quadraticCurveTo(40, 90, 40, 90);
+            ctx.quadraticCurveTo(40, 90, 10, 60);
+            ctx.lineTo(10, 30);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Border
+            ctx.strokeStyle = '#gold';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            
+            // Life text
+            ctx.fillStyle = '#gold';
+            ctx.font = 'bold 20px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('LIFE', 40, 50);
+            
+            downloadCanvas(canvas, 'life-shield.png');
+        }
+        
+        function generatePlaymat() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1280;
+            canvas.height = 720;
+            const ctx = canvas.getContext('2d');
+            
+            // Background gradient
+            const gradient = ctx.createRadialGradient(640, 360, 100, 640, 360, 500);
+            gradient.addColorStop(0, '#2a4a6a');
+            gradient.addColorStop(1, '#0a1a2a');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Grid pattern
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x < canvas.width; x += 50) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y < canvas.height; y += 50) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+            
+            // Center logo area
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+            ctx.beginPath();
+            ctx.arc(640, 360, 200, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Title
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.font = 'bold 72px serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('ONE PIECE TCG', 640, 360);
+            
+            downloadCanvas(canvas, 'playmat.png');
+        }
+        
+        function downloadCanvas(canvas, filename) {
+            canvas.toBlob(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+            
+            document.getElementById('canvases').appendChild(canvas);
+        }
+        
+        function downloadAll() {
+            generateCardBack();
+            setTimeout(() => generateDonToken(), 500);
+            setTimeout(() => generateLifeShield(), 1000);
+            setTimeout(() => generatePlaymat(), 1500);
+        }
+    </script>
+</body>
+</html>
