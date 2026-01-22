@@ -52,6 +52,11 @@ export class GameScene extends Phaser.Scene {
   // Sound effects
   private soundEnabled = true;
 
+  // Animation tracking
+  private previousCardPositions: Map<string, { x: number; y: number; zone: string }> = new Map();
+  private animatingCards: Set<string> = new Set();
+  private attackArrow?: Phaser.GameObjects.Graphics;
+
   // Zone dimensions
   private readonly CARD_WIDTH = 63;
   private readonly CARD_HEIGHT = 88;
@@ -405,82 +410,546 @@ export class GameScene extends Phaser.Scene {
     return this.soundEnabled;
   }
 
+  // ==================== ANIMATION SYSTEM ====================
+
+  /**
+   * Animate a card moving from one position to another
+   */
+  private animateCardMove(
+    cardSprite: Phaser.GameObjects.Image,
+    toX: number,
+    toY: number,
+    duration: number = 250,
+    onComplete?: () => void
+  ) {
+    const cardId = cardSprite.getData('cardId');
+    this.animatingCards.add(cardId);
+
+    // Bring card to front during animation
+    cardSprite.setDepth(1000);
+
+    this.tweens.add({
+      targets: cardSprite,
+      x: toX,
+      y: toY,
+      duration: duration,
+      ease: 'Power2.easeOut',
+      onComplete: () => {
+        cardSprite.setDepth(1);
+        this.animatingCards.delete(cardId);
+        onComplete?.();
+      }
+    });
+  }
+
+  /**
+   * Animate a card flip (face-down to face-up or vice versa)
+   */
+  private animateCardFlip(
+    cardSprite: Phaser.GameObjects.Image,
+    newTexture: string,
+    duration: number = 200
+  ) {
+    const originalWidth = cardSprite.displayWidth;
+
+    this.tweens.add({
+      targets: cardSprite,
+      scaleX: 0,
+      duration: duration / 2,
+      ease: 'Power2.easeIn',
+      onComplete: () => {
+        cardSprite.setTexture(newTexture);
+        this.tweens.add({
+          targets: cardSprite,
+          scaleX: originalWidth / cardSprite.width,
+          duration: duration / 2,
+          ease: 'Power2.easeOut'
+        });
+      }
+    });
+  }
+
+  /**
+   * Animate a card being played (hand to field with scale effect)
+   */
+  private animateCardPlay(
+    cardSprite: Phaser.GameObjects.Image,
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number
+  ) {
+    cardSprite.setPosition(fromX, fromY);
+    cardSprite.setDepth(1000);
+    cardSprite.setAlpha(0.8);
+
+    // Scale up slightly then settle
+    this.tweens.add({
+      targets: cardSprite,
+      x: toX,
+      y: toY,
+      scaleX: this.CARD_SCALE * 1.2,
+      scaleY: this.CARD_SCALE * 1.2,
+      alpha: 1,
+      duration: 200,
+      ease: 'Power2.easeOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: cardSprite,
+          scaleX: this.CARD_SCALE,
+          scaleY: this.CARD_SCALE,
+          duration: 100,
+          ease: 'Power2.easeIn',
+          onComplete: () => {
+            cardSprite.setDepth(1);
+            this.playSound('cardPlay');
+          }
+        });
+      }
+    });
+  }
+
+  /**
+   * Animate attack - card slides forward and back
+   */
+  private animateAttack(attackerSprite: Phaser.GameObjects.Image, targetX: number, targetY: number) {
+    const originalX = attackerSprite.x;
+    const originalY = attackerSprite.y;
+
+    // Calculate midpoint (don't go all the way to target)
+    const midX = originalX + (targetX - originalX) * 0.4;
+    const midY = originalY + (targetY - originalY) * 0.4;
+
+    attackerSprite.setDepth(1000);
+
+    // Show attack arrow
+    this.showAttackArrow(originalX, originalY, targetX, targetY);
+
+    this.tweens.add({
+      targets: attackerSprite,
+      x: midX,
+      y: midY,
+      duration: 150,
+      ease: 'Power2.easeOut',
+      onComplete: () => {
+        this.playSound('attack');
+        this.tweens.add({
+          targets: attackerSprite,
+          x: originalX,
+          y: originalY,
+          duration: 200,
+          ease: 'Power2.easeIn',
+          onComplete: () => {
+            attackerSprite.setDepth(1);
+            this.hideAttackArrow();
+          }
+        });
+      }
+    });
+  }
+
+  /**
+   * Show attack arrow from attacker to target
+   */
+  private showAttackArrow(fromX: number, fromY: number, toX: number, toY: number) {
+    this.hideAttackArrow();
+
+    this.attackArrow = this.add.graphics();
+    this.attackArrow.setDepth(999);
+
+    // Draw arrow line
+    this.attackArrow.lineStyle(4, 0xff4444, 0.8);
+    this.attackArrow.beginPath();
+    this.attackArrow.moveTo(fromX, fromY);
+    this.attackArrow.lineTo(toX, toY);
+    this.attackArrow.stroke();
+
+    // Draw arrowhead
+    const angle = Math.atan2(toY - fromY, toX - fromX);
+    const arrowSize = 15;
+    this.attackArrow.fillStyle(0xff4444, 0.8);
+    this.attackArrow.beginPath();
+    this.attackArrow.moveTo(toX, toY);
+    this.attackArrow.lineTo(
+      toX - arrowSize * Math.cos(angle - Math.PI / 6),
+      toY - arrowSize * Math.sin(angle - Math.PI / 6)
+    );
+    this.attackArrow.lineTo(
+      toX - arrowSize * Math.cos(angle + Math.PI / 6),
+      toY - arrowSize * Math.sin(angle + Math.PI / 6)
+    );
+    this.attackArrow.closePath();
+    this.attackArrow.fill();
+
+    // Pulse animation
+    this.tweens.add({
+      targets: this.attackArrow,
+      alpha: { from: 0.8, to: 0.4 },
+      yoyo: true,
+      repeat: 3,
+      duration: 150
+    });
+  }
+
+  /**
+   * Hide attack arrow
+   */
+  private hideAttackArrow() {
+    if (this.attackArrow) {
+      this.attackArrow.destroy();
+      this.attackArrow = undefined;
+    }
+  }
+
+  /**
+   * Animate damage - card shakes and flashes red
+   */
+  private animateDamage(cardSprite: Phaser.GameObjects.Image) {
+    const originalX = cardSprite.x;
+
+    this.playSound('damage');
+
+    // Flash red
+    cardSprite.setTint(0xff0000);
+
+    // Shake
+    this.tweens.add({
+      targets: cardSprite,
+      x: originalX - 5,
+      duration: 50,
+      yoyo: true,
+      repeat: 3,
+      onComplete: () => {
+        cardSprite.setPosition(originalX, cardSprite.y);
+        cardSprite.clearTint();
+      }
+    });
+  }
+
+  /**
+   * Animate card being sent to trash
+   */
+  private animateToTrash(cardSprite: Phaser.GameObjects.Image, trashX: number, trashY: number) {
+    cardSprite.setDepth(1000);
+
+    this.tweens.add({
+      targets: cardSprite,
+      x: trashX,
+      y: trashY,
+      scaleX: 0.5,
+      scaleY: 0.5,
+      alpha: 0.5,
+      duration: 300,
+      ease: 'Power2.easeIn',
+      onComplete: () => {
+        cardSprite.destroy();
+      }
+    });
+  }
+
+  /**
+   * Animate drawing a card
+   */
+  private animateDrawCard(cardSprite: Phaser.GameObjects.Image, deckX: number, deckY: number, handX: number, handY: number) {
+    cardSprite.setPosition(deckX, deckY);
+    cardSprite.setDepth(1000);
+    cardSprite.setTexture('card-back');
+
+    this.tweens.add({
+      targets: cardSprite,
+      x: handX,
+      y: handY,
+      duration: 300,
+      ease: 'Power2.easeOut',
+      onComplete: () => {
+        cardSprite.setDepth(1);
+        // Flip to reveal
+        const cardDefId = cardSprite.getData('cardDefId');
+        const texture = this.loadCardImage(cardDefId);
+        if (texture !== 'card-back') {
+          this.animateCardFlip(cardSprite, texture);
+        }
+      }
+    });
+  }
+
+  // ==================== END ANIMATION SYSTEM ====================
+
+  // ==================== VISUAL EFFECTS ====================
+
+  /**
+   * Highlight a card as playable (green glow)
+   */
+  private highlightPlayable(cardSprite: Phaser.GameObjects.Image) {
+    cardSprite.setData('highlighted', true);
+    cardSprite.preFX?.clear();
+    cardSprite.preFX?.addGlow(0x00ff00, 4, 0, false, 0.1, 8);
+  }
+
+  /**
+   * Highlight a card as a valid attack target (red glow)
+   */
+  private highlightTarget(cardSprite: Phaser.GameObjects.Image) {
+    cardSprite.setData('highlighted', true);
+    cardSprite.preFX?.clear();
+    cardSprite.preFX?.addGlow(0xff4444, 4, 0, false, 0.1, 8);
+  }
+
+  /**
+   * Highlight a card needing attention (yellow glow)
+   */
+  private highlightAttention(cardSprite: Phaser.GameObjects.Image) {
+    cardSprite.setData('highlighted', true);
+    cardSprite.preFX?.clear();
+    cardSprite.preFX?.addGlow(0xffff00, 4, 0, false, 0.1, 8);
+  }
+
+  /**
+   * Clear highlight from a card
+   */
+  private clearHighlight(cardSprite: Phaser.GameObjects.Image) {
+    cardSprite.setData('highlighted', false);
+    cardSprite.preFX?.clear();
+  }
+
+  /**
+   * Clear all card highlights
+   */
+  private clearAllHighlights() {
+    this.cardSprites.forEach(sprite => {
+      if (sprite.getData('highlighted')) {
+        this.clearHighlight(sprite);
+      }
+    });
+  }
+
+  /**
+   * Highlight playable cards in hand based on available DON
+   */
+  private updatePlayableHighlights() {
+    if (!this.gameState || !this.playerId) return;
+
+    const player = this.gameState.players[this.playerId];
+    if (!player) return;
+
+    // Only highlight during your turn in main phase
+    const isYourTurn = this.gameState.activePlayerId === this.playerId;
+    const isMainPhase = this.gameState.phase === GamePhase.MAIN_PHASE ||
+                        this.gameState.phase === 'main';
+
+    if (!isYourTurn || !isMainPhase) {
+      this.clearAllHighlights();
+      return;
+    }
+
+    // Count active DON
+    const activeDon = player.donField.filter(d => d.state === CardState.ACTIVE).length;
+
+    // Highlight playable hand cards
+    player.hand.forEach(card => {
+      const sprite = this.cardSprites.get(card.id);
+      if (!sprite) return;
+
+      const cardData = this.getCardData(card.cardId);
+      if (cardData && cardData.cost !== null && cardData.cost <= activeDon) {
+        this.highlightPlayable(sprite);
+      } else {
+        this.clearHighlight(sprite);
+      }
+    });
+
+    // Highlight characters that can attack (active, not rested)
+    player.field.forEach(card => {
+      const sprite = this.cardSprites.get(card.id);
+      if (!sprite) return;
+
+      if (card.state === CardState.ACTIVE) {
+        this.highlightPlayable(sprite);
+      }
+    });
+
+    // Highlight leader if active
+    if (player.leaderCard) {
+      const leaderSprite = this.cardSprites.get(player.leaderCard.id);
+      if (leaderSprite && player.leaderCard.state === CardState.ACTIVE) {
+        this.highlightPlayable(leaderSprite);
+      }
+    }
+  }
+
+  /**
+   * Show valid attack targets when selecting an attacker
+   */
+  private showAttackTargets(attackerId: string) {
+    if (!this.gameState || !this.playerId) return;
+
+    const opponent = Object.values(this.gameState.players).find(p => p.id !== this.playerId);
+    if (!opponent) return;
+
+    // Highlight opponent's leader
+    if (opponent.leaderCard) {
+      const leaderSprite = this.cardSprites.get(opponent.leaderCard.id);
+      if (leaderSprite) {
+        this.highlightTarget(leaderSprite);
+      }
+    }
+
+    // Highlight opponent's rested characters
+    opponent.field.forEach(card => {
+      if (card.state === CardState.RESTED) {
+        const sprite = this.cardSprites.get(card.id);
+        if (sprite) {
+          this.highlightTarget(sprite);
+        }
+      }
+    });
+  }
+
+  // ==================== END VISUAL EFFECTS ====================
+
   private setupZones(width: number, height: number) {
-    const centerX = width / 2;
-    const centerY = height / 2;
-    
-    // Opponent zones (top)
-    this.zones.set('opp-leader', new Phaser.Geom.Rectangle(50, 100, this.CARD_WIDTH * this.CARD_SCALE, this.CARD_HEIGHT * this.CARD_SCALE));
-    this.zones.set('opp-life', new Phaser.Geom.Rectangle(150, 50, 400, 80));
-    this.zones.set('opp-don', new Phaser.Geom.Rectangle(width - 200, 100, 150, 100));
-    this.zones.set('opp-field', new Phaser.Geom.Rectangle(150, 180, width - 400, 120));
-    this.zones.set('opp-hand', new Phaser.Geom.Rectangle(150, 20, width - 400, 80));
-    this.zones.set('opp-deck', new Phaser.Geom.Rectangle(width - 150, 50, this.CARD_WIDTH, this.CARD_HEIGHT));
-    this.zones.set('opp-trash', new Phaser.Geom.Rectangle(width - 150, 160, this.CARD_WIDTH, this.CARD_HEIGHT));
-    
-    // Battle zone (center)
-    this.zones.set('battle', new Phaser.Geom.Rectangle(centerX - 200, centerY - 60, 400, 120));
-    
-    // Player zones (bottom)
-    this.zones.set('player-field', new Phaser.Geom.Rectangle(150, height - 300, width - 400, 120));
-    this.zones.set('player-leader', new Phaser.Geom.Rectangle(50, height - 200, this.CARD_WIDTH * this.CARD_SCALE, this.CARD_HEIGHT * this.CARD_SCALE));
-    this.zones.set('player-life', new Phaser.Geom.Rectangle(150, height - 130, 400, 80));
-    this.zones.set('player-don', new Phaser.Geom.Rectangle(width - 200, height - 200, 150, 100));
-    this.zones.set('player-hand', new Phaser.Geom.Rectangle(150, height - 100, width - 400, 100));
-    this.zones.set('player-deck', new Phaser.Geom.Rectangle(width - 150, height - 150, this.CARD_WIDTH, this.CARD_HEIGHT));
-    this.zones.set('player-trash', new Phaser.Geom.Rectangle(width - 150, height - 260, this.CARD_WIDTH, this.CARD_HEIGHT));
+    // Card dimensions
+    const cardW = this.CARD_WIDTH * this.CARD_SCALE;
+    const cardH = this.CARD_HEIGHT * this.CARD_SCALE;
+    const gap = 8; // Gap between cards
+
+    // === OFFICIAL ONE PIECE TCG LAYOUT ===
+    // Player: Life | DON | Leader | Characters (5 slots) | Stage/Deck/Trash
+    // Hand at bottom
+
+    // Vertical positions
+    const oppFrontY = 120;                  // Opponent front row (characters, leader)
+    const oppBackY = 15;                    // Opponent back row (life, deck, trash)
+    const playerFrontY = height - 230;      // Player front row (characters, leader)
+    const playerBackY = height - 120;       // Player back row (deck, trash, stage)
+    const handY = height - 55;              // Player hand
+
+    // Horizontal positions (left to right)
+    const lifeStartX = 30;
+    const donX = 320;
+    const leaderX = 420;
+    const fieldStartX = 510;
+    const deckX = width - 160;
+    const trashX = width - 80;
+    const stageX = width - 240;
+
+    // === OPPONENT ZONES (mirrored) ===
+    // Back row: Life cards, Stage, Deck, Trash
+    this.zones.set('opp-life', new Phaser.Geom.Rectangle(lifeStartX, oppBackY, (cardW + gap) * 5, cardH));
+    this.zones.set('opp-stage', new Phaser.Geom.Rectangle(stageX, oppBackY, cardW, cardH));
+    this.zones.set('opp-deck', new Phaser.Geom.Rectangle(deckX, oppBackY, cardW, cardH));
+    this.zones.set('opp-trash', new Phaser.Geom.Rectangle(trashX, oppBackY, cardW, cardH));
+
+    // Front row: DON area, Leader, Character Zone (5 slots)
+    this.zones.set('opp-don', new Phaser.Geom.Rectangle(donX - 60, oppFrontY, 80, cardH));
+    this.zones.set('opp-leader', new Phaser.Geom.Rectangle(leaderX, oppFrontY, cardW, cardH));
+    this.zones.set('opp-field', new Phaser.Geom.Rectangle(fieldStartX, oppFrontY, (cardW + gap) * 5, cardH));
+    this.zones.set('opp-hand', new Phaser.Geom.Rectangle(width / 2 - 150, 5, 300, 30)); // Opponent hand indicator
+
+    // === PLAYER ZONES ===
+    // Front row: DON area, Leader, Character Zone (5 slots)
+    this.zones.set('player-don', new Phaser.Geom.Rectangle(donX - 60, playerFrontY, 80, cardH));
+    this.zones.set('player-leader', new Phaser.Geom.Rectangle(leaderX, playerFrontY, cardW, cardH));
+    this.zones.set('player-field', new Phaser.Geom.Rectangle(fieldStartX, playerFrontY, (cardW + gap) * 5, cardH));
+
+    // Back row: Life cards, Stage, Deck, Trash
+    this.zones.set('player-life', new Phaser.Geom.Rectangle(lifeStartX, playerBackY, (cardW + gap) * 5, cardH));
+    this.zones.set('player-stage', new Phaser.Geom.Rectangle(stageX, playerBackY, cardW, cardH));
+    this.zones.set('player-deck', new Phaser.Geom.Rectangle(deckX, playerBackY, cardW, cardH));
+    this.zones.set('player-trash', new Phaser.Geom.Rectangle(trashX, playerBackY, cardW, cardH));
+
+    // Hand (bottom center, full width for spreading cards)
+    this.zones.set('player-hand', new Phaser.Geom.Rectangle(100, handY, width - 200, cardH));
+
+    // Battle zone (center, for attack animations)
+    this.zones.set('battle', new Phaser.Geom.Rectangle(width / 2 - 150, height / 2 - 50, 300, 100));
   }
 
   private drawZones() {
     const graphics = this.add.graphics();
-    graphics.lineStyle(2, 0x444444, 0.3);
-    
+
+    // Zone visual configs with colors and labels
+    const zoneConfigs: Record<string, { label: string; color: number }> = {
+      'player-field': { label: 'CHARACTER', color: 0x2244aa },
+      'player-leader': { label: 'LEADER', color: 0xaa4422 },
+      'player-life': { label: 'LIFE', color: 0x22aa44 },
+      'player-deck': { label: 'DECK', color: 0x444466 },
+      'player-trash': { label: 'TRASH', color: 0x664444 },
+      'player-don': { label: 'DON!!', color: 0xaa8822 },
+      'player-stage': { label: 'STAGE', color: 0x446644 },
+      'opp-field': { label: 'CHARACTER', color: 0x2244aa },
+      'opp-leader': { label: 'LEADER', color: 0xaa4422 },
+      'opp-life': { label: 'LIFE', color: 0x22aa44 },
+      'opp-deck': { label: 'DECK', color: 0x444466 },
+      'opp-trash': { label: 'TRASH', color: 0x664444 },
+      'opp-don': { label: 'DON!!', color: 0xaa8822 },
+      'opp-stage': { label: 'STAGE', color: 0x446644 },
+    };
+
+    // Draw zone backgrounds
     this.zones.forEach((zone, name) => {
-      graphics.strokeRectShape(zone);
-      
-      // Add zone labels
-      this.add.text(zone.x + zone.width / 2, zone.y - 5, name.replace('-', ' ').toUpperCase(), {
-        fontSize: '10px',
-        color: '#666666'
-      }).setOrigin(0.5, 1);
+      const config = zoneConfigs[name];
+      if (config) {
+        // Subtle filled background
+        graphics.fillStyle(config.color, 0.12);
+        graphics.fillRoundedRect(zone.x - 4, zone.y - 4, zone.width + 8, zone.height + 8, 6);
+
+        // Border
+        graphics.lineStyle(1, config.color, 0.35);
+        graphics.strokeRoundedRect(zone.x - 4, zone.y - 4, zone.width + 8, zone.height + 8, 6);
+
+        // Zone label (small, above the zone)
+        this.add.text(zone.x + zone.width / 2, zone.y - 10, config.label, {
+          fontSize: '9px',
+          color: '#555555'
+        }).setOrigin(0.5, 1);
+      }
     });
+
+    // Draw center divider line
+    const { height } = this.scale;
+    graphics.lineStyle(2, 0x333333, 0.5);
+    graphics.beginPath();
+    graphics.moveTo(20, height / 2);
+    graphics.lineTo(this.scale.width - 20, height / 2);
+    graphics.stroke();
   }
 
   private setupUI() {
     const { width, height } = this.scale;
 
-    // Turn indicator
-    this.turnIndicator = this.add.text(width / 2, 20, 'TURN 1', {
-      fontSize: '20px',
+    // Turn/Phase indicator - top-left corner badge style
+    const turnBadge = this.add.container(10, 10);
+    turnBadge.setDepth(100);
+
+    const badgeBg = this.add.rectangle(75, 28, 150, 56, 0x000000, 0.75)
+      .setStrokeStyle(2, 0x444444)
+      .setOrigin(0.5);
+    turnBadge.add(badgeBg);
+
+    this.turnIndicator = this.add.text(75, 18, 'TURN 1', {
+      fontSize: '18px',
       color: '#ffffff',
       fontStyle: 'bold'
     }).setOrigin(0.5);
+    turnBadge.add(this.turnIndicator);
 
-    // Phase indicator
-    this.phaseIndicator = this.add.text(width / 2, 45, 'WAITING...', {
-      fontSize: '16px',
+    this.phaseIndicator = this.add.text(75, 38, 'WAITING...', {
+      fontSize: '12px',
       color: '#ffd700'
     }).setOrigin(0.5);
-
-    // Player info
-    this.add.text(50, height - 50, 'You', {
-      fontSize: '18px',
-      color: '#00ff00'
-    });
-
-    // Opponent info
-    this.add.text(50, 50, 'Opponent', {
-      fontSize: '18px',
-      color: '#ff6666'
-    });
+    turnBadge.add(this.phaseIndicator);
 
     // Create zone highlights (initially invisible)
     this.createZoneHighlights();
 
-    // Action buttons
-    this.createActionButton(width - 150, height / 2 - 60, 'ATTACK', 'attack', () => this.onAttackClick());
-    this.createActionButton(width - 150, height / 2, 'END TURN', 'endTurn', () => this.onEndTurnClick());
-    this.createActionButton(width - 150, height / 2 + 60, 'PASS', 'pass', () => this.onPassClick());
+    // Action buttons - compact row at bottom-right (above hand zone)
+    const buttonY = height - 160;
+    const buttonStartX = width - 320;
+
+    this.createActionButton(buttonStartX, buttonY, 'END TURN', 'endTurn', () => this.onEndTurnClick());
+    this.createActionButton(buttonStartX + 105, buttonY, 'ATTACK', 'attack', () => this.onAttackClick());
+    this.createActionButton(buttonStartX + 210, buttonY, 'PASS', 'pass', () => this.onPassClick());
 
     // Turn banner (shown when turn changes)
     this.createTurnBanner();
@@ -717,6 +1186,9 @@ export class GameScene extends Phaser.Scene {
     this.checkCounterStepUI();
 
     this.renderGameState();
+
+    // Update card highlights for playable cards
+    this.updatePlayableHighlights();
   }
 
   private updateUIIndicators() {
@@ -800,72 +1272,131 @@ export class GameScene extends Phaser.Scene {
   }
 
   private renderPlayerCards(player: PlayerState, prefix: string) {
+    const cardW = this.CARD_WIDTH * this.CARD_SCALE;
+    const cardH = this.CARD_HEIGHT * this.CARD_SCALE;
+    const gap = 8;
+
     // Render leader
     if (player.leaderCard) {
       this.renderCard(player.leaderCard, `${prefix}-leader`);
     }
-    
-    // Render life cards
+
+    // Render life cards (stacked slightly, face-down by default)
     const lifeZone = this.zones.get(`${prefix}-life`);
     if (lifeZone) {
       player.lifeCards.forEach((card, index) => {
-        const x = lifeZone.x + 50 + (index * 70);
-        const y = lifeZone.y + lifeZone.height / 2;
+        const x = lifeZone.x + cardW / 2 + (index * (cardW + gap));
+        const y = lifeZone.y + cardH / 2;
         this.createCardSprite(card, x, y, card.faceUp || false);
       });
     }
-    
-    // Render field cards
+
+    // Render field cards (characters) - 5 slots max
     const fieldZone = this.zones.get(`${prefix}-field`);
     if (fieldZone) {
       player.field.forEach((card, index) => {
-        const x = fieldZone.x + 50 + (index * 80);
-        const y = fieldZone.y + fieldZone.height / 2;
+        const x = fieldZone.x + cardW / 2 + (index * (cardW + gap));
+        const y = fieldZone.y + cardH / 2;
         const sprite = this.createCardSprite(card, x, y, true);
-        
-        // Rotate if rested
+
+        // Rotate if rested (90 degrees clockwise)
         if (card.state === CardState.RESTED) {
           sprite.setRotation(Phaser.Math.DegToRad(90));
         }
       });
     }
-    
-    // Render hand cards (skip during mulligan only if panel is visible - handled by mulligan UI)
+
+    // Render hand cards (skip during mulligan if panel is visible)
     const handZone = this.zones.get(`${prefix}-hand`);
     const isMulliganPhase = this.gameState?.phase === GamePhase.START_MULLIGAN;
     const mulliganPanelVisible = this.mulliganPanel !== undefined;
-    // Only skip hand rendering if we're in mulligan phase AND the panel is visible
-    // This ensures hand renders after clicking "Keep Hand" even before server confirms phase change
+
     if (handZone && !(isMulliganPhase && mulliganPanelVisible)) {
       const isMyHand = prefix === 'player';
+      const handCount = player.hand.length;
+
+      // Center hand cards in the zone
+      const totalHandWidth = handCount * (cardW * 0.7); // Overlap cards slightly
+      const startX = handZone.x + (handZone.width - totalHandWidth) / 2 + cardW / 2;
+
       player.hand.forEach((card, index) => {
-        const x = handZone.x + 50 + (index * 60);
-        const y = handZone.y + handZone.height / 2;
+        const x = startX + (index * cardW * 0.7);
+        const y = handZone.y + cardH / 2;
         this.createCardSprite(card, x, y, isMyHand);
       });
     }
-    
-    // Render DON! cards
+
+    // Render DON!! area with visual stack
     const donZone = this.zones.get(`${prefix}-don`);
     if (donZone) {
       const activeDon = player.donField.filter(d => d.state === CardState.ACTIVE).length;
       const restedDon = player.donField.filter(d => d.state === CardState.RESTED).length;
-      
-      // Display DON! counts
-      this.add.text(donZone.x + 10, donZone.y + 20, `Active: ${activeDon}`, {
+      const totalDon = activeDon + restedDon;
+      const donDeckCount = player.donDeck;
+
+      // Visual DON stack (show up to 3 stacked cards)
+      const stackCount = Math.min(totalDon, 3);
+      for (let i = 0; i < stackCount; i++) {
+        const donSprite = this.add.image(
+          donZone.x + donZone.width / 2 + i * 3,
+          donZone.y + cardH / 2 + i * 3,
+          'don-back'
+        ).setDisplaySize(cardW * 0.6, cardH * 0.6);
+      }
+
+      // DON count badge
+      const badgeX = donZone.x + donZone.width / 2 + 25;
+      const badgeY = donZone.y + 15;
+
+      this.add.circle(badgeX, badgeY, 16, 0x000000, 0.85);
+      this.add.text(badgeX, badgeY, `${activeDon}`, {
         fontSize: '14px',
-        color: '#00ff00'
-      });
-      
-      this.add.text(donZone.x + 10, donZone.y + 40, `Rested: ${restedDon}`, {
-        fontSize: '14px',
-        color: '#ff0000'
-      });
-      
-      this.add.text(donZone.x + 10, donZone.y + 60, `Deck: ${player.donDeck}`, {
-        fontSize: '14px',
-        color: '#ffffff'
-      });
+        color: '#00ff00',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+
+      // Small label showing rested/deck
+      this.add.text(donZone.x + donZone.width / 2, donZone.y + cardH + 8,
+        `${restedDon} rested | ${donDeckCount} deck`, {
+        fontSize: '9px',
+        color: '#888888'
+      }).setOrigin(0.5, 0);
+    }
+
+    // Render deck (show stack with count)
+    const deckZone = this.zones.get(`${prefix}-deck`);
+    if (deckZone && player.deck > 0) {
+      // Stack visual
+      for (let i = 0; i < Math.min(player.deck, 3); i++) {
+        this.add.image(
+          deckZone.x + cardW / 2 + i * 2,
+          deckZone.y + cardH / 2 + i * 2,
+          'card-back'
+        ).setDisplaySize(cardW, cardH);
+      }
+
+      // Count badge
+      this.add.circle(deckZone.x + cardW - 5, deckZone.y + 15, 14, 0x000000, 0.85);
+      this.add.text(deckZone.x + cardW - 5, deckZone.y + 15, `${player.deck}`, {
+        fontSize: '12px',
+        color: '#ffffff',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+    }
+
+    // Render trash (show top card if exists)
+    const trashZone = this.zones.get(`${prefix}-trash`);
+    if (trashZone && player.trash && player.trash.length > 0) {
+      const topCard = player.trash[player.trash.length - 1];
+      this.createCardSprite(topCard, trashZone.x + cardW / 2, trashZone.y + cardH / 2, true);
+
+      // Trash count badge
+      this.add.circle(trashZone.x + cardW - 5, trashZone.y + 15, 14, 0x000000, 0.85);
+      this.add.text(trashZone.x + cardW - 5, trashZone.y + 15, `${player.trash.length}`, {
+        fontSize: '12px',
+        color: '#ff6666',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
     }
   }
 

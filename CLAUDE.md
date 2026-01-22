@@ -128,6 +128,32 @@ packages/
 - **Larger Hover Preview**: Preview panel increased to 320x480 with 240x336 card images for better visibility
 - **Smart Preview Positioning**: Preview automatically flips to opposite side when near screen edge, stays within bounds
 
+### Board Layout Overhaul
+- **Official OPTCG Layout**: Board zones now match official One Piece TCG playmat layout
+  - Player side: Life cards (left) | DON!! area | Leader | Character Zone (5 slots) | Stage/Deck/Trash (right)
+  - Opponent side: Mirrored layout
+  - Hand cards centered at bottom with slight overlap for better spacing
+- **Zone Visual Indicators**: Subtle colored backgrounds with rounded corners and labels for each zone
+- **Center Divider**: Visual line separating player and opponent sides
+- **DON!! Deck Display**: Visual card stack with count badge showing active DON, rested count, and deck remaining
+- **Deck/Trash Stacking**: Visual stack effect for deck with count badge, trash shows top card with count
+- **UI Repositioning**: Turn/phase indicator moved to top-left badge, action buttons moved to bottom-right row
+
+### Card Animation System
+- **Card Movement Animations**: Smooth tweens for cards moving between zones (250ms default)
+- **Card Flip Animation**: Rotation effect when revealing cards
+- **Play Card Animation**: Scale-up effect when playing cards from hand
+- **Attack Animation**: Attacker slides toward target with arrow visualization
+- **Damage Animation**: Card shakes and flashes red when taking damage
+- **Trash Animation**: Card shrinks and fades when sent to trash
+- **Draw Animation**: Card slides from deck to hand with flip reveal
+
+### Card Highlighting
+- **Playable Cards**: Green glow on cards you can afford to play (based on active DON)
+- **Attack Targets**: Red glow on valid attack targets (opponent leader, rested characters)
+- **Attention Highlight**: Yellow glow for cards needing player attention
+- **Auto-Update**: Highlights refresh automatically when game state changes
+
 ## Running the Project
 ```bash
 # Install dependencies
@@ -172,7 +198,10 @@ npm run dev
 - Custom game modes (Best-of-3/5 series, Draft mode, Sealed mode)
 - Card placeholder system for CORS-blocked images
 - Mulligan UI with Keep Hand / Mulligan buttons
-- ~16,000+ lines of TypeScript
+- Card animation system (play, attack, damage, draw, trash)
+- Playable card highlighting with glow effects
+- Official OPTCG board layout matching physical playmat
+- ~17,000+ lines of TypeScript
 - 0% test coverage (needs implementation)
 
 ## Coding Patterns
