@@ -103,9 +103,7 @@ npm run dev
 - Backend: http://localhost:3001
 
 ## Important Documentation
-- `PLAN.md` - Original 7-phase implementation strategy
-- `TASKS.md` - Task tracker with completion status
-- `PROGRESS_REPORT.md` - Development session history
+- `PLAN.md` - Original 7-phase implementation strategy and architecture
 - `docs/unity-effect-system.md` - Unity ActionV3 effect system reference
 
 ## Current Stats
