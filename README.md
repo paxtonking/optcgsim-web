@@ -2,20 +2,43 @@
 
 A web-based One Piece Trading Card Game Simulator - play directly in your browser without downloads.
 
-> **Status:** Alpha - Core Features Complete (Playable vs AI)
+> **Status:** All 7 Development Phases Complete - Ready for Testing/Deployment
 
 ## Features
 
-### Implemented
-- **Deck Builder** - Create, edit, and manage decks with full card search and filtering
-- **Card Database** - 2,188 cards from 48 sets with images from external API
-- **User Authentication** - Register, login, JWT-based sessions
-- **User Profiles** - Stats, match history, deck overview
-- **Lobby System** - Quick match queue, private lobbies, AI practice
-- **Game Engine** - Full turn structure, combat, card effects
-- **AI Opponent** - Three difficulty levels (Easy, Medium, Hard)
-- **Visual Polish** - Card images, zone highlights, turn animations
+### Core Gameplay
+- **Full Game Engine** - Complete turn structure, combat system, card effects
+- **Mulligan System** - Keep hand or mulligan once at game start with UI
+- **Counter Step UI** - Choose counter cards during combat defense
+- **Trigger Step UI** - Activate life card trigger effects
+- **AI Opponent** - Three difficulty levels with intelligent decision making
 - **Card Effects** - 85+ cards with effects, all keyword abilities working
+
+### Deck Building & Cards
+- **Deck Builder** - Create, edit, and manage decks with full card search and filtering
+- **Card Database** - 2,188 cards from 48 sets with images
+- **Public Card Browser** - Browse all cards with filters
+- **Public Deck Browser** - Browse and search community decks
+- **Deck Import/Export** - Text and JSON format support
+
+### Competitive Features
+- **Ranked Matchmaking** - ELO rating system with rank tiers (Bronze to Master)
+- **Leaderboards** - Global rankings by ELO
+- **Match Replays** - Review past games
+- **Spectator Mode** - Watch live games
+
+### Social Features
+- **Friends System** - Add friends, view online status
+- **Direct Challenges** - Challenge friends to games
+- **In-Game Chat** - Chat during matches with emotes
+- **Lobby Chat** - Global chat in the lobby
+- **Profile Customization** - 16 avatars, 14 badges
+
+### Tournament & Advanced
+- **Tournament System** - Single/Double Elimination, Swiss, Round Robin formats
+- **Custom Game Modes** - Best-of-3/5 series, Draft mode, Sealed mode
+- **User Reporting** - Report inappropriate behavior
+- **Admin Dashboard** - User management, analytics, announcements
 
 ### Card Effects Supported
 - **Keywords**: Rush, Blocker, Banish, Double Attack, Unblockable
@@ -23,28 +46,16 @@ A web-based One Piece Trading Card Game Simulator - play directly in your browse
 - **Conditions**: DON!! count, life count, hand/field conditions
 - **Durations**: Instant, until end of turn, until end of battle, permanent
 
-### In Progress
-- [ ] Counter Step UI (player choices during combat)
-- [ ] Trigger Step UI (life card effect choices)
-- [ ] More card effect definitions
-
-### Planned
-- [ ] Ranked matchmaking with ELO system
-- [ ] Match replays
-- [ ] Spectator mode
-- [ ] Tournament system
-- [ ] Mobile responsiveness
-
 ## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | React 18, TypeScript, Vite, TailwindCSS, Phaser.js |
+| Frontend | React 18, TypeScript, Vite, TailwindCSS, Phaser 3 |
 | State Management | Zustand |
 | Backend | Node.js, Express, Socket.IO |
 | Database | PostgreSQL (Docker), Prisma ORM |
 | Real-time | WebSockets via Socket.IO |
-| Build | Turborepo monorepo |
+| Build | Turborepo 2.0 monorepo |
 
 ## Project Structure
 
@@ -54,8 +65,8 @@ optcgsim-web/
 │   ├── client/          # React + Phaser.js frontend
 │   │   ├── src/
 │   │   │   ├── components/   # Reusable UI components
-│   │   │   ├── game/         # Phaser game scene & controller
-│   │   │   ├── pages/        # Route pages
+│   │   │   ├── game/         # GameScene.ts (1,763 lines), GameController.ts
+│   │   │   ├── pages/        # Route pages (Lobby, DeckBuilder, Game, Admin, etc.)
 │   │   │   ├── stores/       # Zustand state stores
 │   │   │   └── services/     # API/Socket clients
 │   │   └── public/
@@ -64,16 +75,16 @@ optcgsim-web/
 │   │
 │   ├── server/          # Node.js backend
 │   │   ├── src/
-│   │   │   ├── routes/       # REST API endpoints
-│   │   │   ├── websocket/    # Game, Lobby, AI managers
+│   │   │   ├── api/          # REST API endpoints
+│   │   │   ├── websocket/    # Game, Lobby, AI, Chat managers
 │   │   │   └── services/     # AI, CardLoader, business logic
 │   │   └── prisma/           # Database schema
 │   │
 │   └── shared/          # Shared types & game logic
 │       └── src/
 │           ├── types/        # TypeScript interfaces
-│           ├── effects/      # Effect engine & types
-│           └── game/         # GameStateManager
+│           ├── effects/      # EffectEngine.ts (1,143 lines)
+│           └── game/         # GameStateManager.ts (945 lines)
 │
 └── tools/
     └── card-importer/   # Fetch cards from OPTCG API
@@ -91,7 +102,7 @@ optcgsim-web/
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/optcgsim-web.git
+git clone https://github.com/paxtonking/optcgsim-web.git
 cd optcgsim-web
 ```
 
@@ -155,51 +166,51 @@ NODE_ENV=development
 CLIENT_URL="http://localhost:5173"
 ```
 
-## Development Phases
+## Development Phases - All Complete
 
-### Phase 1: Foundation ✅ Complete
-- [x] Project setup (Turborepo monorepo)
-- [x] Database schema (Prisma)
-- [x] Authentication system (JWT)
-- [x] Card data migration tools
+### Phase 1: Foundation
+- Project setup (Turborepo monorepo)
+- Database schema (Prisma)
+- Authentication system (JWT)
+- Card data migration tools
 
-### Phase 2: Core Features ✅ Complete
-- [x] Deck builder with search/filters
-- [x] Lobby system UI
-- [x] User profiles
+### Phase 2: Core Features
+- Deck builder with search/filters
+- Lobby system UI
+- User profiles
+- Deck import/export
 
-### Phase 3: Game Engine ✅ Complete
-- [x] Game state manager (400+ lines)
-- [x] Game renderer (Phaser.js)
-- [x] Rules engine with card effects
-- [x] Multiplayer sync (WebSocket)
-- [x] Visual polish (card images, animations)
+### Phase 3: Game Engine
+- GameStateManager (945 lines)
+- Game renderer (Phaser.js - 1,763 lines)
+- Rules engine with card effects
+- Multiplayer sync (WebSocket)
+- Visual polish (card images, animations)
 
-### Phase 4: Competitive Features 🔨 In Progress
-- [x] AI opponents (3 difficulty levels)
-- [ ] Ranked mode with ELO
-- [ ] Match replays
-- [ ] Spectator mode
+### Phase 4: Ranked & Competitive
+- AI opponents (3 difficulty levels)
+- ELO rating system with rank tiers
+- Match replays
+- Spectator mode
+- Leaderboards
 
 ### Phase 5: Social Features
-- [ ] Friends system
-- [ ] Chat
-- [ ] Profile customization
+- Friends system with direct challenges
+- Online presence tracking
+- In-game and lobby chat with emotes
+- Profile customization (avatars, badges)
 
-### Phase 6: Admin Tools
-- [ ] Admin dashboard
-- [ ] Card management UI
-- [ ] Analytics
+### Phase 6: Content & Admin Tools
+- Admin dashboard with user management
+- Card database browser with filters
+- Public deck browser
+- Announcements system
+- Analytics dashboard
 
-### Phase 7: Advanced Features
-- [ ] Tournament system
-- [ ] Custom game modes
-- [ ] Public API
-
-## Documentation
-
-- [PROGRESS_REPORT.md](PROGRESS_REPORT.md) - Detailed development progress
-- [TASKS.md](TASKS.md) - Task tracker with completion status
+### Phase 7: Tournament & Advanced Features
+- Tournament system (multiple formats)
+- User reporting and suspension system
+- Custom game modes (series, draft, sealed)
 
 ## How to Play
 
@@ -208,11 +219,26 @@ CLIENT_URL="http://localhost:5173"
 3. **Start a Game**:
    - **vs AI**: Go to Lobby → Play vs AI → Choose difficulty
    - **vs Player**: Go to Lobby → Create Room or Join Room
-4. **Gameplay**:
+4. **Mulligan Phase** - Choose to keep your starting hand or mulligan for a new one
+5. **Gameplay**:
    - Drag cards from hand to field to play them
    - Click cards to select, then use Attack button
+   - Use Counter cards when defending
    - Use End Turn when finished
    - Win by reducing opponent's life to 0
+
+## Project Stats
+
+- 2,188 cards from 48 sets
+- 85+ card effect definitions
+- 80+ effect triggers, 200+ effect types
+- ~16,000+ lines of TypeScript
+
+## Documentation
+
+- [CLAUDE.md](CLAUDE.md) - Development context and architecture details
+- [PLAN.md](PLAN.md) - Original 7-phase implementation strategy
+- [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution guidelines
 
 ## Credits
 
