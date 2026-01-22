@@ -57,6 +57,10 @@ export class GameScene extends Phaser.Scene {
   private animatingCards: Set<string> = new Set();
   private attackArrow?: Phaser.GameObjects.Graphics;
 
+  // Board visuals
+  private backgroundRect?: Phaser.GameObjects.Rectangle;
+  private zoneGraphics?: Phaser.GameObjects.Graphics;
+
   // Zone dimensions
   private readonly CARD_WIDTH = 63;
   private readonly CARD_HEIGHT = 88;
@@ -265,7 +269,7 @@ export class GameScene extends Phaser.Scene {
     this.initializeSounds();
 
     // Add background
-    this.add.rectangle(0, 0, width, height, 0x1a1a1a).setOrigin(0);
+    this.backgroundRect = this.add.rectangle(0, 0, width, height, 0x1a1a1a).setOrigin(0);
 
     // Define zones
     this.setupZones(width, height);
@@ -811,71 +815,76 @@ export class GameScene extends Phaser.Scene {
     // Card dimensions (76 x 106 at 1.2 scale)
     const cardW = this.CARD_WIDTH * this.CARD_SCALE;
     const cardH = this.CARD_HEIGHT * this.CARD_SCALE;
-    const gap = 6; // Gap between cards
+    const gap = 4; // Small gap between cards
 
-    // === CALCULATED LAYOUT TO FIT 720px HEIGHT ===
-    // Card height ~106px, need 6 rows: opp back, opp front, player front, player back, hand
-    // Total card space: ~530px, leaving ~190px for gaps
+    // === DUELING NEXUS-INSPIRED LAYOUT ===
+    // Canvas: 1280 x 720
     //
-    // Layout (top to bottom):
-    // - Opp back row:    Y=10,  ends at 116
-    // - Opp front row:   Y=125, ends at 231
-    // - Center gap:      ~130px for battle zone
-    // - Player front:    Y=360, ends at 466
-    // - Player back:     Y=475, ends at 581
-    // - Player hand:     Y=595, ends at 701 (19px margin at bottom)
+    // ┌─────────────────────────────────────────────────────────────────┐
+    // │                    OPPONENT HAND (small indicator)              │ Y=5
+    // │ [Life x5]    [DON][Leader]  [Characters x5]      [Deck][Trash] │ Y=40
+    // │                                                   [Stage]       │
+    // ├──────────────────────── CENTER LINE ───────────────────────────┤ Y=290
+    // │ [Life x5]    [DON][Leader]  [Characters x5]      [Stage]       │ Y=320
+    // │                                                   [Deck][Trash] │
+    // │                      PLAYER HAND                                │ Y=590
+    // └─────────────────────────────────────────────────────────────────┘
 
-    // Vertical positions - properly calculated to fit within 720px
-    const oppBackY = 10;
-    const oppFrontY = 120;
-    const playerFrontY = 355;
-    const playerBackY = 470;
-    const handY = 590;
+    // Right sidebar for deck/trash
+    const sidebarX = width - 100;
 
-    // Horizontal positions (left to right)
-    const lifeStartX = 20;
-    const donX = 300;
-    const leaderX = 380;
-    const fieldStartX = 470;
-    const stageX = width - 220;
-    const deckX = width - 140;
-    const trashX = width - 60;
+    // === VERTICAL POSITIONS ===
+    const oppHandY = 5;           // Opponent hand indicator
+    const oppMainY = 45;          // Opponent main row (life, don, leader, chars)
+    const oppSecondY = 160;       // Opponent second row (for overlapping stage area)
+    const centerY = 290;          // Center divider
+    const playerMainY = 330;      // Player main row
+    const playerSecondY = 445;    // Player second row
+    const playerHandY = 590;      // Player hand
 
-    // === OPPONENT ZONES ===
-    // Back row: Life cards, Stage, Deck, Trash
-    this.zones.set('opp-life', new Phaser.Geom.Rectangle(lifeStartX, oppBackY, (cardW + gap) * 5, cardH));
-    this.zones.set('opp-stage', new Phaser.Geom.Rectangle(stageX, oppBackY, cardW, cardH));
-    this.zones.set('opp-deck', new Phaser.Geom.Rectangle(deckX, oppBackY, cardW, cardH));
-    this.zones.set('opp-trash', new Phaser.Geom.Rectangle(trashX, oppBackY, cardW, cardH));
+    // === HORIZONTAL POSITIONS ===
+    const lifeX = 15;                           // Life cards start
+    const lifeWidth = (cardW + gap) * 5;        // 5 life cards
+    const donX = lifeX + lifeWidth + 15;        // DON area after life
+    const leaderX = donX + 65;                  // Leader after DON
+    const fieldX = leaderX + cardW + 10;        // Characters after leader
 
-    // Front row: DON area, Leader, Character Zone (5 slots)
-    this.zones.set('opp-don', new Phaser.Geom.Rectangle(donX - 50, oppFrontY, 70, cardH));
-    this.zones.set('opp-leader', new Phaser.Geom.Rectangle(leaderX, oppFrontY, cardW, cardH));
-    this.zones.set('opp-field', new Phaser.Geom.Rectangle(fieldStartX, oppFrontY, (cardW + gap) * 5, cardH));
-    this.zones.set('opp-hand', new Phaser.Geom.Rectangle(width / 2 - 150, 5, 300, 25));
+    // === OPPONENT ZONES (top half) ===
+    this.zones.set('opp-hand', new Phaser.Geom.Rectangle(fieldX, oppHandY, (cardW + gap) * 5, 35));
+    this.zones.set('opp-life', new Phaser.Geom.Rectangle(lifeX, oppMainY, lifeWidth, cardH));
+    this.zones.set('opp-don', new Phaser.Geom.Rectangle(donX, oppMainY, 55, cardH));
+    this.zones.set('opp-leader', new Phaser.Geom.Rectangle(leaderX, oppMainY, cardW, cardH));
+    this.zones.set('opp-field', new Phaser.Geom.Rectangle(fieldX, oppMainY, (cardW + gap) * 5, cardH));
 
-    // === PLAYER ZONES ===
-    // Front row: DON area, Leader, Character Zone (5 slots)
-    this.zones.set('player-don', new Phaser.Geom.Rectangle(donX - 50, playerFrontY, 70, cardH));
-    this.zones.set('player-leader', new Phaser.Geom.Rectangle(leaderX, playerFrontY, cardW, cardH));
-    this.zones.set('player-field', new Phaser.Geom.Rectangle(fieldStartX, playerFrontY, (cardW + gap) * 5, cardH));
+    // Opponent sidebar (deck on top, trash below, stage to the left)
+    this.zones.set('opp-deck', new Phaser.Geom.Rectangle(sidebarX, oppMainY, cardW, cardH));
+    this.zones.set('opp-trash', new Phaser.Geom.Rectangle(sidebarX, oppSecondY, cardW, cardH));
+    this.zones.set('opp-stage', new Phaser.Geom.Rectangle(sidebarX - cardW - 15, oppMainY + 50, cardW, cardH));
 
-    // Back row: Life cards, Stage, Deck, Trash
-    this.zones.set('player-life', new Phaser.Geom.Rectangle(lifeStartX, playerBackY, (cardW + gap) * 5, cardH));
-    this.zones.set('player-stage', new Phaser.Geom.Rectangle(stageX, playerBackY, cardW, cardH));
-    this.zones.set('player-deck', new Phaser.Geom.Rectangle(deckX, playerBackY, cardW, cardH));
-    this.zones.set('player-trash', new Phaser.Geom.Rectangle(trashX, playerBackY, cardW, cardH));
+    // === PLAYER ZONES (bottom half - mirrored) ===
+    this.zones.set('player-life', new Phaser.Geom.Rectangle(lifeX, playerMainY, lifeWidth, cardH));
+    this.zones.set('player-don', new Phaser.Geom.Rectangle(donX, playerMainY, 55, cardH));
+    this.zones.set('player-leader', new Phaser.Geom.Rectangle(leaderX, playerMainY, cardW, cardH));
+    this.zones.set('player-field', new Phaser.Geom.Rectangle(fieldX, playerMainY, (cardW + gap) * 5, cardH));
 
-    // Hand (bottom, centered)
-    this.zones.set('player-hand', new Phaser.Geom.Rectangle(150, handY, width - 300, cardH));
+    // Player sidebar (stage on top, deck, then trash)
+    this.zones.set('player-stage', new Phaser.Geom.Rectangle(sidebarX - cardW - 15, playerMainY + 50, cardW, cardH));
+    this.zones.set('player-deck', new Phaser.Geom.Rectangle(sidebarX, playerSecondY, cardW, cardH));
+    this.zones.set('player-trash', new Phaser.Geom.Rectangle(sidebarX, playerSecondY + cardH + 10, cardW, cardH));
+
+    // Player hand (full width at bottom)
+    this.zones.set('player-hand', new Phaser.Geom.Rectangle(lifeX, playerHandY, sidebarX - lifeX - 20, cardH + 20));
 
     // Battle zone (center, for attack animations)
-    const centerY = (oppFrontY + cardH + playerFrontY) / 2;
-    this.zones.set('battle', new Phaser.Geom.Rectangle(width / 2 - 150, centerY - 40, 300, 80));
+    this.zones.set('battle', new Phaser.Geom.Rectangle(width / 2 - 150, centerY - 20, 300, 40));
   }
 
   private drawZones() {
-    const graphics = this.add.graphics();
+    if (!this.zoneGraphics) {
+      this.zoneGraphics = this.add.graphics();
+    }
+    const graphics = this.zoneGraphics;
+    graphics.clear();
 
     // Zone visual configs with colors and labels
     const zoneConfigs: Record<string, { label: string; color: number }> = {
@@ -915,12 +924,12 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    // Draw center divider line (between opponent front row ~226 and player front row ~355)
+    // Draw center divider line at Y=290 (between opponent and player zones)
     const centerLineY = 290;
-    graphics.lineStyle(2, 0x333333, 0.5);
+    graphics.lineStyle(2, 0x444444, 0.6);
     graphics.beginPath();
-    graphics.moveTo(20, centerLineY);
-    graphics.lineTo(this.scale.width - 20, centerLineY);
+    graphics.moveTo(15, centerLineY);
+    graphics.lineTo(this.scale.width - 110, centerLineY);
     graphics.stroke();
   }
 
@@ -952,13 +961,13 @@ export class GameScene extends Phaser.Scene {
     // Create zone highlights (initially invisible)
     this.createZoneHighlights();
 
-    // Action buttons - vertical stack on right side (in center gap between players)
-    const buttonX = width - 70;
-    const buttonStartY = 255;
+    // Action buttons - vertical stack on far right (in center gap Y=250-320)
+    const buttonX = width - 60;
+    const buttonStartY = 250;
 
-    this.createActionButton(buttonX, buttonStartY, 'END TURN', 'endTurn', () => this.onEndTurnClick());
-    this.createActionButton(buttonX, buttonStartY + 50, 'ATTACK', 'attack', () => this.onAttackClick());
-    this.createActionButton(buttonX, buttonStartY + 100, 'PASS', 'pass', () => this.onPassClick());
+    this.createActionButton(buttonX, buttonStartY, 'END', 'endTurn', () => this.onEndTurnClick());
+    this.createActionButton(buttonX, buttonStartY + 40, 'ATK', 'attack', () => this.onAttackClick());
+    this.createActionButton(buttonX, buttonStartY + 80, 'PASS', 'pass', () => this.onPassClick());
 
     // Turn banner (shown when turn changes)
     this.createTurnBanner();
@@ -1001,6 +1010,11 @@ export class GameScene extends Phaser.Scene {
 
     this.turnBanner.add([bg, text]);
   }
+
+  // Note: the board uses a fixed virtual resolution and relies on Phaser's
+  // scale manager (FIT mode) to resize the entire canvas. Zones and cards
+  // are laid out once in create() based on that virtual size and then
+  // scaled uniformly with the rest of the board.
 
   private showTurnBanner(isYourTurn: boolean) {
     if (!this.turnBanner) return;
@@ -1049,15 +1063,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createActionButton(x: number, y: number, label: string, id: string, callback: () => void) {
-    const button = this.add.rectangle(x, y, 120, 40, 0x2d2d2d)
+    const button = this.add.rectangle(x, y, 70, 32, 0x2d2d2d)
+      .setStrokeStyle(1, 0x555555)
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', callback)
-      .on('pointerover', () => button.setFillStyle(0x3d3d3d))
+      .on('pointerover', () => button.setFillStyle(0x4d4d4d))
       .on('pointerout', () => button.setFillStyle(0x2d2d2d));
 
     const text = this.add.text(x, y, label, {
-      fontSize: '14px',
-      color: '#ffffff'
+      fontSize: '12px',
+      color: '#ffffff',
+      fontStyle: 'bold'
     }).setOrigin(0.5);
 
     this.actionButtons.set(id, { bg: button, text });
@@ -1283,7 +1299,7 @@ export class GameScene extends Phaser.Scene {
   private renderPlayerCards(player: PlayerState, prefix: string) {
     const cardW = this.CARD_WIDTH * this.CARD_SCALE;
     const cardH = this.CARD_HEIGHT * this.CARD_SCALE;
-    const gap = 8;
+    const gap = 4; // Match zone gap
 
     // Render leader
     if (player.leaderCard) {

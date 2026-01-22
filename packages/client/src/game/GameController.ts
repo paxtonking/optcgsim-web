@@ -17,6 +17,7 @@ export class GameController {
   private isSpectator: boolean;
   private lastStateSignature?: string;
   private socketListenersSetup = false;
+  private resizeHandler?: () => void;
 
   constructor(isAIGame: boolean = false, isSpectator: boolean = false) {
     this.isAIGame = isAIGame;
@@ -82,17 +83,17 @@ export class GameController {
       this.socketListenersSetup = true;
     }
 
-    const config: Phaser.Types.Core.GameConfig = {
-      type: Phaser.AUTO,
-      parent: container,
-      width: 1280,
-      height: 720,
-      backgroundColor: '#1a1a1a',
-      scene: [GameScene],
-      scale: {
-        mode: Phaser.Scale.FIT,
-        autoCenter: Phaser.Scale.CENTER_BOTH,
-      },
+      const config: Phaser.Types.Core.GameConfig = {
+        type: Phaser.AUTO,
+        parent: container,
+        width: 1280,
+        height: 720,
+        backgroundColor: '#1a1a1a',
+        scene: [GameScene],
+        scale: {
+          mode: Phaser.Scale.FIT,
+          autoCenter: Phaser.Scale.CENTER_BOTH
+        },
       // Limit FPS to reduce CPU usage
       fps: {
         target: 30,
@@ -101,6 +102,16 @@ export class GameController {
     };
 
     this.game = new Phaser.Game(config);
+
+      // Ensure Phaser recalculates scale when the browser window resizes
+      if (typeof window !== 'undefined') {
+        this.resizeHandler = () => {
+          if (this.game) {
+            this.game.scale.refresh();
+          }
+        };
+        window.addEventListener('resize', this.resizeHandler);
+      }
 
     // Register in global tracking
     activeGames.set(gameId, this.game);
@@ -402,6 +413,12 @@ export class GameController {
     if (this.game) {
       this.game.destroy(true);
       this.game = undefined;
+    }
+
+    // Clean up resize handler
+    if (this.resizeHandler && typeof window !== 'undefined') {
+      window.removeEventListener('resize', this.resizeHandler);
+      this.resizeHandler = undefined;
     }
 
     // Clean up socket listeners

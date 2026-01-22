@@ -73,23 +73,27 @@ export default function GamePage() {
         </button>
       </div>
 
-      {/* Game container */}
-      <div className="flex-1 relative">
-        {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background z-10">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-              <p className="text-gray-400">Loading game...</p>
+      {/* Main content: game board + chat sidebar */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Game container */}
+        <div className="flex-1 relative">
+          {isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background z-10">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
+                <p className="text-gray-400">Loading game...</p>
+              </div>
             </div>
-          </div>
-        )}
-        <div ref={gameContainerRef} className="w-full h-full" />
-      </div>
+          )}
+          <div ref={gameContainerRef} className="w-full h-full" />
+        </div>
 
-      {/* Chat sidebar */}
-      {!isAIGame && (
-        <ChatPanel className="absolute right-0 top-12 bottom-0 w-80 border-l border-gray-800 hidden lg:flex" />
-      )}
+        {/* Chat sidebar */}
+        {!isAIGame && (
+          <ChatPanel className="hidden lg:flex w-80 border-l border-gray-800 h-full" />
+        )}
+      </div>
     </div>
   );
 }
+

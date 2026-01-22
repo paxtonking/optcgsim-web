@@ -128,20 +128,28 @@ packages/
 - **Larger Hover Preview**: Preview panel increased to 320x480 with 240x336 card images for better visibility
 - **Smart Preview Positioning**: Preview automatically flips to opposite side when near screen edge, stays within bounds
 
-### Board Layout Overhaul
-- **Official OPTCG Layout**: Board zones now match official One Piece TCG playmat layout
-  - Player side: Life cards (left) | DON!! area | Leader | Character Zone (5 slots) | Stage/Deck/Trash (right)
-  - Opponent side: Mirrored layout
-  - Hand cards centered at bottom with slight overlap for better spacing
-- **Properly Calculated Zone Positions**: All zones fit within 1280x720 canvas without overflow
-  - Opponent back row: Y=10-116, front row: Y=120-226
-  - Player front row: Y=355-461, back row: Y=470-576, hand: Y=590-696
-  - Center gap at Y=290 for battle zone and UI elements
-- **Zone Visual Indicators**: Subtle colored backgrounds with rounded corners and labels for each zone
-- **Center Divider**: Visual line separating player and opponent sides at Y=290
-- **DON!! Deck Display**: Visual card stack with count badge showing active DON, rested count, and deck remaining
-- **Deck/Trash Stacking**: Visual stack effect for deck with count badge, trash shows top card with count
-- **UI Repositioning**: Turn/phase indicator in top-left badge, action buttons stacked vertically on right side
+### Board Layout Overhaul (Dueling Nexus-Inspired)
+- **Clean Symmetrical Layout**: Inspired by Dueling Nexus card game simulator
+  ```
+  ┌─────────────────────────────────────────────────────────────────┐
+  │                    OPPONENT HAND (indicator)                    │
+  │ [Life x5]    [DON][Leader]  [Characters x5]      [Deck][Trash] │
+  │                                                   [Stage]       │
+  ├──────────────────────── CENTER LINE ───────────────────────────┤
+  │ [Life x5]    [DON][Leader]  [Characters x5]      [Stage]       │
+  │                                                   [Deck][Trash] │
+  │                      PLAYER HAND                                │
+  └─────────────────────────────────────────────────────────────────┘
+  ```
+- **Properly Calculated Zone Positions**: All zones fit within 1280x720 canvas
+  - Opponent zones: hand indicator Y=5, main row Y=40, sidebar zones Y=40-270
+  - Player zones: main row Y=330, sidebar Y=330-560, hand Y=590
+  - Center divider at Y=290
+- **Right Sidebar**: Deck, Trash, and Stage zones stacked vertically on right side
+- **Zone Visual Indicators**: Subtle colored backgrounds with rounded corners and labels
+- **DON!! Display**: Visual card stack with count badge showing active DON count
+- **Deck/Trash Stacking**: Visual stack effect with count badges
+- **Compact Action Buttons**: END/ATK/PASS buttons stacked vertically on far right
 
 ### Card Animation System
 - **Card Movement Animations**: Smooth tweens for cards moving between zones (250ms default)
