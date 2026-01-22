@@ -808,32 +808,40 @@ export class GameScene extends Phaser.Scene {
   // ==================== END VISUAL EFFECTS ====================
 
   private setupZones(width: number, height: number) {
-    // Card dimensions
+    // Card dimensions (76 x 106 at 1.2 scale)
     const cardW = this.CARD_WIDTH * this.CARD_SCALE;
     const cardH = this.CARD_HEIGHT * this.CARD_SCALE;
-    const gap = 8; // Gap between cards
+    const gap = 6; // Gap between cards
 
-    // === OFFICIAL ONE PIECE TCG LAYOUT ===
-    // Player: Life | DON | Leader | Characters (5 slots) | Stage/Deck/Trash
-    // Hand at bottom
+    // === CALCULATED LAYOUT TO FIT 720px HEIGHT ===
+    // Card height ~106px, need 6 rows: opp back, opp front, player front, player back, hand
+    // Total card space: ~530px, leaving ~190px for gaps
+    //
+    // Layout (top to bottom):
+    // - Opp back row:    Y=10,  ends at 116
+    // - Opp front row:   Y=125, ends at 231
+    // - Center gap:      ~130px for battle zone
+    // - Player front:    Y=360, ends at 466
+    // - Player back:     Y=475, ends at 581
+    // - Player hand:     Y=595, ends at 701 (19px margin at bottom)
 
-    // Vertical positions
-    const oppFrontY = 120;                  // Opponent front row (characters, leader)
-    const oppBackY = 15;                    // Opponent back row (life, deck, trash)
-    const playerFrontY = height - 230;      // Player front row (characters, leader)
-    const playerBackY = height - 120;       // Player back row (deck, trash, stage)
-    const handY = height - 55;              // Player hand
+    // Vertical positions - properly calculated to fit within 720px
+    const oppBackY = 10;
+    const oppFrontY = 120;
+    const playerFrontY = 355;
+    const playerBackY = 470;
+    const handY = 590;
 
     // Horizontal positions (left to right)
-    const lifeStartX = 30;
-    const donX = 320;
-    const leaderX = 420;
-    const fieldStartX = 510;
-    const deckX = width - 160;
-    const trashX = width - 80;
-    const stageX = width - 240;
+    const lifeStartX = 20;
+    const donX = 300;
+    const leaderX = 380;
+    const fieldStartX = 470;
+    const stageX = width - 220;
+    const deckX = width - 140;
+    const trashX = width - 60;
 
-    // === OPPONENT ZONES (mirrored) ===
+    // === OPPONENT ZONES ===
     // Back row: Life cards, Stage, Deck, Trash
     this.zones.set('opp-life', new Phaser.Geom.Rectangle(lifeStartX, oppBackY, (cardW + gap) * 5, cardH));
     this.zones.set('opp-stage', new Phaser.Geom.Rectangle(stageX, oppBackY, cardW, cardH));
@@ -841,14 +849,14 @@ export class GameScene extends Phaser.Scene {
     this.zones.set('opp-trash', new Phaser.Geom.Rectangle(trashX, oppBackY, cardW, cardH));
 
     // Front row: DON area, Leader, Character Zone (5 slots)
-    this.zones.set('opp-don', new Phaser.Geom.Rectangle(donX - 60, oppFrontY, 80, cardH));
+    this.zones.set('opp-don', new Phaser.Geom.Rectangle(donX - 50, oppFrontY, 70, cardH));
     this.zones.set('opp-leader', new Phaser.Geom.Rectangle(leaderX, oppFrontY, cardW, cardH));
     this.zones.set('opp-field', new Phaser.Geom.Rectangle(fieldStartX, oppFrontY, (cardW + gap) * 5, cardH));
-    this.zones.set('opp-hand', new Phaser.Geom.Rectangle(width / 2 - 150, 5, 300, 30)); // Opponent hand indicator
+    this.zones.set('opp-hand', new Phaser.Geom.Rectangle(width / 2 - 150, 5, 300, 25));
 
     // === PLAYER ZONES ===
     // Front row: DON area, Leader, Character Zone (5 slots)
-    this.zones.set('player-don', new Phaser.Geom.Rectangle(donX - 60, playerFrontY, 80, cardH));
+    this.zones.set('player-don', new Phaser.Geom.Rectangle(donX - 50, playerFrontY, 70, cardH));
     this.zones.set('player-leader', new Phaser.Geom.Rectangle(leaderX, playerFrontY, cardW, cardH));
     this.zones.set('player-field', new Phaser.Geom.Rectangle(fieldStartX, playerFrontY, (cardW + gap) * 5, cardH));
 
@@ -858,11 +866,12 @@ export class GameScene extends Phaser.Scene {
     this.zones.set('player-deck', new Phaser.Geom.Rectangle(deckX, playerBackY, cardW, cardH));
     this.zones.set('player-trash', new Phaser.Geom.Rectangle(trashX, playerBackY, cardW, cardH));
 
-    // Hand (bottom center, full width for spreading cards)
-    this.zones.set('player-hand', new Phaser.Geom.Rectangle(100, handY, width - 200, cardH));
+    // Hand (bottom, centered)
+    this.zones.set('player-hand', new Phaser.Geom.Rectangle(150, handY, width - 300, cardH));
 
     // Battle zone (center, for attack animations)
-    this.zones.set('battle', new Phaser.Geom.Rectangle(width / 2 - 150, height / 2 - 50, 300, 100));
+    const centerY = (oppFrontY + cardH + playerFrontY) / 2;
+    this.zones.set('battle', new Phaser.Geom.Rectangle(width / 2 - 150, centerY - 40, 300, 80));
   }
 
   private drawZones() {
@@ -906,12 +915,12 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    // Draw center divider line
-    const { height } = this.scale;
+    // Draw center divider line (between opponent front row ~226 and player front row ~355)
+    const centerLineY = 290;
     graphics.lineStyle(2, 0x333333, 0.5);
     graphics.beginPath();
-    graphics.moveTo(20, height / 2);
-    graphics.lineTo(this.scale.width - 20, height / 2);
+    graphics.moveTo(20, centerLineY);
+    graphics.lineTo(this.scale.width - 20, centerLineY);
     graphics.stroke();
   }
 
@@ -943,13 +952,13 @@ export class GameScene extends Phaser.Scene {
     // Create zone highlights (initially invisible)
     this.createZoneHighlights();
 
-    // Action buttons - compact row at bottom-right (above hand zone)
-    const buttonY = height - 160;
-    const buttonStartX = width - 320;
+    // Action buttons - vertical stack on right side (in center gap between players)
+    const buttonX = width - 70;
+    const buttonStartY = 255;
 
-    this.createActionButton(buttonStartX, buttonY, 'END TURN', 'endTurn', () => this.onEndTurnClick());
-    this.createActionButton(buttonStartX + 105, buttonY, 'ATTACK', 'attack', () => this.onAttackClick());
-    this.createActionButton(buttonStartX + 210, buttonY, 'PASS', 'pass', () => this.onPassClick());
+    this.createActionButton(buttonX, buttonStartY, 'END TURN', 'endTurn', () => this.onEndTurnClick());
+    this.createActionButton(buttonX, buttonStartY + 50, 'ATTACK', 'attack', () => this.onAttackClick());
+    this.createActionButton(buttonX, buttonStartY + 100, 'PASS', 'pass', () => this.onPassClick());
 
     // Turn banner (shown when turn changes)
     this.createTurnBanner();

@@ -133,11 +133,15 @@ packages/
   - Player side: Life cards (left) | DON!! area | Leader | Character Zone (5 slots) | Stage/Deck/Trash (right)
   - Opponent side: Mirrored layout
   - Hand cards centered at bottom with slight overlap for better spacing
+- **Properly Calculated Zone Positions**: All zones fit within 1280x720 canvas without overflow
+  - Opponent back row: Y=10-116, front row: Y=120-226
+  - Player front row: Y=355-461, back row: Y=470-576, hand: Y=590-696
+  - Center gap at Y=290 for battle zone and UI elements
 - **Zone Visual Indicators**: Subtle colored backgrounds with rounded corners and labels for each zone
-- **Center Divider**: Visual line separating player and opponent sides
+- **Center Divider**: Visual line separating player and opponent sides at Y=290
 - **DON!! Deck Display**: Visual card stack with count badge showing active DON, rested count, and deck remaining
 - **Deck/Trash Stacking**: Visual stack effect for deck with count badge, trash shows top card with count
-- **UI Repositioning**: Turn/phase indicator moved to top-left badge, action buttons moved to bottom-right row
+- **UI Repositioning**: Turn/phase indicator in top-left badge, action buttons stacked vertically on right side
 
 ### Card Animation System
 - **Card Movement Animations**: Smooth tweens for cards moving between zones (250ms default)
