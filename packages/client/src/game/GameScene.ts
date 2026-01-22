@@ -47,6 +47,7 @@ export class GameScene extends Phaser.Scene {
   // Mulligan UI
   private mulliganPanel?: Phaser.GameObjects.Container;
   private mulliganDecisionMade = false; // Track if player has already made mulligan decision
+  private mulliganPreview?: Phaser.GameObjects.Container; // Card preview during mulligan
 
   // Sound effects
   private soundEnabled = true;
@@ -609,12 +610,19 @@ export class GameScene extends Phaser.Scene {
     });
     
     // Card hover handling
-    this.input.on('gameobjectover', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject) => {
+    this.input.on('gameobjectover', (pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject) => {
       if (gameObject instanceof Phaser.GameObjects.Image && gameObject.getData('cardId')) {
-        this.onCardHover(gameObject);
+        this.onCardHover(gameObject, pointer.x, pointer.y);
       }
     });
-    
+
+    // Update hover preview position as mouse moves
+    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      if (this.hoverCard) {
+        this.updateHoverPreviewPosition(pointer.x, pointer.y);
+      }
+    });
+
     this.input.on('gameobjectout', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject) => {
       if (gameObject instanceof Phaser.GameObjects.Image && gameObject.getData('cardId')) {
         this.onCardHoverEnd(gameObject);
@@ -1047,7 +1055,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private onCardHover(gameObject: Phaser.GameObjects.Image) {
+  private onCardHover(gameObject: Phaser.GameObjects.Image, mouseX?: number, mouseY?: number) {
     // Don't show hover effects if mulligan panel is visible
     if (this.mulliganPanel && this.gameState?.phase === GamePhase.START_MULLIGAN) {
       return;
@@ -1083,7 +1091,7 @@ export class GameScene extends Phaser.Scene {
 
     // Show hidden card preview for opponent's hidden cards
     if (!isCardVisible) {
-      this.showHiddenCardPreview();
+      this.showHiddenCardPreview(mouseX, mouseY);
       return;
     }
 
@@ -1091,74 +1099,112 @@ export class GameScene extends Phaser.Scene {
     const cardDefId = gameObject.getData('cardDefId');
     const cardData = this.getCardData(cardDefId);
 
-    // Create preview container
-    this.hoverCard = this.add.container(width - 150, height / 2);
+    // Preview dimensions
+    const previewWidth = 320;
+    const previewHeight = 480;
+    const offset = 25;
+
+    // Calculate position near cursor
+    let posX = (mouseX || width / 2) + offset;
+    let posY = mouseY || height / 2;
+
+    // Keep preview on screen - if it would go off right edge, show on left of cursor
+    if (posX + previewWidth / 2 > width) {
+      posX = (mouseX || width / 2) - previewWidth / 2 - offset;
+    }
+
+    // Keep within vertical bounds
+    if (posY - previewHeight / 2 < 10) {
+      posY = previewHeight / 2 + 10;
+    }
+    if (posY + previewHeight / 2 > height - 10) {
+      posY = height - previewHeight / 2 - 10;
+    }
+
+    // Create preview container near cursor
+    this.hoverCard = this.add.container(posX, posY);
     this.hoverCard.setDepth(2000);
 
-    // Card image (larger preview - about 2x normal size)
+    // Background panel
+    const bgPanel = this.add.rectangle(0, 0, previewWidth, previewHeight, 0x111122, 0.98)
+      .setStrokeStyle(3, cardData ? this.getColorHex(cardData.colors[0] || 'BLACK') : 0x4444ff);
+    this.hoverCard.add(bgPanel);
+
+    // Card image (larger preview)
     const texture = this.loadCardImage(cardDefId);
-    const previewWidth = this.CARD_WIDTH * 2;
-    const previewHeight = this.CARD_HEIGHT * 2;
-    const cardImage = this.add.image(0, -50, texture).setDisplaySize(previewWidth, previewHeight);
+    const cardDisplayWidth = 240;
+    const cardDisplayHeight = 336;
+    const cardImage = this.add.image(0, -55, texture).setDisplaySize(cardDisplayWidth, cardDisplayHeight);
     this.hoverCard.add(cardImage);
 
-    // Card info panel
+    // Card info below the image
     if (cardData) {
-      const panelBg = this.add.rectangle(0, 150, 200, 180, 0x1a1a1a, 0.95)
-        .setStrokeStyle(2, this.getColorHex(cardData.colors[0] || 'BLACK'));
-      this.hoverCard.add(panelBg);
-
       // Card name
-      const nameText = this.add.text(0, 80, cardData.name, {
-        fontSize: '14px',
+      const nameText = this.add.text(0, 130, cardData.name, {
+        fontSize: '18px',
         color: '#ffffff',
         fontStyle: 'bold',
-        wordWrap: { width: 180 },
+        wordWrap: { width: previewWidth - 20 },
         align: 'center'
       }).setOrigin(0.5);
       this.hoverCard.add(nameText);
 
       // Card type and colors
-      const typeText = this.add.text(0, 105, `${cardData.type} - ${cardData.colors.join('/')}`, {
-        fontSize: '11px',
+      const typeText = this.add.text(0, 165, `${cardData.type} - ${cardData.colors.join('/')}`, {
+        fontSize: '13px',
         color: '#aaaaaa'
       }).setOrigin(0.5);
       this.hoverCard.add(typeText);
 
-      // Stats
-      let statsY = 125;
-      if (cardData.cost !== null) {
-        const costText = this.add.text(-80, statsY, `Cost: ${cardData.cost}`, {
-          fontSize: '12px',
-          color: '#ffff00'
-        });
-        this.hoverCard.add(costText);
-      }
+      // Stats on one line
+      const stats: string[] = [];
+      if (cardData.cost !== null) stats.push(`Cost: ${cardData.cost}`);
+      if (cardData.power !== null) stats.push(`Power: ${cardData.power}`);
+      if (cardData.counter !== null) stats.push(`+${cardData.counter}`);
 
-      if (cardData.power !== null) {
-        const powerText = this.add.text(20, statsY, `Power: ${cardData.power}`, {
-          fontSize: '12px',
-          color: '#ff4444'
-        });
-        this.hoverCard.add(powerText);
-      }
+      const statsText = this.add.text(0, 195, stats.join('  |  '), {
+        fontSize: '15px',
+        color: '#ffdd44',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+      this.hoverCard.add(statsText);
 
-      if (cardData.counter !== null) {
-        statsY += 18;
-        const counterText = this.add.text(-80, statsY, `Counter: +${cardData.counter}`, {
-          fontSize: '12px',
-          color: '#44ff44'
-        });
-        this.hoverCard.add(counterText);
-      }
-
-      // Card ID
-      const idText = this.add.text(0, 220, cardData.id, {
-        fontSize: '10px',
+      // Set code
+      const setText = this.add.text(0, 220, cardData.setCode || cardData.id, {
+        fontSize: '12px',
         color: '#666666'
       }).setOrigin(0.5);
-      this.hoverCard.add(idText);
+      this.hoverCard.add(setText);
     }
+  }
+
+  /**
+   * Update hover preview position as mouse moves
+   */
+  private updateHoverPreviewPosition(mouseX: number, mouseY: number) {
+    if (!this.hoverCard) return;
+
+    const { width, height } = this.scale;
+    const previewWidth = 320;
+    const previewHeight = 480;
+    const offset = 25;
+
+    let posX = mouseX + offset;
+    let posY = mouseY;
+
+    // Keep preview on screen
+    if (posX + previewWidth / 2 > width) {
+      posX = mouseX - previewWidth / 2 - offset;
+    }
+
+    if (posY - previewHeight / 2 < 10) {
+      posY = previewHeight / 2 + 10;
+    }
+    if (posY + previewHeight / 2 > height - 10) {
+      posY = height - previewHeight / 2 - 10;
+    }
+
+    this.hoverCard.setPosition(posX, posY);
   }
 
   private onCardHoverEnd(gameObject: Phaser.GameObjects.Image) {
@@ -1176,29 +1222,57 @@ export class GameScene extends Phaser.Scene {
   /**
    * Show a hidden card preview for opponent's hidden cards
    */
-  private showHiddenCardPreview() {
+  private showHiddenCardPreview(mouseX?: number, mouseY?: number) {
     const { width, height } = this.scale;
 
-    this.hoverCard = this.add.container(width - 150, height / 2);
+    // Preview dimensions
+    const previewWidth = 280;
+    const previewHeight = 400;
+    const offset = 25;
+
+    // Calculate position near cursor
+    let posX = (mouseX || width / 2) + offset;
+    let posY = mouseY || height / 2;
+
+    // Keep preview on screen
+    if (posX + previewWidth / 2 > width) {
+      posX = (mouseX || width / 2) - previewWidth / 2 - offset;
+    }
+    if (posY - previewHeight / 2 < 10) {
+      posY = previewHeight / 2 + 10;
+    }
+    if (posY + previewHeight / 2 > height - 10) {
+      posY = height - previewHeight / 2 - 10;
+    }
+
+    this.hoverCard = this.add.container(posX, posY);
     this.hoverCard.setDepth(2000);
+
+    // Background panel
+    const bgPanel = this.add.rectangle(0, 0, previewWidth, previewHeight, 0x111122, 0.98)
+      .setStrokeStyle(3, 0x666666);
+    this.hoverCard.add(bgPanel);
 
     // Show card back image
     const cardBack = this.add.image(0, -50, 'card-back')
-      .setDisplaySize(this.CARD_WIDTH * 2, this.CARD_HEIGHT * 2);
+      .setDisplaySize(200, 280);
     this.hoverCard.add(cardBack);
 
-    // Info panel
-    const panelBg = this.add.rectangle(0, 150, 200, 80, 0x1a1a1a, 0.95)
-      .setStrokeStyle(2, 0x666666);
-    this.hoverCard.add(panelBg);
-
     // "Hidden Card" text
-    const hiddenText = this.add.text(0, 150, 'Hidden Card', {
-      fontSize: '16px',
+    const hiddenText = this.add.text(0, 130, 'Hidden Card', {
+      fontSize: '18px',
       color: '#888888',
+      fontStyle: 'bold',
       align: 'center'
     }).setOrigin(0.5);
     this.hoverCard.add(hiddenText);
+
+    const infoText = this.add.text(0, 160, 'Card details not visible', {
+      fontSize: '12px',
+      color: '#555555',
+      align: 'center'
+    }).setOrigin(0.5);
+    this.hoverCard.add(infoText);
   }
 
   /**
@@ -1772,38 +1846,41 @@ export class GameScene extends Phaser.Scene {
       .setInteractive();
     this.mulliganPanel.add(overlay);
 
-    // Panel background
-    const panelWidth = 600;
-    const panelHeight = 400;
+    // Panel background - sized to fit cards with minimal padding
+    const mulliganCardScale = 2.2;
+    const cardSpacing = 125; // Tighter spacing between cards
+    const displayWidth = this.CARD_WIDTH * mulliganCardScale;   // ~139px
+    const displayHeight = this.CARD_HEIGHT * mulliganCardScale; // ~194px
+
+    const panelWidth = Math.max(650, (player.hand.length * cardSpacing) + 60);
+    const panelHeight = 360;
     const panelBg = this.add.rectangle(0, 0, panelWidth, panelHeight, 0x222233, 0.95)
       .setStrokeStyle(3, 0x4444ff);
     this.mulliganPanel.add(panelBg);
 
     // Title
-    const title = this.add.text(0, -panelHeight / 2 + 30, 'MULLIGAN PHASE', {
-      fontSize: '28px',
+    const title = this.add.text(0, -panelHeight / 2 + 28, 'MULLIGAN PHASE', {
+      fontSize: '26px',
       color: '#ffd700',
       fontStyle: 'bold'
     }).setOrigin(0.5);
     this.mulliganPanel.add(title);
 
-    // Instructions
-    const instructions = this.add.text(0, -panelHeight / 2 + 70,
-      'Your starting hand is shown below.\nYou may keep this hand or mulligan once for a new hand.', {
-      fontSize: '16px',
-      color: '#cccccc',
+    // Instructions - single line
+    const instructions = this.add.text(0, -panelHeight / 2 + 58,
+      'Hover over cards to see details. Keep this hand or mulligan once for a new hand.', {
+      fontSize: '14px',
+      color: '#aaaaaa',
       align: 'center'
     }).setOrigin(0.5);
     this.mulliganPanel.add(instructions);
 
-    // Display hand cards
-    const cardStartX = -(player.hand.length - 1) * 45;
-    const cardY = 20;
-    const displayWidth = this.CARD_WIDTH * this.CARD_SCALE;
-    const displayHeight = this.CARD_HEIGHT * this.CARD_SCALE;
+    // Display hand cards - larger scale for better visibility
+    const cardStartX = -(player.hand.length - 1) * (cardSpacing / 2);
+    const cardY = 10;
 
     player.hand.forEach((card, index) => {
-      const x = cardStartX + index * 90;
+      const x = cardStartX + index * cardSpacing;
       const cardData = this.cardDataMap.get(card.cardId);
 
       // Use card texture if loaded, otherwise card-back
@@ -1823,17 +1900,44 @@ export class GameScene extends Phaser.Scene {
         .setData('cardDefId', card.cardId)
         .setData('ownerId', card.owner)
         .setData('zone', card.zone)
-        .setData('faceUp', true);
+        .setData('faceUp', true)
+        .setData('isMulliganCard', true)
+        .setData('baseWidth', displayWidth)
+        .setData('baseHeight', displayHeight);
+
+      // Add hover effects for mulligan cards
+      cardSprite.on('pointerover', (pointer: Phaser.Input.Pointer) => {
+        // Enlarge card slightly on hover
+        cardSprite.setDisplaySize(displayWidth * 1.1, displayHeight * 1.1);
+        cardSprite.setDepth(100);
+        // Show card preview near cursor
+        this.showMulliganCardPreview(card.cardId, cardData, pointer.x, pointer.y);
+      });
+
+      cardSprite.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+        // Update preview position as mouse moves
+        this.updateMulliganPreviewPosition(pointer.x, pointer.y);
+      });
+
+      cardSprite.on('pointerout', () => {
+        // Restore original size
+        cardSprite.setDisplaySize(displayWidth, displayHeight);
+        cardSprite.setDepth(0);
+        // Hide preview
+        this.hideMulliganCardPreview();
+      });
+
       this.mulliganPanel!.add(cardSprite);
 
-      // Show card name below
+      // Show card name above the card (so it doesn't get covered by buttons)
       if (cardData) {
-        const nameText = this.add.text(x, cardY + displayHeight / 2 + 10, cardData.name, {
-          fontSize: '10px',
+        const nameText = this.add.text(x, cardY - displayHeight / 2 + 12, cardData.name, {
+          fontSize: '11px',
           color: '#ffffff',
+          fontStyle: 'bold',
           align: 'center',
-          wordWrap: { width: 80 }
-        }).setOrigin(0.5, 0);
+          wordWrap: { width: 120 }
+        }).setOrigin(0.5, 1); // Origin at bottom center so text grows upward
         this.mulliganPanel!.add(nameText);
       }
     });
@@ -1908,6 +2012,134 @@ export class GameScene extends Phaser.Scene {
       this.mulliganPanel = undefined;
       // Re-render to show hand cards now that panel is hidden
       this.scheduleRender();
+    }
+    // Also hide any active preview
+    this.hideMulliganCardPreview();
+  }
+
+  /**
+   * Show card preview during mulligan phase - positioned near cursor like deck builder
+   */
+  private showMulliganCardPreview(cardDefId: string, cardData?: CardData, mouseX?: number, mouseY?: number) {
+    // Clean up existing preview
+    this.hideMulliganCardPreview();
+
+    const { width, height } = this.scale;
+
+    // Calculate position near cursor - larger preview
+    const previewWidth = 320;
+    const previewHeight = 480;
+    const offset = 25;
+
+    let posX = (mouseX || width / 2) + offset;
+    let posY = mouseY || height / 2;
+
+    // Keep preview on screen - if it would go off right edge, show on left of cursor
+    if (posX + previewWidth / 2 > width) {
+      posX = (mouseX || width / 2) - previewWidth / 2 - offset;
+    }
+
+    // Keep within vertical bounds
+    if (posY - previewHeight / 2 < 10) {
+      posY = previewHeight / 2 + 10;
+    }
+    if (posY + previewHeight / 2 > height - 10) {
+      posY = height - previewHeight / 2 - 10;
+    }
+
+    // Create preview container
+    this.mulliganPreview = this.add.container(posX, posY);
+    this.mulliganPreview.setDepth(6000); // Above mulligan panel
+
+    // Background panel
+    const bgPanel = this.add.rectangle(0, 0, previewWidth, previewHeight, 0x111122, 0.98)
+      .setStrokeStyle(3, cardData ? this.getColorHex(cardData.colors[0] || 'BLACK') : 0x4444ff);
+    this.mulliganPreview.add(bgPanel);
+
+    // Card image - larger preview size
+    const texture = this.loadCardImage(cardDefId);
+    const cardDisplayWidth = 240;
+    const cardDisplayHeight = 336;
+    const cardImage = this.add.image(0, -55, texture).setDisplaySize(cardDisplayWidth, cardDisplayHeight);
+    this.mulliganPreview.add(cardImage);
+
+    // Card info below the image
+    if (cardData) {
+      // Card name
+      const nameText = this.add.text(0, 130, cardData.name, {
+        fontSize: '18px',
+        color: '#ffffff',
+        fontStyle: 'bold',
+        wordWrap: { width: previewWidth - 20 },
+        align: 'center'
+      }).setOrigin(0.5);
+      this.mulliganPreview.add(nameText);
+
+      // Card type and colors
+      const typeText = this.add.text(0, 165, `${cardData.type} - ${cardData.colors.join('/')}`, {
+        fontSize: '13px',
+        color: '#aaaaaa'
+      }).setOrigin(0.5);
+      this.mulliganPreview.add(typeText);
+
+      // Stats on one line
+      const stats: string[] = [];
+      if (cardData.cost !== null) stats.push(`Cost: ${cardData.cost}`);
+      if (cardData.power !== null) stats.push(`Power: ${cardData.power}`);
+      if (cardData.counter !== null) stats.push(`+${cardData.counter}`);
+
+      const statsText = this.add.text(0, 195, stats.join('  |  '), {
+        fontSize: '15px',
+        color: '#ffdd44',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+      this.mulliganPreview.add(statsText);
+
+      // Set code
+      const setText = this.add.text(0, 220, cardData.setCode, {
+        fontSize: '12px',
+        color: '#666666'
+      }).setOrigin(0.5);
+      this.mulliganPreview.add(setText);
+    }
+  }
+
+  /**
+   * Update mulligan preview position as mouse moves
+   */
+  private updateMulliganPreviewPosition(mouseX: number, mouseY: number) {
+    if (!this.mulliganPreview) return;
+
+    const { width, height } = this.scale;
+    const previewWidth = 320;
+    const previewHeight = 480;
+    const offset = 25;
+
+    let posX = mouseX + offset;
+    let posY = mouseY;
+
+    // Keep preview on screen
+    if (posX + previewWidth / 2 > width) {
+      posX = mouseX - previewWidth / 2 - offset;
+    }
+
+    if (posY - previewHeight / 2 < 10) {
+      posY = previewHeight / 2 + 10;
+    }
+    if (posY + previewHeight / 2 > height - 10) {
+      posY = height - previewHeight / 2 - 10;
+    }
+
+    this.mulliganPreview.setPosition(posX, posY);
+  }
+
+  /**
+   * Hide mulligan card preview
+   */
+  private hideMulliganCardPreview() {
+    if (this.mulliganPreview) {
+      this.mulliganPreview.destroy();
+      this.mulliganPreview = undefined;
     }
   }
 }

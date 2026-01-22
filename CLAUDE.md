@@ -122,6 +122,12 @@ packages/
 - **FPS Limiting**: Phaser configured to 30 FPS target to reduce CPU usage
 - **Leader Card Loading**: Fixed leader cards not appearing in hand on game start
 
+### Visual Improvements
+- **Cursor-Following Card Preview**: Card hover previews now follow the mouse cursor (like deck builder) instead of fixed position
+- **Mulligan Panel Redesign**: Larger cards (2.2x scale), tighter spacing, compact layout with card names above cards
+- **Larger Hover Preview**: Preview panel increased to 320x480 with 240x336 card images for better visibility
+- **Smart Preview Positioning**: Preview automatically flips to opposite side when near screen edge, stays within bounds
+
 ## Running the Project
 ```bash
 # Install dependencies
