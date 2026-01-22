@@ -32,6 +32,14 @@ export class GameScene extends Phaser.Scene {
   private zoneHighlights: Map<string, Phaser.GameObjects.Rectangle> = new Map();
   private actionButtons: Map<string, { bg: Phaser.GameObjects.Rectangle; text: Phaser.GameObjects.Text }> = new Map();
 
+  // Counter Step UI
+  private counterPanel?: Phaser.GameObjects.Container;
+  private selectedCounterCards: Set<string> = new Set();
+  private counterCardSprites: Map<string, Phaser.GameObjects.Image> = new Map();
+
+  // Trigger Step UI
+  private triggerPanel?: Phaser.GameObjects.Container;
+
   // Zone dimensions
   private readonly CARD_WIDTH = 63;
   private readonly CARD_HEIGHT = 88;
@@ -420,6 +428,9 @@ export class GameScene extends Phaser.Scene {
 
     // Update action buttons based on whose turn it is
     this.updateActionButtons(state.activePlayerId === playerId);
+
+    // Check if we need to show/hide counter step UI
+    this.checkCounterStepUI();
 
     this.renderGameState();
   }
@@ -825,5 +836,469 @@ export class GameScene extends Phaser.Scene {
 
   private onPassClick() {
     this.events.emit('pass');
+  }
+
+  // ==================== COUNTER STEP UI ====================
+
+  /**
+   * Show the counter step panel when in COUNTER_STEP phase
+   */
+  private showCounterStepUI() {
+    if (this.counterPanel) {
+      this.hideCounterStepUI();
+    }
+
+    const { width, height } = this.scale;
+    const combat = this.gameState?.currentCombat;
+    if (!combat || !this.playerId) return;
+
+    // Get player's hand cards with counter values
+    const player = this.gameState?.players[this.playerId];
+    if (!player) return;
+
+    const counterCards = player.hand.filter(card => {
+      const cardData = this.getCardData(card.cardId);
+      return cardData && cardData.counter !== null && cardData.counter > 0;
+    });
+
+    // Create panel container
+    this.counterPanel = this.add.container(width / 2, height / 2);
+    this.counterPanel.setDepth(4000);
+
+    // Background overlay
+    const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.7);
+    overlay.setInteractive(); // Block clicks behind panel
+    this.counterPanel.add(overlay);
+
+    // Panel background
+    const panelWidth = Math.max(500, counterCards.length * 80 + 100);
+    const panelHeight = 350;
+    const panelBg = this.add.rectangle(0, 0, panelWidth, panelHeight, 0x1a1a1a, 0.98)
+      .setStrokeStyle(3, 0xffd700);
+    this.counterPanel.add(panelBg);
+
+    // Title
+    const title = this.add.text(0, -panelHeight / 2 + 30, 'COUNTER STEP', {
+      fontSize: '24px',
+      color: '#ffd700',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.counterPanel.add(title);
+
+    // Combat info
+    const attackPower = combat.attackPower || 0;
+    const currentCounter = combat.counterPower || 0;
+
+    const combatInfo = this.add.text(0, -panelHeight / 2 + 60,
+      `Attack Power: ${attackPower}  |  Your Counter: ${currentCounter}`, {
+      fontSize: '16px',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+    this.counterPanel.add(combatInfo);
+
+    // Instructions
+    const instructions = this.add.text(0, -panelHeight / 2 + 90,
+      'Select counter cards to use (click to toggle)', {
+      fontSize: '14px',
+      color: '#aaaaaa'
+    }).setOrigin(0.5);
+    this.counterPanel.add(instructions);
+
+    // Counter cards display
+    this.selectedCounterCards.clear();
+    this.counterCardSprites.clear();
+
+    if (counterCards.length === 0) {
+      const noCardsText = this.add.text(0, 0, 'No counter cards available', {
+        fontSize: '18px',
+        color: '#ff6666'
+      }).setOrigin(0.5);
+      this.counterPanel.add(noCardsText);
+    } else {
+      const startX = -((counterCards.length - 1) * 75) / 2;
+
+      counterCards.forEach((card, index) => {
+        const x = startX + index * 75;
+        const y = -20;
+
+        // Card sprite
+        const texture = this.loadCardImage(card.cardId);
+        const cardSprite = this.add.image(x, y, texture)
+          .setScale(1.0)
+          .setInteractive({ useHandCursor: true })
+          .setData('cardId', card.id);
+
+        cardSprite.on('pointerdown', () => this.toggleCounterCard(card.id));
+        cardSprite.on('pointerover', () => {
+          if (!this.selectedCounterCards.has(card.id)) {
+            cardSprite.setTint(0xaaaaff);
+          }
+        });
+        cardSprite.on('pointerout', () => {
+          if (!this.selectedCounterCards.has(card.id)) {
+            cardSprite.clearTint();
+          }
+        });
+
+        this.counterPanel!.add(cardSprite);
+        this.counterCardSprites.set(card.id, cardSprite);
+
+        // Counter value label
+        const cardData = this.getCardData(card.cardId);
+        if (cardData) {
+          const counterLabel = this.add.text(x, y + 55, `+${cardData.counter}`, {
+            fontSize: '14px',
+            color: '#00ff00',
+            fontStyle: 'bold',
+            backgroundColor: '#000000'
+          }).setOrigin(0.5);
+          this.counterPanel!.add(counterLabel);
+        }
+      });
+    }
+
+    // Selected counter total
+    const totalText = this.add.text(0, panelHeight / 2 - 90, 'Selected Counter: +0', {
+      fontSize: '18px',
+      color: '#00ff00',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    totalText.setData('type', 'counterTotal');
+    this.counterPanel.add(totalText);
+
+    // Buttons
+    const buttonY = panelHeight / 2 - 40;
+
+    // Use Counter button
+    const useBtn = this.add.rectangle(-80, buttonY, 140, 45, 0x228B22)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.confirmUseCounter())
+      .on('pointerover', () => useBtn.setFillStyle(0x2E8B2E))
+      .on('pointerout', () => useBtn.setFillStyle(0x228B22));
+    const useBtnText = this.add.text(-80, buttonY, 'USE COUNTER', {
+      fontSize: '14px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.counterPanel.add(useBtn);
+    this.counterPanel.add(useBtnText);
+
+    // Pass button
+    const passBtn = this.add.rectangle(80, buttonY, 140, 45, 0x8B0000)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.passCounter())
+      .on('pointerover', () => passBtn.setFillStyle(0xA00000))
+      .on('pointerout', () => passBtn.setFillStyle(0x8B0000));
+    const passBtnText = this.add.text(80, buttonY, 'PASS', {
+      fontSize: '14px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.counterPanel.add(passBtn);
+    this.counterPanel.add(passBtnText);
+
+    // Animate panel appearance
+    this.counterPanel.setScale(0.8);
+    this.counterPanel.setAlpha(0);
+    this.tweens.add({
+      targets: this.counterPanel,
+      scale: 1,
+      alpha: 1,
+      duration: 200,
+      ease: 'Power2'
+    });
+  }
+
+  /**
+   * Toggle selection of a counter card
+   */
+  private toggleCounterCard(cardId: string) {
+    const sprite = this.counterCardSprites.get(cardId);
+    if (!sprite) return;
+
+    if (this.selectedCounterCards.has(cardId)) {
+      this.selectedCounterCards.delete(cardId);
+      sprite.clearTint();
+      sprite.setScale(1.0);
+    } else {
+      this.selectedCounterCards.add(cardId);
+      sprite.setTint(0x00ff00);
+      sprite.setScale(1.1);
+    }
+
+    this.updateCounterTotal();
+  }
+
+  /**
+   * Update the displayed total counter power
+   */
+  private updateCounterTotal() {
+    if (!this.counterPanel) return;
+
+    let total = 0;
+    this.selectedCounterCards.forEach(cardId => {
+      // Find the card in player's hand
+      const player = this.gameState?.players[this.playerId!];
+      const card = player?.hand.find(c => c.id === cardId);
+      if (card) {
+        const cardData = this.getCardData(card.cardId);
+        if (cardData && cardData.counter) {
+          total += cardData.counter;
+        }
+      }
+    });
+
+    // Update total text
+    this.counterPanel.each((child: Phaser.GameObjects.GameObject) => {
+      if (child instanceof Phaser.GameObjects.Text && child.getData('type') === 'counterTotal') {
+        child.setText(`Selected Counter: +${total}`);
+      }
+    });
+  }
+
+  /**
+   * Confirm using selected counter cards
+   */
+  private confirmUseCounter() {
+    const cardIds = Array.from(this.selectedCounterCards);
+    this.events.emit('useCounter', { cardIds });
+    this.hideCounterStepUI();
+  }
+
+  /**
+   * Pass on using counters
+   */
+  private passCounter() {
+    this.events.emit('passCounter');
+    this.hideCounterStepUI();
+  }
+
+  /**
+   * Hide the counter step UI
+   */
+  private hideCounterStepUI() {
+    if (this.counterPanel) {
+      this.counterPanel.destroy();
+      this.counterPanel = undefined;
+    }
+    this.selectedCounterCards.clear();
+    this.counterCardSprites.clear();
+  }
+
+  /**
+   * Check if counter step UI should be shown based on game state
+   */
+  private checkCounterStepUI() {
+    if (!this.gameState || !this.playerId) return;
+
+    const isCounterStep = this.gameState.phase === 'COUNTER_STEP';
+    const combat = this.gameState.currentCombat;
+
+    // Show counter UI if:
+    // - We're in counter step
+    // - There's active combat
+    // - We are the defender (not the attacker's owner)
+    if (isCounterStep && combat) {
+      // Find who owns the attacker
+      let attackerOwner: string | undefined;
+      for (const player of Object.values(this.gameState.players)) {
+        const attackerInField = player.field.find(c => c.id === combat.attackerId);
+        const attackerIsLeader = player.leaderCard?.id === combat.attackerId;
+        if (attackerInField || attackerIsLeader) {
+          attackerOwner = player.id;
+          break;
+        }
+      }
+
+      // Show panel if we're the defender
+      if (attackerOwner && attackerOwner !== this.playerId) {
+        if (!this.counterPanel) {
+          this.showCounterStepUI();
+        }
+      }
+    } else {
+      this.hideCounterStepUI();
+    }
+
+    // Check trigger step
+    this.checkTriggerStepUI();
+  }
+
+  // ==================== TRIGGER STEP UI ====================
+
+  /**
+   * Check if trigger step UI should be shown
+   */
+  private checkTriggerStepUI() {
+    if (!this.gameState || !this.playerId) return;
+
+    const isTriggerStep = this.gameState.phase === 'TRIGGER_STEP';
+
+    if (isTriggerStep) {
+      // Check if player has pending trigger effects
+      const player = this.gameState.players[this.playerId];
+      if (player && !this.triggerPanel) {
+        // Find the most recently revealed life card (the one that was just added to hand)
+        const recentLifeCard = this.findRecentTriggerCard(player);
+        if (recentLifeCard) {
+          this.showTriggerStepUI(recentLifeCard);
+        }
+      }
+    } else {
+      this.hideTriggerStepUI();
+    }
+  }
+
+  /**
+   * Find a card that was recently moved from life to hand with a trigger effect
+   */
+  private findRecentTriggerCard(player: PlayerState): GameCard | null {
+    // Look for cards in hand that have trigger effects
+    for (const card of player.hand) {
+      const cardData = this.getCardData(card.cardId);
+      if (cardData) {
+        // Check if card has trigger-type effect (simplified check)
+        // In a full implementation, this would check the card's effects array
+        // For now, we assume any card that just moved to hand during trigger step has a trigger
+        if (card.faceUp === true) {
+          return card;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Show the trigger step UI panel
+   */
+  private showTriggerStepUI(triggerCard: GameCard) {
+    if (this.triggerPanel) {
+      this.hideTriggerStepUI();
+    }
+
+    const { width, height } = this.scale;
+    const cardData = this.getCardData(triggerCard.cardId);
+    if (!cardData) return;
+
+    // Create panel container
+    this.triggerPanel = this.add.container(width / 2, height / 2);
+    this.triggerPanel.setDepth(4000);
+
+    // Background overlay
+    const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.7);
+    overlay.setInteractive(); // Block clicks behind panel
+    this.triggerPanel.add(overlay);
+
+    // Panel background
+    const panelWidth = 450;
+    const panelHeight = 400;
+    const panelBg = this.add.rectangle(0, 0, panelWidth, panelHeight, 0x1a1a1a, 0.98)
+      .setStrokeStyle(3, 0xff6600);
+    this.triggerPanel.add(panelBg);
+
+    // Title
+    const title = this.add.text(0, -panelHeight / 2 + 30, 'TRIGGER EFFECT!', {
+      fontSize: '24px',
+      color: '#ff6600',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.triggerPanel.add(title);
+
+    // Subtitle
+    const subtitle = this.add.text(0, -panelHeight / 2 + 60, 'A life card with a trigger effect was revealed', {
+      fontSize: '14px',
+      color: '#aaaaaa'
+    }).setOrigin(0.5);
+    this.triggerPanel.add(subtitle);
+
+    // Card display
+    const texture = this.loadCardImage(triggerCard.cardId);
+    const cardImage = this.add.image(0, -30, texture).setScale(1.8);
+    this.triggerPanel.add(cardImage);
+
+    // Card name
+    const cardName = this.add.text(0, panelHeight / 2 - 130, cardData.name, {
+      fontSize: '18px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.triggerPanel.add(cardName);
+
+    // Trigger effect description (simplified)
+    const effectText = this.add.text(0, panelHeight / 2 - 100,
+      'This card has a [Trigger] effect.\nActivate it?', {
+      fontSize: '14px',
+      color: '#cccccc',
+      align: 'center'
+    }).setOrigin(0.5);
+    this.triggerPanel.add(effectText);
+
+    // Buttons
+    const buttonY = panelHeight / 2 - 40;
+
+    // Activate button
+    const activateBtn = this.add.rectangle(-80, buttonY, 140, 45, 0xCC5500)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.activateTrigger(triggerCard.id))
+      .on('pointerover', () => activateBtn.setFillStyle(0xDD6600))
+      .on('pointerout', () => activateBtn.setFillStyle(0xCC5500));
+    const activateBtnText = this.add.text(-80, buttonY, 'ACTIVATE', {
+      fontSize: '14px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.triggerPanel.add(activateBtn);
+    this.triggerPanel.add(activateBtnText);
+
+    // Pass button
+    const passBtn = this.add.rectangle(80, buttonY, 140, 45, 0x555555)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.passTrigger())
+      .on('pointerover', () => passBtn.setFillStyle(0x666666))
+      .on('pointerout', () => passBtn.setFillStyle(0x555555));
+    const passBtnText = this.add.text(80, buttonY, 'SKIP', {
+      fontSize: '14px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.triggerPanel.add(passBtn);
+    this.triggerPanel.add(passBtnText);
+
+    // Animate panel appearance
+    this.triggerPanel.setScale(0.8);
+    this.triggerPanel.setAlpha(0);
+    this.tweens.add({
+      targets: this.triggerPanel,
+      scale: 1,
+      alpha: 1,
+      duration: 200,
+      ease: 'Power2'
+    });
+  }
+
+  /**
+   * Activate the trigger effect
+   */
+  private activateTrigger(cardId: string) {
+    this.events.emit('activateTrigger', { cardId });
+    this.hideTriggerStepUI();
+  }
+
+  /**
+   * Pass on the trigger effect
+   */
+  private passTrigger() {
+    this.events.emit('passTrigger');
+    this.hideTriggerStepUI();
+  }
+
+  /**
+   * Hide the trigger step UI
+   */
+  private hideTriggerStepUI() {
+    if (this.triggerPanel) {
+      this.triggerPanel.destroy();
+      this.triggerPanel = undefined;
+    }
   }
 }

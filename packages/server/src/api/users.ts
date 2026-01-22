@@ -141,7 +141,7 @@ usersRouter.get('/:id/stats', async (req, res, next) => {
         ? Math.round((user.gamesWon / user.gamesPlayed) * 100)
         : 0,
       losses: user.gamesPlayed - user.gamesWon,
-      recentMatches: recentMatches.map(match => ({
+      recentMatches: recentMatches.map((match: any) => ({
         id: match.id,
         opponent: match.player1.id === req.params.id
           ? match.player2
@@ -183,7 +183,7 @@ usersRouter.get('/leaderboard', async (req, res, next) => {
     });
 
     res.json({
-      users: users.map((user, index) => ({
+      users: users.map((user: any, index: number) => ({
         ...user,
         rank: offset + index + 1,
         winRate: Math.round((user.gamesWon / user.gamesPlayed) * 100),

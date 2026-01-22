@@ -143,7 +143,7 @@ export class GameManager {
     // Map cards with quantities
     const fullDeck: any[] = [];
     deckCards.forEach(deckCard => {
-      const card = cards.find(c => c.id === deckCard.cardId);
+      const card = cards.find((c: any) => c.id === deckCard.cardId);
       if (card) {
         for (let i = 0; i < deckCard.count; i++) {
           fullDeck.push({

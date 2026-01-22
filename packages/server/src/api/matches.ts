@@ -37,7 +37,7 @@ matchesRouter.get('/', authenticate, async (req, res, next) => {
       }),
     ]);
 
-    const formattedMatches = matches.map(match => ({
+    const formattedMatches = matches.map((match: any) => ({
       id: match.id,
       opponent: match.player1Id === req.user!.id
         ? match.player2

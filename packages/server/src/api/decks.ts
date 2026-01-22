@@ -49,7 +49,7 @@ async function validateDeck(leaderId: string, cards: { cardId: string; count: nu
     select: { id: true, type: true, colors: true },
   });
 
-  const existingCardIds = new Set(existingCards.map(c => c.id));
+  const existingCardIds = new Set(existingCards.map((c: any) => c.id));
   const missingCards = cardIds.filter(id => !existingCardIds.has(id));
 
   if (missingCards.length > 0) {
@@ -57,7 +57,7 @@ async function validateDeck(leaderId: string, cards: { cardId: string; count: nu
   }
 
   // Check no leaders in deck
-  const leadersInDeck = existingCards.filter(c => c.type === 'LEADER');
+  const leadersInDeck = existingCards.filter((c: any) => c.type === 'LEADER');
   if (leadersInDeck.length > 0) {
     throw new AppError('Cannot include leader cards in deck', 400);
   }

@@ -188,7 +188,7 @@ export class AIGameManager {
 
     const fullDeck: any[] = [];
     deckCards.forEach(deckCard => {
-      const card = cards.find(c => c.id === deckCard.cardId);
+      const card = cards.find((c: any) => c.id === deckCard.cardId);
       if (card) {
         for (let i = 0; i < deckCard.count; i++) {
           fullDeck.push({
@@ -283,12 +283,90 @@ export class AIGameManager {
     socket.emit('game:state', { gameState: updatedState });
     callback({ success: true });
 
-    // Check if it's now AI's turn
+    // Check if it's now AI's turn OR if AI needs to respond defensively
     if (updatedState.activePlayerId === game.aiPlayer.getPlayerId()) {
       // Delay AI response for better UX
       setTimeout(() => {
         this.processAITurn(gameId);
       }, game.aiThinkDelay);
+    } else if (this.needsAIDefensiveAction(updatedState, game)) {
+      // AI needs to respond to counter step or blocker step
+      setTimeout(() => {
+        this.processAIDefensiveAction(gameId);
+      }, game.aiThinkDelay);
+    }
+  }
+
+  /**
+   * Check if AI needs to respond with a defensive action
+   */
+  private needsAIDefensiveAction(state: GameState, game: AIGameRoom): boolean {
+    // Check if it's counter or blocker step and AI is the defender
+    if (state.phase !== GamePhase.COUNTER_STEP && state.phase !== GamePhase.BLOCKER_STEP) {
+      return false;
+    }
+
+    // Check if there's active combat
+    if (!state.currentCombat) return false;
+
+    // Find attacker owner
+    const attackerId = state.currentCombat.attackerId;
+    const humanPlayer = state.players[game.humanPlayerId];
+
+    // Check if attacker belongs to human (meaning AI is the defender)
+    const attackerInHumanField = humanPlayer?.field.some(c => c.id === attackerId);
+    const attackerIsHumanLeader = humanPlayer?.leaderCard?.id === attackerId;
+
+    return attackerInHumanField || attackerIsHumanLeader;
+  }
+
+  /**
+   * Process AI defensive action (counter/block)
+   */
+  private processAIDefensiveAction(gameId: string) {
+    const game = this.games.get(gameId);
+    if (!game) return;
+
+    const state = game.stateManager.getState();
+
+    // Get AI's defensive decision
+    const decision = game.aiPlayer.getNextAction(state);
+
+    if (decision) {
+      const aiAction: GameAction = {
+        id: `ai-def-${Date.now()}`,
+        type: decision.action,
+        playerId: game.aiPlayer.getPlayerId(),
+        timestamp: Date.now(),
+        data: decision.data,
+      };
+
+      const success = game.stateManager.processAction(aiAction);
+
+      if (success) {
+        game.actionLog.push(aiAction);
+      }
+
+      const updatedState = game.stateManager.getState();
+
+      // Broadcast state to human player
+      const humanSocket = this.io.sockets.sockets.get(game.humanSocketId);
+      if (humanSocket) {
+        humanSocket.emit('game:state', { gameState: updatedState });
+      }
+
+      // Check for game end
+      if (updatedState.phase === GamePhase.GAME_OVER && updatedState.winner) {
+        this.endGame(gameId, updatedState.winner, 'normal');
+        return;
+      }
+
+      // If still in a defensive phase (e.g., moved from counter to blocker), continue
+      if (this.needsAIDefensiveAction(updatedState, game)) {
+        setTimeout(() => {
+          this.processAIDefensiveAction(gameId);
+        }, game.aiThinkDelay);
+      }
     }
   }
 

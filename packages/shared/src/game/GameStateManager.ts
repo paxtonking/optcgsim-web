@@ -344,6 +344,119 @@ export class GameStateManager {
     return true;
   }
 
+  // Counter Step methods
+  public useCounter(playerId: string, cardIds: string[]): boolean {
+    if (!this.state.currentCombat) return false;
+    if (this.state.phase !== GamePhase.COUNTER_STEP) return false;
+
+    // Player using counter must be the defender (not the attacker's owner)
+    const attacker = this.findCard(this.state.currentCombat.attackerId);
+    if (!attacker || attacker.owner === playerId) return false;
+
+    const player = this.state.players[playerId];
+    if (!player) return false;
+
+    let totalCounterPower = 0;
+    const usedCards: GameCard[] = [];
+
+    // Validate and calculate counter power
+    for (const cardId of cardIds) {
+      const cardIndex = player.hand.findIndex(c => c.id === cardId);
+      if (cardIndex === -1) return false;
+
+      const card = player.hand[cardIndex];
+      const cardDef = this.effectEngine.getCardDefinition(card.cardId);
+
+      // Card must have counter value
+      if (!cardDef || cardDef.counter === null || cardDef.counter === undefined) {
+        return false;
+      }
+
+      totalCounterPower += cardDef.counter;
+      usedCards.push(card);
+    }
+
+    // Remove counter cards from hand and move to trash
+    for (const card of usedCards) {
+      const cardIndex = player.hand.findIndex(c => c.id === card.id);
+      if (cardIndex !== -1) {
+        const removedCard = player.hand.splice(cardIndex, 1)[0];
+        removedCard.zone = CardZone.TRASH;
+        player.trash.push(removedCard);
+
+        // Trigger COUNTER effects for each card used
+        const triggerEvent: TriggerEvent = {
+          type: EffectTrigger.COUNTER,
+          cardId: removedCard.id,
+          playerId: playerId,
+        };
+        this.processTriggers(triggerEvent);
+      }
+    }
+
+    // Update combat counter power
+    this.state.currentCombat.counterPower =
+      (this.state.currentCombat.counterPower || 0) + totalCounterPower;
+
+    // Move to blocker step
+    this.state.phase = GamePhase.BLOCKER_STEP;
+
+    return true;
+  }
+
+  public passCounter(playerId: string): boolean {
+    if (!this.state.currentCombat) return false;
+    if (this.state.phase !== GamePhase.COUNTER_STEP) return false;
+
+    // Player passing must be the defender
+    const attacker = this.findCard(this.state.currentCombat.attackerId);
+    if (!attacker || attacker.owner === playerId) return false;
+
+    // Initialize counter power to 0 if not set
+    if (this.state.currentCombat.counterPower === undefined) {
+      this.state.currentCombat.counterPower = 0;
+    }
+
+    // Move to blocker step
+    this.state.phase = GamePhase.BLOCKER_STEP;
+
+    return true;
+  }
+
+  public passBlocker(playerId: string): boolean {
+    if (!this.state.currentCombat) return false;
+    if (this.state.phase !== GamePhase.BLOCKER_STEP) return false;
+
+    // Player passing must be the defender
+    const attacker = this.findCard(this.state.currentCombat.attackerId);
+    if (!attacker || attacker.owner === playerId) return false;
+
+    // Resolve combat since no blocker was selected
+    this.resolveCombat();
+
+    return true;
+  }
+
+  // Get cards that can be used as counters
+  public getAvailableCounterCards(playerId: string): GameCard[] {
+    const player = this.state.players[playerId];
+    if (!player) return [];
+
+    return player.hand.filter(card => {
+      const cardDef = this.effectEngine.getCardDefinition(card.cardId);
+      return cardDef && cardDef.counter !== null && cardDef.counter > 0;
+    });
+  }
+
+  // Get counter value for a specific card
+  public getCardCounterValue(cardId: string): number {
+    const card = this.findCard(cardId);
+    if (!card) return 0;
+
+    const cardDef = this.effectEngine.getCardDefinition(card.cardId);
+    return cardDef?.counter || 0;
+  }
+
   public resolveCombat(): void {
     if (!this.state.currentCombat) return;
 
@@ -658,24 +771,49 @@ export class GameStateManager {
     switch (action.type) {
       case ActionType.PLAY_CARD:
         return this.playCard(action.playerId, action.data.cardId, action.data.zone);
-      
+
       case ActionType.ATTACH_DON:
         return this.attachDon(action.playerId, action.data.donId, action.data.targetId);
-      
+
       case ActionType.DECLARE_ATTACK:
         return this.declareAttack(action.data.attackerId, action.data.targetId, action.data.targetType);
-      
+
+      case ActionType.USE_COUNTER:
+        return this.useCounter(action.playerId, action.data.cardIds || []);
+
+      case ActionType.PASS_COUNTER:
+        return this.passCounter(action.playerId);
+
       case ActionType.SELECT_BLOCKER:
         return this.declareBlocker(action.data.blockerId);
-      
+
+      case ActionType.PASS_PRIORITY:
+        // Handle pass blocker during blocker step
+        if (this.state.phase === GamePhase.BLOCKER_STEP) {
+          return this.passBlocker(action.playerId);
+        }
+        return false;
+
       case ActionType.RESOLVE_COMBAT:
         this.resolveCombat();
         return true;
-      
+
       case ActionType.END_TURN:
         this.endTurn(action.playerId);
         return true;
-      
+
+      case ActionType.TRIGGER_LIFE:
+        // Handle trigger effect activation
+        if (action.data.effectId) {
+          const changes = this.resolveEffect(action.data.effectId, action.data.targets);
+          return changes.length > 0;
+        }
+        // Pass on trigger - continue to next phase
+        if (this.state.phase === GamePhase.TRIGGER_STEP) {
+          this.state.phase = GamePhase.MAIN_PHASE;
+        }
+        return true;
+
       default:
         return false;
     }

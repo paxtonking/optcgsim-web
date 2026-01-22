@@ -90,6 +90,48 @@ export class GameController {
         data: {}
       });
     });
+
+    // Counter step events
+    this.gameScene.events.on('useCounter', (data: { cardIds: string[] }) => {
+      this.sendAction({
+        id: this.generateActionId(),
+        type: ActionType.USE_COUNTER,
+        playerId: this.playerId!,
+        timestamp: Date.now(),
+        data: { cardIds: data.cardIds }
+      });
+    });
+
+    this.gameScene.events.on('passCounter', () => {
+      this.sendAction({
+        id: this.generateActionId(),
+        type: ActionType.PASS_COUNTER,
+        playerId: this.playerId!,
+        timestamp: Date.now(),
+        data: {}
+      });
+    });
+
+    // Trigger step events
+    this.gameScene.events.on('activateTrigger', (data: { cardId: string }) => {
+      this.sendAction({
+        id: this.generateActionId(),
+        type: ActionType.TRIGGER_LIFE,
+        playerId: this.playerId!,
+        timestamp: Date.now(),
+        data: { cardId: data.cardId, activate: true }
+      });
+    });
+
+    this.gameScene.events.on('passTrigger', () => {
+      this.sendAction({
+        id: this.generateActionId(),
+        type: ActionType.TRIGGER_LIFE,
+        playerId: this.playerId!,
+        timestamp: Date.now(),
+        data: { activate: false }
+      });
+    });
   }
 
   private setupSocketListeners() {
