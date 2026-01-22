@@ -1,6 +1,7 @@
 import express from 'express';
 import { prisma } from '../services/prisma.js';
 import { authenticate } from '../middleware/auth.js';
+import { getPresenceManager } from '../websocket/index.js';
 
 // Note: After adding the Friendship model to schema.prisma, run:
 // npx prisma migrate dev --name add_friendships
@@ -55,7 +56,10 @@ router.get('/', async (req, res) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    // Map to a clean friend list
+    // Get presence manager for online status
+    const presenceManager = getPresenceManager();
+
+    // Map to a clean friend list with online status
     const friends = friendships.map((f) => {
       const friend = f.senderId === userId ? f.receiver! : f.sender!;
       return {
@@ -64,6 +68,7 @@ router.get('/', async (req, res) => {
         username: friend.username,
         eloRating: friend.eloRating,
         since: f.createdAt,
+        isOnline: presenceManager?.isOnline(friend.id) ?? false,
       };
     });
 

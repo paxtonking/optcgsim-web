@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useDeckStore } from '../stores/deckStore';
+import { useCardStore } from '../stores/cardStore';
 import { CardDisplay } from './CardDisplay';
 import { COLOR_HEX, type CardColor } from '../types/card';
 
@@ -18,12 +19,18 @@ export function DeckPanel() {
     getDeckCardCount,
     isValidDeck,
     exportDeck,
+    importDeckWithCards,
   } = useDeckStore();
+
+  const { cards } = useCardStore();
 
   const [newDeckName, setNewDeckName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importError, setImportError] = useState<string | null>(null);
 
   const validation = isValidDeck();
   const cardCount = getDeckCardCount();
@@ -47,6 +54,43 @@ export function DeckPanel() {
     const data = exportDeck();
     navigator.clipboard.writeText(data);
     alert('Deck copied to clipboard!');
+  };
+
+  const handleImport = () => {
+    if (!importText.trim()) {
+      setImportError('Please paste a deck list');
+      return;
+    }
+
+    // Create a card lookup function
+    const cardMap = new Map(cards.map(c => [c.id, c]));
+    const cardLookup = (id: string) => cardMap.get(id);
+
+    const result = importDeckWithCards(importText, cardLookup);
+
+    if (result.success) {
+      setShowImportModal(false);
+      setImportText('');
+      setImportError(null);
+      if (result.error) {
+        // Show warning (some cards not found)
+        alert(`Deck imported${result.error}`);
+      } else {
+        alert('Deck imported successfully!');
+      }
+    } else {
+      setImportError(result.error || 'Failed to import deck');
+    }
+  };
+
+  const handlePasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      setImportText(text);
+      setImportError(null);
+    } catch {
+      setImportError('Failed to read from clipboard. Please paste manually.');
+    }
   };
 
   // Deck selection view
@@ -118,12 +162,73 @@ export function DeckPanel() {
             </button>
           </div>
         ) : (
-          <button
-            onClick={() => setIsCreating(true)}
-            className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded font-medium"
-          >
-            + Create New Deck
-          </button>
+          <div className="space-y-2">
+            <button
+              onClick={() => setIsCreating(true)}
+              className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded font-medium"
+            >
+              + Create New Deck
+            </button>
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="w-full bg-gray-700 hover:bg-gray-600 text-white py-2 rounded font-medium text-sm"
+            >
+              Import Deck
+            </button>
+          </div>
+        )}
+
+        {/* Import Modal */}
+        {showImportModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-gray-800 rounded-lg p-6 max-w-lg w-full mx-4">
+              <h3 className="text-xl font-bold text-white mb-4">Import Deck</h3>
+              <p className="text-gray-400 text-sm mb-4">
+                Paste a deck list below. Supports both text format and JSON.
+              </p>
+
+              <button
+                onClick={handlePasteFromClipboard}
+                className="w-full bg-gray-700 hover:bg-gray-600 text-white py-2 rounded mb-4"
+              >
+                Paste from Clipboard
+              </button>
+
+              <textarea
+                value={importText}
+                onChange={(e) => {
+                  setImportText(e.target.value);
+                  setImportError(null);
+                }}
+                placeholder={`// Deck Name\n\n// Leader\n1 ST01-001 // Monkey D. Luffy\n\n// Main Deck\n4 ST01-004 // Usopp\n4 ST01-005 // Karoo\n...`}
+                className="w-full h-48 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
+              />
+
+              {importError && (
+                <p className="text-red-400 text-sm mt-2">{importError}</p>
+              )}
+
+              <div className="flex gap-2 mt-4">
+                <button
+                  onClick={handleImport}
+                  disabled={!importText.trim()}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded font-medium disabled:opacity-50"
+                >
+                  Import
+                </button>
+                <button
+                  onClick={() => {
+                    setShowImportModal(false);
+                    setImportText('');
+                    setImportError(null);
+                  }}
+                  className="flex-1 bg-gray-600 hover:bg-gray-500 text-white py-2 rounded font-medium"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     );

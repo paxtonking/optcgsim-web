@@ -27,6 +27,8 @@ export type {
 
 // Re-export all constants
 export * from './constants/index.js';
+export * from './constants/emotes.js';
+export * from './constants/profile.js';
 
 // Re-export new game types and classes (these override the old ones)
 export * from './types/game.js';

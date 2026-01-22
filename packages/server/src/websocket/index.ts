@@ -6,6 +6,8 @@ import { LobbyManager } from './LobbyManager.js';
 import { GameManager } from './GameManager.js';
 import { QueueManager } from './QueueManager.js';
 import { AIGameManager } from './AIGameManager.js';
+import { PresenceManager } from './PresenceManager.js';
+import { LobbyChatManager } from './LobbyChatManager.js';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -13,11 +15,23 @@ interface AuthenticatedSocket extends Socket {
   isGuest?: boolean;
 }
 
+// Export presence manager for use in other modules
+let presenceManagerInstance: PresenceManager | null = null;
+
+export function getPresenceManager(): PresenceManager | null {
+  return presenceManagerInstance;
+}
+
 export function setupWebSocket(io: SocketServer) {
   const lobbyManager = new LobbyManager(io);
   const gameManager = new GameManager(io);
   const queueManager = new QueueManager(io, gameManager);
   const aiGameManager = new AIGameManager(io);
+  const presenceManager = new PresenceManager(io);
+  const lobbyChatManager = new LobbyChatManager(io);
+
+  // Store instance for external access
+  presenceManagerInstance = presenceManager;
 
   // Authentication middleware
   io.use(async (socket: AuthenticatedSocket, next) => {
@@ -67,7 +81,31 @@ export function setupWebSocket(io: SocketServer) {
     // Register socket for challenge notifications
     if (socket.userId) {
       lobbyManager.registerUserSocket(socket.userId, socket.id);
+      presenceManager.userConnected(socket);
     }
+
+    // Handle presence request (get online friends)
+    socket.on('presence:getOnlineFriends', async (callback) => {
+      if (socket.userId) {
+        const onlineFriends = await presenceManager.getOnlineFriends(socket.userId);
+        callback?.({ success: true, onlineFriends });
+      } else {
+        callback?.({ success: false, error: 'Not authenticated' });
+      }
+    });
+
+    // Lobby chat events
+    socket.on(WS_EVENTS.LOBBY_CHAT_SEND, (message: string) => {
+      lobbyChatManager.handleMessage(socket, message);
+    });
+
+    socket.on('lobby:chat:join', () => {
+      lobbyChatManager.joinLobbyChat(socket);
+    });
+
+    socket.on('lobby:chat:leave', () => {
+      lobbyChatManager.leaveLobbyChat(socket);
+    });
 
     // Lobby events
     socket.on(WS_EVENTS.LOBBY_CREATE, (settings, callback) => {
@@ -199,6 +237,7 @@ export function setupWebSocket(io: SocketServer) {
       console.log(`User disconnected: ${socket.username}`);
       if (socket.userId) {
         lobbyManager.unregisterUserSocket(socket.userId);
+        presenceManager.userDisconnected(socket);
       }
       lobbyManager.handleDisconnect(socket);
       queueManager.leaveQueue(socket);

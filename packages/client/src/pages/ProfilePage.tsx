@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useDeckStore } from '../stores/deckStore';
 import { CardDisplay } from '../components/CardDisplay';
+import { ProfileCustomization, AvatarDisplay } from '../components/ProfileCustomization';
 
 function getRankInfo(elo: number) {
   if (elo >= 1800) return { name: 'Master', color: '#FFD700', icon: '♔' };
@@ -48,10 +50,12 @@ export default function ProfilePage() {
     );
   }
 
+  const [avatarId, setAvatarId] = useState(user.avatarId || 'default');
   const rankInfo = getRankInfo(user.eloRating || 1000);
   const gamesPlayed = user.gamesPlayed || 0;
   const gamesWon = user.gamesWon || 0;
   const winRate = gamesPlayed > 0 ? ((gamesWon / gamesPlayed) * 100).toFixed(1) : '0.0';
+  const badges = user.badges || [];
 
 
   const handleLogout = async () => {
@@ -66,9 +70,7 @@ export default function ProfilePage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-6">
             {/* Avatar */}
-            <div className="w-24 h-24 rounded-full bg-gray-700 flex items-center justify-center text-4xl">
-              {user.username.charAt(0).toUpperCase()}
-            </div>
+            <AvatarDisplay avatarId={avatarId} size="lg" className="w-24 h-24 text-4xl" />
 
             <div>
               <h1 className="text-3xl font-bold text-white">{user.username}</h1>
@@ -274,6 +276,17 @@ export default function ProfilePage() {
           })()}
         </div>
       </div>
+
+      {/* Profile Customization - Only for own profile */}
+      {isOwnProfile && (
+        <div className="mt-6">
+          <ProfileCustomization
+            currentAvatarId={avatarId}
+            currentBadges={badges}
+            onAvatarChange={setAvatarId}
+          />
+        </div>
+      )}
     </div>
   );
 }

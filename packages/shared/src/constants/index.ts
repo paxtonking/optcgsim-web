@@ -143,6 +143,11 @@ export const WS_EVENTS = {
   CHAT_MESSAGE: 'chat:message',
   CHAT_RECEIVE: 'chat:receive',
   CHAT_SYSTEM: 'chat:system',
+
+  // Lobby Chat
+  LOBBY_CHAT_SEND: 'lobby:chat:send',
+  LOBBY_CHAT_MESSAGE: 'lobby:chat:message',
+  LOBBY_CHAT_HISTORY: 'lobby:chat:history',
 } as const;
 
 // Validation

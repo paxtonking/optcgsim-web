@@ -19,6 +19,8 @@ model User {
   gamesPlayed   Int       @default(0)
   gamesWon      Int       @default(0)
   isAdmin       Boolean   @default(false)
+  avatarId      String    @default("default")
+  badges        String[]  @default([])
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

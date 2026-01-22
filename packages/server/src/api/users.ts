@@ -8,6 +8,7 @@ export const usersRouter = Router();
 
 const updateProfileSchema = z.object({
   username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_-]+$/).optional(),
+  avatarId: z.string().min(1).max(50).optional(),
 });
 
 // Get current user
@@ -22,6 +23,8 @@ usersRouter.get('/me', authenticate, async (req, res, next) => {
         eloRating: true,
         gamesPlayed: true,
         gamesWon: true,
+        avatarId: true,
+        badges: true,
         createdAt: true,
       },
     });
@@ -60,6 +63,8 @@ usersRouter.patch('/me', authenticate, async (req, res, next) => {
         eloRating: true,
         gamesPlayed: true,
         gamesWon: true,
+        avatarId: true,
+        badges: true,
       },
     });
 
@@ -83,6 +88,8 @@ usersRouter.get('/:id', async (req, res, next) => {
         eloRating: true,
         gamesPlayed: true,
         gamesWon: true,
+        avatarId: true,
+        badges: true,
         createdAt: true,
       },
     });

@@ -52,24 +52,32 @@ packages/
 | `shared/src/game/GameStateManager.ts` | Core game logic - turns, combat, zones |
 | `shared/src/effects/EffectEngine.ts` | Effect resolution with 80+ triggers |
 | `shared/src/effects/cardDefinitions.ts` | Card effect definitions (85+ cards) |
+| `shared/src/constants/emotes.ts` | Quick messages and character emotes |
+| `shared/src/constants/profile.ts` | Avatar and badge definitions |
 | `client/src/game/GameScene.ts` | Phaser.js board rendering |
+| `client/src/components/FriendsPanel.tsx` | Friends list, requests, challenges |
+| `client/src/components/ChatPanel.tsx` | In-game chat with emotes |
+| `client/src/components/LobbyChatPanel.tsx` | Global lobby chat |
+| `client/src/components/ProfileCustomization.tsx` | Avatar selection, badges display |
 | `server/src/services/AIService.ts` | AI decision making |
 | `server/src/websocket/AIGameManager.ts` | AI vs Human coordination |
+| `server/src/websocket/PresenceManager.ts` | Online status tracking |
+| `server/src/websocket/LobbyChatManager.ts` | Global lobby chat |
 
 ## Development Phases & Status
 
 ### Completed
 - **Phase 1**: Foundation (monorepo, TypeScript, Prisma, JWT auth)
-- **Phase 2**: Core Features (deck builder, lobby UI, user profiles)
+- **Phase 2**: Core Features (deck builder, lobby UI, user profiles, deck import/export)
 - **Phase 3**: Game Engine (GameStateManager, Phaser rendering, effects, multiplayer)
-- **Phase 4**: AI & Polish (AI opponent, Counter/Trigger UI, 45+ card definitions, sound effects)
+- **Phase 4**: Ranked & Competitive (ELO rating, leaderboards, AI opponent, spectator mode, match replays)
+- **Phase 5**: Social Features (friends system, challenges, online status, lobby chat, in-game chat, emotes, profile customization)
 
-### Not Started (Phases 5-7)
-- Ranked mode with ELO
-- Match replays
-- Friends system & chat
-- Tournament system
+### In Progress (Phases 6-7)
 - Admin dashboard
+- Card database browser
+- Tournament system
+- Custom game modes
 
 ## Running the Project
 ```bash
@@ -96,11 +104,19 @@ npm run dev
 
 ## Current Stats
 - 2,188 cards from 48 sets
-- 45+ card effect definitions (Starter Decks 01/02 + popular cards)
+- 85+ card effect definitions (Starter Decks 01-04 + popular cards)
 - 80+ effect triggers, 200+ effect types
+- ELO rating system with rank tiers (Bronze → Master)
+- Friends system with direct challenges
+- Online presence tracking
+- In-game and lobby chat with emotes
+- Profile customization (16 avatars, 14 badges)
+- Spectator mode for live games
+- Deck import/export (text and JSON formats)
+- AI opponent with 3 difficulty levels
 - Counter Step & Trigger Step UI implemented
 - Procedural sound effects for game actions
-- ~6,000+ lines of TypeScript
+- ~8,000+ lines of TypeScript
 - 0% test coverage (needs implementation)
 
 ## Coding Patterns

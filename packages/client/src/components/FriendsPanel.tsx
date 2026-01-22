@@ -31,6 +31,7 @@ export function FriendsPanel() {
     acceptChallenge,
     declineChallenge,
     setupChallengeListeners,
+    setupPresenceListeners,
   } = useFriendsStore();
 
   const { selectedDeckId } = useLobbyStore();
@@ -41,11 +42,15 @@ export function FriendsPanel() {
     loadRequests();
   }, [loadFriends, loadRequests]);
 
-  // Set up challenge listeners
+  // Set up challenge and presence listeners
   useEffect(() => {
-    const cleanup = setupChallengeListeners();
-    return cleanup;
-  }, [setupChallengeListeners]);
+    const cleanupChallenge = setupChallengeListeners();
+    const cleanupPresence = setupPresenceListeners();
+    return () => {
+      cleanupChallenge();
+      cleanupPresence();
+    };
+  }, [setupChallengeListeners, setupPresenceListeners]);
 
   // Handle search
   useEffect(() => {
@@ -198,9 +203,27 @@ export function FriendsPanel() {
                   key={friend.id}
                   className="flex items-center justify-between bg-gray-700 rounded p-3"
                 >
-                  <div>
-                    <p className="font-medium text-white">{friend.username}</p>
-                    <p className="text-xs text-gray-400">{friend.eloRating} ELO</p>
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                        {friend.username.charAt(0).toUpperCase()}
+                      </div>
+                      <div
+                        className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-gray-700 ${
+                          friend.isOnline ? 'bg-green-500' : 'bg-gray-500'
+                        }`}
+                        title={friend.isOnline ? 'Online' : 'Offline'}
+                      />
+                    </div>
+                    <div>
+                      <p className="font-medium text-white">{friend.username}</p>
+                      <p className="text-xs text-gray-400">
+                        {friend.eloRating} ELO
+                        <span className={`ml-2 ${friend.isOnline ? 'text-green-400' : 'text-gray-500'}`}>
+                          {friend.isOnline ? 'Online' : 'Offline'}
+                        </span>
+                      </p>
+                    </div>
                   </div>
                   <div className="flex gap-2">
                     <button

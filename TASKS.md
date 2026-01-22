@@ -1,7 +1,7 @@
 # OPTCGSim Web - Task Tracker
 
 > **Last Updated:** 2026-01-21
-> **Current Phase:** Phase 5 - Social & Community Features (Friends System Complete)
+> **Current Phase:** Phase 5 - Social & Community Features (Mostly Complete)
 
 ---
 
@@ -78,7 +78,7 @@
 - [x] Add deck validation (50 cards)
 - [x] Add color restriction validation
 - [x] Add 4-copy limit validation
-- [ ] Implement clipboard import/export
+- [x] Implement clipboard import/export ✅ NEW
 - [ ] Implement file import/export
 - [ ] Create public deck sharing
 
@@ -223,22 +223,22 @@
 - [x] Accept/reject/cancel friend requests ✅ NEW
 - [x] Enable direct challenges ✅ NEW
 - [x] FriendsPanel UI component ✅ NEW
-- [ ] Show online status
+- [x] Show online status ✅ NEW
 - [ ] Add private messaging
 
-### 5.2 Chat System ✅ **IN-GAME COMPLETE**
+### 5.2 Chat System ✅ **COMPLETE**
 - [x] Create in-game chat ✅ NEW
 - [x] Created `chatStore.ts` (Zustand) ✅ NEW
 - [x] Created `ChatPanel` component ✅ NEW
-- [ ] Create lobby chat
-- [ ] Add emotes/quick messages
+- [x] Create lobby chat ✅ NEW
+- [x] Add emotes/quick messages ✅ NEW
 - [ ] Add moderation tools (mute, report)
 
-### 5.3 Profile & Customization
-- [ ] Create unlockable avatars
+### 5.3 Profile & Customization ✅ **BASIC COMPLETE**
+- [x] Create avatar selection ✅ NEW
 - [ ] Add card sleeves
 - [ ] Add playmats
-- [ ] Create profile badges/achievements
+- [x] Create profile badges/achievements ✅ NEW
 
 ### 5.4 Battle Pass (Optional)
 - [ ] Design free tier rewards
@@ -304,6 +304,38 @@
 ---
 
 ## Changelog
+
+### 2026-01-21 (Session 2) - **Phase 5: Social Features & Polish**
+- ✅ **Online Status for Friends**
+  - Created `PresenceManager` on server for tracking online users
+  - Real-time presence updates via WebSocket (`presence:update` events)
+  - Online friends list with green/gray status indicators
+  - Friends list shows online/offline status in FriendsPanel
+- ✅ **Lobby Chat System**
+  - Created `LobbyChatManager` on server
+  - Created `lobbyChatStore.ts` for lobby chat state
+  - Created `LobbyChatPanel` component with collapsible UI
+  - Message history (last 50 messages) sent on join
+  - Integrated into LobbyPage
+- ✅ **Chat Emotes & Quick Messages**
+  - Created `emotes.ts` with quick messages and character emotes
+  - Updated `ChatPanel` with emote picker UI
+  - Updated `LobbyChatPanel` with emote picker UI
+  - 8 quick messages (GG, GL, Nice, etc.)
+  - 8 character emotes inspired by One Piece
+- ✅ **Profile Customization**
+  - Added `avatarId` and `badges` fields to User model
+  - Created `profile.ts` with 16 avatar options and 14 badges
+  - Created `ProfileCustomization` component with tabs
+  - Created `AvatarDisplay` component for reuse
+  - Updated Profile page with avatar selection and badge display
+  - Badges include progression, rank, and special achievements
+- ✅ **Deck Import/Export**
+  - Enhanced `exportDeck` with human-readable text format
+  - Created `importDeckWithCards` for full card resolution
+  - Added import modal with clipboard paste support
+  - Supports both text format and JSON import
+- 📋 Next: Moderation tools, private messaging, admin dashboard
 
 ### 2026-01-21 - **Phase 4 & 5: Spectator, Friends & Chat**
 - ✅ **Spectator Mode Complete**

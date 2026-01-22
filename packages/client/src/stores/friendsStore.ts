@@ -75,6 +75,8 @@ interface FriendsState {
 
   // Socket setup
   setupChallengeListeners: () => () => void;
+  setupPresenceListeners: () => () => void;
+  updateFriendOnlineStatus: (userId: string, isOnline: boolean) => void;
 }
 
 export const useFriendsStore = create<FriendsState>((set, get) => ({
@@ -233,5 +235,37 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       socket.off(WS_EVENTS.CHALLENGE_RECEIVED, handleChallengeReceived);
       socket.off(WS_EVENTS.CHALLENGE_CANCELLED, handleChallengeCancelled);
     };
+  },
+
+  setupPresenceListeners: () => {
+    const socket = connectSocket();
+
+    const handlePresenceUpdate = (data: { userId: string; isOnline: boolean }) => {
+      get().updateFriendOnlineStatus(data.userId, data.isOnline);
+    };
+
+    socket.on('presence:update', handlePresenceUpdate);
+
+    // Request initial online friends list
+    socket.emit('presence:getOnlineFriends', (response: { success: boolean; onlineFriends?: string[] }) => {
+      if (response.success && response.onlineFriends) {
+        for (const userId of response.onlineFriends) {
+          get().updateFriendOnlineStatus(userId, true);
+        }
+      }
+    });
+
+    // Return cleanup function
+    return () => {
+      socket.off('presence:update', handlePresenceUpdate);
+    };
+  },
+
+  updateFriendOnlineStatus: (userId: string, isOnline: boolean) => {
+    set((state) => ({
+      friends: state.friends.map((friend) =>
+        friend.friendId === userId ? { ...friend, isOnline } : friend
+      ),
+    }));
   },
 }));

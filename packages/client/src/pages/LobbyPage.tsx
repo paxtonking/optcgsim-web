@@ -7,6 +7,7 @@ import { useLobbyStore, type AIDifficulty } from '../stores/lobbyStore';
 import { CardDisplay } from '../components/CardDisplay';
 import { LiveGamesPanel } from '../components/LiveGamesPanel';
 import { FriendsPanel } from '../components/FriendsPanel';
+import { LobbyChatPanel } from '../components/LobbyChatPanel';
 
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -489,6 +490,9 @@ export default function LobbyPage() {
 
           {/* Friends Panel - Hidden for guests */}
           {!isGuest && <FriendsPanel />}
+
+          {/* Lobby Chat */}
+          <LobbyChatPanel />
 
           {/* Selected deck info */}
           {!selectedDeckId && validDecks.length > 0 && (

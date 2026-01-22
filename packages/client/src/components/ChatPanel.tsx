@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useChatStore } from '../stores/chatStore';
 import { useAuthStore } from '../stores/authStore';
+import { QUICK_MESSAGES, CHARACTER_EMOTES } from '@optcgsim/shared';
 
 interface ChatPanelProps {
   className?: string;
@@ -8,7 +9,9 @@ interface ChatPanelProps {
 
 export function ChatPanel({ className = '' }: ChatPanelProps) {
   const [inputValue, setInputValue] = useState('');
+  const [showEmotes, setShowEmotes] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const emotePickerRef = useRef<HTMLDivElement>(null);
   const { user } = useAuthStore();
   const {
     messages,
@@ -16,6 +19,27 @@ export function ChatPanel({ className = '' }: ChatPanelProps) {
     clearMessages,
     setupChatListeners,
   } = useChatStore();
+
+  // Close emote picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (emotePickerRef.current && !emotePickerRef.current.contains(e.target as Node)) {
+        setShowEmotes(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleQuickMessage = (message: string) => {
+    sendMessage(message);
+    setShowEmotes(false);
+  };
+
+  const handleEmoji = (emoji: string) => {
+    setInputValue(prev => prev + emoji);
+    setShowEmotes(false);
+  };
 
   // Setup chat listeners
   useEffect(() => {
@@ -99,9 +123,61 @@ export function ChatPanel({ className = '' }: ChatPanelProps) {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Emote picker */}
+      {showEmotes && (
+        <div
+          ref={emotePickerRef}
+          className="border-t border-gray-700 bg-gray-800 p-3 max-h-48 overflow-y-auto"
+        >
+          <div className="mb-3">
+            <p className="text-xs text-gray-400 mb-2">Quick Messages</p>
+            <div className="flex flex-wrap gap-1">
+              {QUICK_MESSAGES.map((qm) => (
+                <button
+                  key={qm.id}
+                  onClick={() => handleQuickMessage(qm.message)}
+                  className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-white transition-colors"
+                >
+                  {qm.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 mb-2">Emojis</p>
+            <div className="flex flex-wrap gap-1">
+              {CHARACTER_EMOTES.map((emote) => (
+                <button
+                  key={emote.id}
+                  onClick={() => handleEmoji(emote.emoji)}
+                  className="w-8 h-8 flex items-center justify-center bg-gray-700 hover:bg-gray-600 rounded text-lg transition-colors"
+                  title={emote.label}
+                >
+                  {emote.emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Input form */}
       <form onSubmit={handleSubmit} className="p-3 border-t border-gray-700">
         <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setShowEmotes(!showEmotes)}
+            className={`px-3 py-2 rounded transition-colors ${
+              showEmotes
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+            }`}
+            title="Emotes"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </button>
           <input
             type="text"
             value={inputValue}

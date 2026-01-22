@@ -69,7 +69,9 @@ interface DeckStore {
 
   // Import/Export
   exportDeck: () => string;
-  importDeck: (data: string) => boolean;
+  exportDeckJson: () => string;
+  importDeck: (data: string) => { success: boolean; error?: string };
+  importDeckWithCards: (data: string, cardLookup: (id: string) => Card | undefined) => { success: boolean; error?: string; deckId?: string };
 
   // Guest starter decks
   initializeStarterDecks: (cards: Card[]) => void;
@@ -370,29 +372,165 @@ export const useDeckStore = create<DeckStore>()(
         const deck = get().currentDeck;
         if (!deck) return '';
 
+        // Create a human-readable format
+        const lines: string[] = [];
+        lines.push(`// ${deck.name}`);
+        lines.push(`// Exported from OPTCGSim Web`);
+        lines.push('');
+
+        if (deck.leader) {
+          lines.push(`// Leader`);
+          lines.push(`1 ${deck.leader.id} // ${deck.leader.name}`);
+          lines.push('');
+        }
+
+        lines.push(`// Main Deck (${deck.cards.reduce((s, c) => s + c.count, 0)} cards)`);
+        // Sort by cost then by ID
+        const sortedCards = [...deck.cards].sort((a, b) => {
+          const costDiff = (a.card.cost ?? 0) - (b.card.cost ?? 0);
+          if (costDiff !== 0) return costDiff;
+          return a.card.id.localeCompare(b.card.id);
+        });
+
+        for (const { card, count } of sortedCards) {
+          lines.push(`${count} ${card.id} // ${card.name}`);
+        }
+
+        return lines.join('\n');
+      },
+
+      // Export as JSON for programmatic use
+      exportDeckJson: () => {
+        const deck = get().currentDeck;
+        if (!deck) return '';
+
         const exportData = {
           name: deck.name,
           leaderId: deck.leader?.id,
           cards: deck.cards.map(dc => ({ id: dc.card.id, count: dc.count })),
         };
 
-        return JSON.stringify(exportData);
+        return JSON.stringify(exportData, null, 2);
       },
 
-      importDeck: (data: string) => {
+      importDeck: (_data: string) => {
+        // This function just parses the deck, the actual card resolution
+        // must be done by the component using card data
+        return { success: false, error: 'Use importDeckWithCards instead' };
+      },
+
+      importDeckWithCards: (data: string, cardLookup: (id: string) => Card | undefined) => {
         try {
-          const imported = JSON.parse(data);
-          // Validate structure
-          if (!imported.name || !Array.isArray(imported.cards)) {
-            return false;
+          let leaderId: string | undefined;
+          let deckName = 'Imported Deck';
+          const cardEntries: { id: string; count: number }[] = [];
+
+          // Try to parse as JSON first
+          try {
+            const json = JSON.parse(data);
+            if (json.name) deckName = json.name;
+            if (json.leaderId) leaderId = json.leaderId;
+            if (Array.isArray(json.cards)) {
+              for (const entry of json.cards) {
+                if (entry.id && typeof entry.count === 'number') {
+                  cardEntries.push({ id: entry.id, count: entry.count });
+                }
+              }
+            }
+          } catch {
+            // Not JSON, parse as text format
+            const lines = data.split('\n');
+            let isLeaderSection = false;
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+
+              // Skip empty lines
+              if (!trimmed) continue;
+
+              // Check for deck name in comments
+              if (trimmed.startsWith('// ') && !trimmed.includes('Leader') && !trimmed.includes('Deck') && !trimmed.includes('Exported')) {
+                deckName = trimmed.slice(3);
+                continue;
+              }
+
+              // Check for section markers
+              if (trimmed.toLowerCase().includes('leader')) {
+                isLeaderSection = true;
+                continue;
+              }
+              if (trimmed.toLowerCase().includes('main deck') || trimmed.toLowerCase().includes('cards')) {
+                isLeaderSection = false;
+                continue;
+              }
+
+              // Skip comment-only lines
+              if (trimmed.startsWith('//')) continue;
+
+              // Parse card entry: "count cardId" or "count cardId // name"
+              const match = trimmed.match(/^(\d+)\s+([A-Z0-9-]+)/i);
+              if (match) {
+                const count = parseInt(match[1], 10);
+                const cardId = match[2].toUpperCase();
+
+                if (isLeaderSection) {
+                  leaderId = cardId;
+                } else {
+                  cardEntries.push({ id: cardId, count });
+                }
+              }
+            }
           }
-          // Create deck with imported data
-          // Note: Card objects would need to be resolved from card store
-          // This is a simplified version
-          get().createDeck(imported.name);
-          return true;
-        } catch {
-          return false;
+
+          // Resolve cards
+          let leader: Card | undefined;
+          if (leaderId) {
+            leader = cardLookup(leaderId);
+            if (!leader) {
+              return { success: false, error: `Leader card not found: ${leaderId}` };
+            }
+          }
+
+          const deckCards: DeckCard[] = [];
+          const notFoundCards: string[] = [];
+
+          for (const entry of cardEntries) {
+            const card = cardLookup(entry.id);
+            if (card) {
+              deckCards.push({ card, count: Math.min(entry.count, MAX_CARD_COPIES) });
+            } else {
+              notFoundCards.push(entry.id);
+            }
+          }
+
+          if (notFoundCards.length > 0 && deckCards.length === 0) {
+            return { success: false, error: `No valid cards found. Missing: ${notFoundCards.slice(0, 5).join(', ')}${notFoundCards.length > 5 ? '...' : ''}` };
+          }
+
+          // Create the deck
+          const id = generateId();
+          const newDeck: Deck = {
+            id,
+            name: deckName,
+            leader: leader || null,
+            cards: deckCards,
+            isPublic: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+
+          set((state) => ({
+            decks: [...state.decks, newDeck],
+            currentDeck: newDeck,
+          }));
+
+          const warning = notFoundCards.length > 0
+            ? `. Warning: ${notFoundCards.length} cards not found`
+            : '';
+
+          return { success: true, deckId: id, error: warning || undefined };
+        } catch (error) {
+          return { success: false, error: 'Failed to parse deck data' };
         }
       },
 
