@@ -1067,10 +1067,18 @@ export class GameScene extends Phaser.Scene {
     const faceUp = gameObject.getData('faceUp');
     const zone = gameObject.getData('zone');
 
-    // Card is visible if: it's mine, OR it's face-up, OR it's on the field/leader zone
+    // Card visibility rules:
+    // - Life cards: NEVER visible (even to owner) unless explicitly faceUp
+    // - Hand cards: Only visible to owner
+    // - Field/Leader: Always visible
+    // - Other zones: Visible if faceUp
     const isMyCard = ownerId === this.playerId;
+    const isLifeCard = zone === CardZone.LIFE;
     const isOnField = zone === CardZone.FIELD || zone === CardZone.LEADER;
-    const isCardVisible = isMyCard || faceUp || isOnField;
+    const isInHand = zone === CardZone.HAND;
+
+    // Life cards are hidden from everyone until revealed
+    const isCardVisible = isLifeCard ? faceUp : (isMyCard || faceUp || isOnField || (isInHand && isMyCard));
 
     // Show hidden card preview for opponent's hidden cards
     if (!isCardVisible) {

@@ -97,7 +97,7 @@ packages/
 
 ### Game Rendering
 - **Dual-Domain Image Proxy**: Added `/api/images/cards/:filename` and `/api/images/official/:filename` endpoints to proxy card images from both optcgapi.com and onepiece-cardgame.com, bypassing CORS restrictions
-- **Card Visibility**: Fixed hover preview to hide opponent's hand cards (shows "Hidden Card" instead of revealing card details)
+- **Card Visibility**: Fixed hover preview to hide opponent's hand cards and life cards from both players (shows "Hidden Card" instead of revealing card details)
 - **Mulligan Phase Rendering**: Fixed duplicate card rendering during mulligan - cards now render only in mulligan panel, not behind it
 - **Mulligan Overlay Fix**: Made mulligan overlay interactive to block hover events on cards behind the panel
 - **Hand Rendering After Mulligan**: Fixed hand cards not appearing after clicking "Keep Hand" - now renders immediately without waiting for server phase change
