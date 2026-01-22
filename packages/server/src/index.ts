@@ -17,6 +17,7 @@ import { announcementsRouter } from './api/announcements.js';
 import { tournamentsRouter } from './api/tournaments.js';
 import { reportsRouter } from './api/reports.js';
 import { gameModesRouter } from './api/gameModes.js';
+import { imagesRouter } from './api/images.js';
 import { setupWebSocket } from './websocket/index.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
@@ -62,6 +63,7 @@ app.use('/api/announcements', announcementsRouter);
 app.use('/api/tournaments', tournamentsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/game-modes', gameModesRouter);
+app.use('/api/images', imagesRouter);
 
 // Error handling
 app.use(errorHandler);

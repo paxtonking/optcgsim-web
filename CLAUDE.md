@@ -79,6 +79,7 @@ packages/
 | `client/src/pages/admin/AdminSuspensions.tsx` | User suspension management |
 | `client/src/components/ReportUserModal.tsx` | User report submission UI |
 | `server/src/api/gameModes.ts` | Custom game modes API (series, draft, sealed) |
+| `server/src/api/images.ts` | Image proxy for card images (CORS bypass) |
 | `client/src/pages/GameModesPage.tsx` | Custom game modes UI |
 
 ## Development Phases & Status
@@ -95,6 +96,10 @@ packages/
 ## Recent Bug Fixes & Improvements
 
 ### Game Rendering
+- **Backend Image Proxy**: Added `/api/images/cards/:filename` endpoint to proxy card images from optcgapi.com, bypassing CORS restrictions
+- **Card Visibility**: Fixed hover preview to hide opponent's hand cards (shows "Hidden Card" instead of revealing card details)
+- **Mulligan Phase Rendering**: Fixed duplicate card rendering during mulligan - cards now render only in mulligan panel, not behind it
+- **Texture Loading Fix**: Fixed async texture loading so cards show actual images instead of card-backs after images load
 - **Card Placeholders**: When card images fail to load (CORS), colored placeholders display card type, power, and name
 - **Card Sizing**: Fixed oversized cards by using explicit `setDisplaySize()` instead of scale-based sizing
 - **Scene Timing**: Added `sceneReady` flag to defer state updates until Phaser scene is fully initialized

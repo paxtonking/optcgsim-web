@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GameState, GameCard, CardZone, CardState, PlayerState } from '@optcgsim/shared';
+import { GameState, GameCard, CardZone, CardState, PlayerState, GamePhase } from '@optcgsim/shared';
 
 // Card data structure from cards.json
 interface CardData {
@@ -158,7 +158,13 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Try to load the image
-    const imageUrl = cardData.imageUrl;
+    let imageUrl = cardData.imageUrl;
+
+    // Use backend proxy for optcgapi.com images to avoid CORS issues
+    if (imageUrl && imageUrl.includes('optcgapi.com/media/static/Card_Images/')) {
+      const filename = imageUrl.split('/').pop();
+      imageUrl = `/api/images/cards/${filename}`;
+    }
 
     if (!this.textures.exists(textureKey) && !this.loadedTextures.has(`loading-${textureKey}`)) {
       // Mark as loading to prevent duplicate requests
@@ -191,8 +197,8 @@ export class GameScene extends Phaser.Scene {
       this.load.start();
     }
 
-    // Return card-back while loading or if failed
-    return this.textures.exists(textureKey) ? textureKey : 'card-back';
+    // Return card-back while loading or if failed (use our tracking, not Phaser's async texture manager)
+    return this.loadedTextures.has(textureKey) ? textureKey : 'card-back';
   }
 
   create() {
@@ -765,9 +771,10 @@ export class GameScene extends Phaser.Scene {
       });
     }
     
-    // Render hand cards
+    // Render hand cards (skip during mulligan - handled by mulligan UI)
     const handZone = this.zones.get(`${prefix}-hand`);
-    if (handZone) {
+    const isMulliganPhase = this.gameState?.phase === GamePhase.START_MULLIGAN;
+    if (handZone && !isMulliganPhase) {
       const isMyHand = prefix === 'player';
       player.hand.forEach((card, index) => {
         const x = handZone.x + 50 + (index * 60);
@@ -844,7 +851,10 @@ export class GameScene extends Phaser.Scene {
       .setDisplaySize(displayWidth, displayHeight)
       .setInteractive({ useHandCursor: true })
       .setData('cardId', card.id)
-      .setData('cardDefId', card.cardId);
+      .setData('cardDefId', card.cardId)
+      .setData('ownerId', card.owner)
+      .setData('zone', card.zone)
+      .setData('faceUp', faceUp);
 
     // Make player hand cards draggable
     if (card.zone === CardZone.HAND && card.owner === this.playerId) {
@@ -994,6 +1004,22 @@ export class GameScene extends Phaser.Scene {
       this.hoverCard.destroy();
     }
 
+    // Check if card is visible to the player
+    const ownerId = gameObject.getData('ownerId');
+    const faceUp = gameObject.getData('faceUp');
+    const zone = gameObject.getData('zone');
+
+    // Card is visible if: it's mine, OR it's face-up, OR it's on the field/leader zone
+    const isMyCard = ownerId === this.playerId;
+    const isOnField = zone === CardZone.FIELD || zone === CardZone.LEADER;
+    const isCardVisible = isMyCard || faceUp || isOnField;
+
+    // Show hidden card preview for opponent's hidden cards
+    if (!isCardVisible) {
+      this.showHiddenCardPreview();
+      return;
+    }
+
     const { width, height } = this.scale;
     const cardDefId = gameObject.getData('cardDefId');
     const cardData = this.getCardData(cardDefId);
@@ -1078,6 +1104,34 @@ export class GameScene extends Phaser.Scene {
       this.hoverCard.destroy();
       this.hoverCard = undefined;
     }
+  }
+
+  /**
+   * Show a hidden card preview for opponent's hidden cards
+   */
+  private showHiddenCardPreview() {
+    const { width, height } = this.scale;
+
+    this.hoverCard = this.add.container(width - 150, height / 2);
+    this.hoverCard.setDepth(2000);
+
+    // Show card back image
+    const cardBack = this.add.image(0, -50, 'card-back')
+      .setDisplaySize(this.CARD_WIDTH * 2, this.CARD_HEIGHT * 2);
+    this.hoverCard.add(cardBack);
+
+    // Info panel
+    const panelBg = this.add.rectangle(0, 150, 200, 80, 0x1a1a1a, 0.95)
+      .setStrokeStyle(2, 0x666666);
+    this.hoverCard.add(panelBg);
+
+    // "Hidden Card" text
+    const hiddenText = this.add.text(0, 150, 'Hidden Card', {
+      fontSize: '16px',
+      color: '#888888',
+      align: 'center'
+    }).setOrigin(0.5);
+    this.hoverCard.add(hiddenText);
   }
 
   /**
@@ -1672,13 +1726,23 @@ export class GameScene extends Phaser.Scene {
       const cardData = this.cardDataMap.get(card.cardId);
 
       // Use card texture if loaded, otherwise card-back
+      const textureKey = `card-${card.cardId}`;
       let texture = 'card-back';
-      if (this.loadedTextures.has(card.cardId)) {
-        texture = card.cardId;
+      if (this.loadedTextures.has(textureKey)) {
+        texture = textureKey;
+      } else {
+        // Try to load the image if not already loaded
+        this.loadCardImage(card.cardId);
       }
 
       const cardSprite = this.add.image(x, cardY, texture)
-        .setDisplaySize(displayWidth, displayHeight);
+        .setDisplaySize(displayWidth, displayHeight)
+        .setInteractive({ useHandCursor: true })
+        .setData('cardId', card.id)
+        .setData('cardDefId', card.cardId)
+        .setData('ownerId', card.owner)
+        .setData('zone', card.zone)
+        .setData('faceUp', true);
       this.mulliganPanel!.add(cardSprite);
 
       // Show card name below
