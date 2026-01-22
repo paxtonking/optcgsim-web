@@ -77,8 +77,8 @@ export class GameScene extends Phaser.Scene {
     this.load.image('card-back', '/assets/cardbacks/CardBackRegular.png');
     this.load.image('don-back', '/assets/cardbacks/CardBackDon.png');
 
-    // Load playmat/background
-    this.load.image('playmat', '/assets/playmats/Red.png');
+    // Load playmat/background (used for both player and opponent sides)
+    this.load.image('playmat', '/assets/playmats/playmatt.jpg');
 
     // Load card data
     this.load.json('cardData', '/data/cards.json');
@@ -268,8 +268,27 @@ export class GameScene extends Phaser.Scene {
     // Initialize sound system
     this.initializeSounds();
 
-    // Add background
-    this.backgroundRect = this.add.rectangle(0, 0, width, height, 0x1a1a1a).setOrigin(0);
+    // Add dark background first
+    this.backgroundRect = this.add.rectangle(0, 0, width, height, 0x0a0a0a).setOrigin(0);
+
+    // Add playmat images like Dueling Nexus (one for each player's side)
+    const centerY = 290; // Center divider line
+    const playmatHeight = (height - 20) / 2; // Each playmat takes half the screen
+
+    // Opponent's playmat (top half, rotated 180°)
+    if (this.textures.exists('playmat')) {
+      const oppPlaymat = this.add.image(width / 2, centerY / 2 + 20, 'playmat');
+      oppPlaymat.setDisplaySize(width - 120, playmatHeight - 30);
+      oppPlaymat.setRotation(Math.PI); // Rotate 180 degrees
+      oppPlaymat.setAlpha(0.85);
+      oppPlaymat.setDepth(0);
+
+      // Player's playmat (bottom half)
+      const playerPlaymat = this.add.image(width / 2, centerY + playmatHeight / 2 + 10, 'playmat');
+      playerPlaymat.setDisplaySize(width - 120, playmatHeight - 30);
+      playerPlaymat.setAlpha(0.85);
+      playerPlaymat.setDepth(0);
+    }
 
     // Define zones
     this.setupZones(width, height);
