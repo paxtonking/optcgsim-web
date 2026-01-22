@@ -165,3 +165,29 @@ model Friendship {
   @@index([receiverId])
   @@index([status])
 }
+
+enum AnnouncementType {
+  INFO
+  UPDATE
+  EVENT
+  MAINTENANCE
+  ALERT
+}
+
+model Announcement {
+  id          String           @id @default(uuid())
+  title       String
+  content     String           @db.Text
+  type        AnnouncementType @default(INFO)
+  isPinned    Boolean          @default(false)
+  isActive    Boolean          @default(true)
+  publishedAt DateTime         @default(now())
+  expiresAt   DateTime?
+  authorId    String
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([isActive])
+  @@index([publishedAt])
+  @@index([isPinned])
+}

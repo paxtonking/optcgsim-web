@@ -187,6 +187,7 @@ export interface User {
   badges?: string[];
   createdAt?: Date;
   isGuest?: boolean;
+  isAdmin?: boolean;
 }
 
 export interface UserProfile extends User {

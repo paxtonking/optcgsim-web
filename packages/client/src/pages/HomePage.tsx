@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import AnnouncementsBanner from '../components/AnnouncementsBanner';
 
 export default function HomePage() {
   const { isAuthenticated } = useAuthStore();
@@ -34,6 +35,9 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Announcements */}
+      <AnnouncementsBanner />
 
       {/* Features Grid */}
       <section className="py-16 bg-surface/50">

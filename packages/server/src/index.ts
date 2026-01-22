@@ -12,6 +12,8 @@ import { cardsRouter } from './api/cards.js';
 import { matchesRouter } from './api/matches.js';
 import { leaderboardRouter } from './api/leaderboard.js';
 import friendsRouter from './api/friends.js';
+import { adminRouter } from './api/admin.js';
+import { announcementsRouter } from './api/announcements.js';
 import { setupWebSocket } from './websocket/index.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
@@ -52,6 +54,8 @@ app.use('/api/cards', cardsRouter);
 app.use('/api/matches', matchesRouter);
 app.use('/api/leaderboard', leaderboardRouter);
 app.use('/api/friends', friendsRouter);
+app.use('/api/admin', adminRouter);
+app.use('/api/announcements', announcementsRouter);
 
 // Error handling
 app.use(errorHandler);

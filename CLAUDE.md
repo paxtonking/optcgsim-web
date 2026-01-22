@@ -63,6 +63,12 @@ packages/
 | `server/src/websocket/AIGameManager.ts` | AI vs Human coordination |
 | `server/src/websocket/PresenceManager.ts` | Online status tracking |
 | `server/src/websocket/LobbyChatManager.ts` | Global lobby chat |
+| `server/src/api/admin.ts` | Admin API endpoints |
+| `server/src/api/announcements.ts` | Public announcements API |
+| `client/src/pages/admin/*` | Admin dashboard pages |
+| `client/src/pages/CardsPage.tsx` | Public card database browser |
+| `client/src/pages/DecksPage.tsx` | Public deck browser |
+| `client/src/components/AnnouncementsBanner.tsx` | Homepage announcements display |
 
 ## Development Phases & Status
 
@@ -72,12 +78,12 @@ packages/
 - **Phase 3**: Game Engine (GameStateManager, Phaser rendering, effects, multiplayer)
 - **Phase 4**: Ranked & Competitive (ELO rating, leaderboards, AI opponent, spectator mode, match replays)
 - **Phase 5**: Social Features (friends system, challenges, online status, lobby chat, in-game chat, emotes, profile customization)
+- **Phase 6**: Content & Admin Tools (admin dashboard, user management, card database browser, public deck browser, announcements system, analytics dashboard)
 
-### In Progress (Phases 6-7)
-- Admin dashboard
-- Card database browser
+### In Progress (Phase 7)
 - Tournament system
 - Custom game modes
+- Advanced reporting
 
 ## Running the Project
 ```bash
@@ -116,7 +122,11 @@ npm run dev
 - AI opponent with 3 difficulty levels
 - Counter Step & Trigger Step UI implemented
 - Procedural sound effects for game actions
-- ~8,000+ lines of TypeScript
+- Admin dashboard with user management and analytics
+- Public card database browser with filters
+- Public deck browser with search and filters
+- Announcements system with types (Info, Update, Event, Maintenance, Alert)
+- ~10,000+ lines of TypeScript
 - 0% test coverage (needs implementation)
 
 ## Coding Patterns

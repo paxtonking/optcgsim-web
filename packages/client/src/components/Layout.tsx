@@ -43,6 +43,12 @@ export default function Layout() {
                   Cards
                 </Link>
                 <Link
+                  to="/browse/decks"
+                  className="text-gray-300 hover:text-white transition-colors"
+                >
+                  Browse Decks
+                </Link>
+                <Link
                   to="/leaderboard"
                   className="text-gray-300 hover:text-white transition-colors"
                 >
@@ -55,6 +61,14 @@ export default function Layout() {
             <div className="flex items-center gap-4">
               {isAuthenticated ? (
                 <>
+                  {user?.isAdmin && (
+                    <Link
+                      to="/admin"
+                      className="text-yellow-400 hover:text-yellow-300 transition-colors text-sm"
+                    >
+                      Admin
+                    </Link>
+                  )}
                   <Link
                     to="/profile"
                     className="text-gray-300 hover:text-white transition-colors"

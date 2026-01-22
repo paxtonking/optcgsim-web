@@ -92,16 +92,32 @@ decksRouter.get('/public', optionalAuth, async (req, res, next) => {
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
     const offset = parseInt(req.query.offset as string) || 0;
     const leaderId = req.query.leaderId as string | undefined;
+    const search = req.query.search as string | undefined;
+    const sortBy = (req.query.sortBy as string) || 'updatedAt';
+    const sortOrder = (req.query.sortOrder as 'asc' | 'desc') || 'desc';
 
     const where: any = { isPublic: true };
     if (leaderId) {
       where.leaderId = leaderId;
     }
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { user: { username: { contains: search, mode: 'insensitive' } } },
+      ];
+    }
+
+    const orderBy: any = {};
+    if (sortBy === 'name' || sortBy === 'updatedAt' || sortBy === 'createdAt') {
+      orderBy[sortBy] = sortOrder;
+    } else {
+      orderBy.updatedAt = 'desc';
+    }
 
     const [decks, total] = await Promise.all([
       prisma.deck.findMany({
         where,
-        orderBy: { updatedAt: 'desc' },
+        orderBy,
         take: limit,
         skip: offset,
         include: {
@@ -113,7 +129,13 @@ decksRouter.get('/public', optionalAuth, async (req, res, next) => {
       prisma.deck.count({ where }),
     ]);
 
-    res.json({ decks, total, limit, offset });
+    // Get card count for each deck
+    const decksWithCount = decks.map((deck: any) => ({
+      ...deck,
+      cardCount: Array.isArray(deck.cards) ? deck.cards.reduce((sum: number, c: any) => sum + (c.count || 0), 0) : 0,
+    }));
+
+    res.json({ decks: decksWithCount, total, limit, offset });
   } catch (error) {
     next(error);
   }
