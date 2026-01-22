@@ -26,7 +26,7 @@ packages/
 ├── client/          # React + Phaser.js frontend
 │   ├── src/
 │   │   ├── components/   # UI components
-│   │   ├── game/         # GameScene.ts (828 lines), GameController.ts
+│   │   ├── game/         # GameScene.ts (1,763 lines), GameController.ts (376 lines)
 │   │   ├── pages/        # Lobby, DeckBuilder, Game, Profile, Auth
 │   │   ├── stores/       # Zustand stores
 │   │   └── services/     # API & Socket.IO clients
@@ -42,19 +42,20 @@ packages/
 └── shared/          # Shared types & game logic
     └── src/
         ├── effects/      # EffectEngine.ts (1,143 lines), cardDefinitions.ts
-        ├── game/         # GameStateManager.ts (682 lines)
+        ├── game/         # GameStateManager.ts (945 lines)
         └── types/        # GameState, CardZone, GamePhase interfaces
 ```
 
 ## Key Files
 | File | Purpose |
 |------|---------|
-| `shared/src/game/GameStateManager.ts` | Core game logic - turns, combat, zones |
+| `shared/src/game/GameStateManager.ts` | Core game logic - turns, combat, zones, mulligan |
 | `shared/src/effects/EffectEngine.ts` | Effect resolution with 80+ triggers |
 | `shared/src/effects/cardDefinitions.ts` | Card effect definitions (85+ cards) |
 | `shared/src/constants/emotes.ts` | Quick messages and character emotes |
 | `shared/src/constants/profile.ts` | Avatar and badge definitions |
-| `client/src/game/GameScene.ts` | Phaser.js board rendering |
+| `client/src/game/GameScene.ts` | Phaser.js board rendering, card placeholders |
+| `client/src/game/GameController.ts` | Game initialization, socket events, state management |
 | `client/src/components/FriendsPanel.tsx` | Friends list, requests, challenges |
 | `client/src/components/ChatPanel.tsx` | In-game chat with emotes |
 | `client/src/components/LobbyChatPanel.tsx` | Global lobby chat |
@@ -91,6 +92,28 @@ packages/
 - **Phase 6**: Content & Admin Tools (admin dashboard, user management, card database browser, public deck browser, announcements system, analytics dashboard)
 - **Phase 7**: Tournament & Advanced Features (tournament system, reporting/moderation, custom game modes)
 
+## Recent Bug Fixes & Improvements
+
+### Game Rendering
+- **Card Placeholders**: When card images fail to load (CORS), colored placeholders display card type, power, and name
+- **Card Sizing**: Fixed oversized cards by using explicit `setDisplaySize()` instead of scale-based sizing
+- **Scene Timing**: Added `sceneReady` flag to defer state updates until Phaser scene is fully initialized
+- **State Deduplication**: Signature-based comparison prevents redundant state updates
+
+### Socket & Networking
+- **Socket Listener Cleanup**: Moved socket listener setup from constructor to `initialize()` with deduplication flag
+- **Duplicate Instance Prevention**: Added guards to prevent multiple Phaser game instances
+
+### Game Logic
+- **Mulligan Phase**: Full mulligan system with UI - players can keep hand or mulligan once for a new hand
+- **AI Mulligan**: AI evaluates hand quality and decides to keep or mulligan (keeps if 2+ playable cards cost 2-4)
+- **First Turn Rules**: `beginFirstTurn()` handles DON phase and transitions to MAIN_PHASE
+- **Navigation Loop Fix**: Lobby state properly resets to prevent redirect loops after game end
+
+### Performance
+- **FPS Limiting**: Phaser configured to 30 FPS target to reduce CPU usage
+- **Leader Card Loading**: Fixed leader cards not appearing in hand on game start
+
 ## Running the Project
 ```bash
 # Install dependencies
@@ -123,7 +146,7 @@ npm run dev
 - Profile customization (16 avatars, 14 badges)
 - Spectator mode for live games
 - Deck import/export (text and JSON formats)
-- AI opponent with 3 difficulty levels
+- AI opponent with 3 difficulty levels (with mulligan decision logic)
 - Counter Step & Trigger Step UI implemented
 - Procedural sound effects for game actions
 - Admin dashboard with user management and analytics
@@ -133,7 +156,9 @@ npm run dev
 - Tournament system (Single/Double Elimination, Swiss, Round Robin formats)
 - User reporting and suspension system
 - Custom game modes (Best-of-3/5 series, Draft mode, Sealed mode)
-- ~14,000+ lines of TypeScript
+- Card placeholder system for CORS-blocked images
+- Mulligan UI with Keep Hand / Mulligan buttons
+- ~16,000+ lines of TypeScript
 - 0% test coverage (needs implementation)
 
 ## Coding Patterns

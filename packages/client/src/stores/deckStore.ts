@@ -1,44 +1,51 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Card, Deck, DeckCard } from '../types/card';
+import { api } from '../services/api';
+import { useCardStore } from './cardStore';
 
 const DECK_SIZE = 50;
 const MAX_CARD_COPIES = 4;
 
-// Starter Deck card IDs
+// Starter Deck card IDs (50 cards each, max 4 copies per card)
 const STARTER_DECKS = {
   'Starter Deck 01 - Straw Hat Crew (Red)': {
     leader: 'ST01-001', // Luffy
     cards: [
+      { id: 'ST01-002', count: 4 }, // Monkey.D.Luffy
+      { id: 'ST01-003', count: 4 }, // Roronoa Zoro
       { id: 'ST01-004', count: 4 }, // Usopp
       { id: 'ST01-005', count: 4 }, // Karoo
       { id: 'ST01-006', count: 4 }, // Sanji
       { id: 'ST01-007', count: 4 }, // Jinbe
       { id: 'ST01-008', count: 4 }, // Chopper
       { id: 'ST01-009', count: 4 }, // Nami
-      { id: 'ST01-010', count: 4 }, // Robin
+      { id: 'ST01-010', count: 4 }, // Nico Robin
       { id: 'ST01-011', count: 4 }, // Franky
-      { id: 'ST01-012', count: 4 }, // Sanji (Rush)
-      { id: 'ST01-013', count: 4 }, // Zoro (Blocker)
+      { id: 'ST01-012', count: 4 }, // Brook
       { id: 'ST01-014', count: 4 }, // Gum-Gum Jet Pistol
-      { id: 'ST01-015', count: 2 }, // Gum-Gum Pistol
+      { id: 'ST01-015', count: 2 }, // Guard Point
     ],
+    // Total: 12×4 + 1×2 = 48 + 2 = 50 cards
   },
   'Starter Deck 02 - Worst Generation (Green)': {
-    leader: 'ST02-001', // Kid
+    leader: 'ST02-001', // Eustass Kid
     cards: [
       { id: 'ST02-002', count: 4 }, // Killer
-      { id: 'ST02-003', count: 4 }, // Apoo
-      { id: 'ST02-004', count: 4 }, // Bonney
-      { id: 'ST02-005', count: 4 }, // Law
-      { id: 'ST02-006', count: 4 }, // Hawkins
+      { id: 'ST02-003', count: 4 }, // Scratchmen Apoo
+      { id: 'ST02-004', count: 4 }, // Jewelry Bonney
+      { id: 'ST02-005', count: 4 }, // Trafalgar Law
+      { id: 'ST02-006', count: 4 }, // Basil Hawkins
       { id: 'ST02-007', count: 4 }, // Heat
       { id: 'ST02-008', count: 4 }, // Bepo
-      { id: 'ST02-009', count: 4 }, // Bege
+      { id: 'ST02-009', count: 4 }, // Capone Bege
       { id: 'ST02-010', count: 4 }, // Urouge
       { id: 'ST02-011', count: 4 }, // X Drake
-      { id: 'ST02-013', count: 6 }, // Kid (Character)
+      { id: 'ST02-012', count: 4 }, // Wire
+      { id: 'ST02-013', count: 4 }, // Eustass Kid
+      { id: 'ST02-014', count: 2 }, // Punk Gibson
     ],
+    // Total: 12×4 + 1×2 = 48 + 2 = 50 cards
   },
 };
 
@@ -76,6 +83,11 @@ interface DeckStore {
   // Guest starter decks
   initializeStarterDecks: (cards: Card[]) => void;
   hasStarterDecks: () => boolean;
+
+  // Server sync
+  saveDeckToServer: (localDeckId: string) => Promise<string | null>;
+  syncDecksWithServer: () => Promise<void>;
+  getServerDeckId: (localDeckId: string) => string | null;
 }
 
 function generateId(): string {
@@ -575,6 +587,180 @@ export const useDeckStore = create<DeckStore>()(
             decks: [...state.decks, ...newDecks],
           }));
         }
+      },
+
+      // Save a single deck to the server
+      saveDeckToServer: async (localDeckId: string): Promise<string | null> => {
+        const deck = get().decks.find(d => d.id === localDeckId);
+        if (!deck) {
+          console.error('[DeckStore] Deck not found:', localDeckId);
+          return null;
+        }
+
+        // Already synced
+        if (deck.serverId) {
+          return deck.serverId;
+        }
+
+        // Validate deck has required data
+        if (!deck.leader) {
+          console.error('[DeckStore] Cannot sync deck without leader:', deck.name);
+          return null;
+        }
+
+        const cardCount = deck.cards.reduce((sum, dc) => sum + dc.count, 0);
+        if (cardCount !== 50) {
+          console.error('[DeckStore] Cannot sync deck with invalid card count:', deck.name, cardCount);
+          return null;
+        }
+
+        try {
+          // Convert to server format
+          const serverDeckData = {
+            name: deck.name,
+            leaderId: deck.leader.id,
+            cards: deck.cards.map(dc => ({
+              cardId: dc.card.id,
+              count: dc.count,
+            })),
+            isPublic: deck.isPublic,
+          };
+
+          const response = await api.post<{ id: string }>('/decks', serverDeckData);
+          const serverId = response.data.id;
+
+          // Update local deck with serverId
+          set((state) => ({
+            decks: state.decks.map(d =>
+              d.id === localDeckId ? { ...d, serverId } : d
+            ),
+            currentDeck: state.currentDeck?.id === localDeckId
+              ? { ...state.currentDeck, serverId }
+              : state.currentDeck,
+          }));
+
+          console.log('[DeckStore] Deck synced to server:', deck.name, serverId);
+          return serverId;
+        } catch (error) {
+          console.error('[DeckStore] Failed to save deck to server:', error);
+          return null;
+        }
+      },
+
+      // Sync all local decks with the server
+      syncDecksWithServer: async (): Promise<void> => {
+        console.log('[DeckStore] Starting deck sync with server...');
+
+        // Get cards from cardStore
+        const cards = useCardStore.getState().cards;
+        if (cards.length === 0) {
+          console.log('[DeckStore] No cards loaded, loading cards first...');
+          await useCardStore.getState().loadCards();
+        }
+
+        const currentCards = useCardStore.getState().cards;
+        if (currentCards.length === 0) {
+          console.error('[DeckStore] Cannot sync decks - no cards available');
+          return;
+        }
+
+        try {
+          // First, fetch existing decks from server
+          const response = await api.get<Array<{
+            id: string;
+            name: string;
+            leaderId: string;
+            cards: Array<{ cardId: string; count: number }>;
+            isPublic: boolean;
+            createdAt: string;
+            updatedAt: string;
+          }>>('/decks');
+
+          const serverDecks = response.data;
+          const cardMap = new Map(currentCards.map(c => [c.id, c]));
+          const localDecks = get().decks;
+
+          // Track which local decks are already on server (by matching serverId)
+          const syncedLocalIds = new Set<string>();
+
+          // Update local decks that match server decks by serverId
+          for (const localDeck of localDecks) {
+            if (localDeck.serverId) {
+              const serverDeck = serverDecks.find(sd => sd.id === localDeck.serverId);
+              if (serverDeck) {
+                syncedLocalIds.add(localDeck.id);
+              }
+            }
+          }
+
+          // Upload local decks that aren't synced yet
+          const decksToUpload = localDecks.filter(d => !d.serverId && d.leader);
+          console.log(`[DeckStore] Found ${decksToUpload.length} local decks to upload`);
+
+          for (const deck of decksToUpload) {
+            // Validate deck before uploading
+            const cardCount = deck.cards.reduce((sum, dc) => sum + dc.count, 0);
+            if (cardCount !== 50) {
+              console.log(`[DeckStore] Skipping invalid deck: ${deck.name} (${cardCount} cards)`);
+              continue;
+            }
+
+            await get().saveDeckToServer(deck.id);
+          }
+
+          // Add server-only decks to local store
+          const localServerIds = new Set(localDecks.map(d => d.serverId).filter(Boolean));
+          const serverOnlyDecks = serverDecks.filter(sd => !localServerIds.has(sd.id));
+
+          if (serverOnlyDecks.length > 0) {
+            console.log(`[DeckStore] Found ${serverOnlyDecks.length} server decks to download`);
+
+            const newLocalDecks: Deck[] = [];
+            for (const serverDeck of serverOnlyDecks) {
+              const leader = cardMap.get(serverDeck.leaderId);
+              if (!leader) {
+                console.log(`[DeckStore] Skipping server deck (leader not found): ${serverDeck.name}`);
+                continue;
+              }
+
+              const deckCards: DeckCard[] = [];
+              for (const { cardId, count } of serverDeck.cards) {
+                const card = cardMap.get(cardId);
+                if (card) {
+                  deckCards.push({ card, count });
+                }
+              }
+
+              newLocalDecks.push({
+                id: generateId(),
+                serverId: serverDeck.id,
+                name: serverDeck.name,
+                leader,
+                cards: deckCards,
+                isPublic: serverDeck.isPublic,
+                createdAt: serverDeck.createdAt,
+                updatedAt: serverDeck.updatedAt,
+              });
+            }
+
+            if (newLocalDecks.length > 0) {
+              set((state) => ({
+                decks: [...state.decks, ...newLocalDecks],
+              }));
+            }
+          }
+
+          console.log('[DeckStore] Deck sync completed');
+        } catch (error) {
+          console.error('[DeckStore] Failed to sync decks with server:', error);
+          // Don't throw - we don't want to break login flow
+        }
+      },
+
+      // Get the server ID for a local deck
+      getServerDeckId: (localDeckId: string): string | null => {
+        const deck = get().decks.find(d => d.id === localDeckId);
+        return deck?.serverId || null;
       },
     }),
     {

@@ -16,7 +16,8 @@ function formatTime(seconds: number): string {
 }
 
 function DeckSelector() {
-  const { decks } = useDeckStore();
+  const navigate = useNavigate();
+  const { decks, selectDeck } = useDeckStore();
   const { selectedDeckId, setSelectedDeck } = useLobbyStore();
 
   const validDecks = decks.filter(deck => {
@@ -24,18 +25,24 @@ function DeckSelector() {
     return deck.leader && cardCount === 50;
   });
 
-  if (validDecks.length === 0) {
-    return null;
-  }
+  const handleEditDeck = (deckId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    selectDeck(deckId);
+    navigate('/decks', { state: { fromLobby: true } });
+  };
+
+  const handleAddDeck = () => {
+    navigate('/decks', { state: { fromLobby: true } });
+  };
 
   return (
     <div className="space-y-3">
       {validDecks.map(deck => (
-        <button
+        <div
           key={deck.id}
           onClick={() => setSelectedDeck(deck.id)}
           className={`
-            w-full flex items-center gap-3 p-3 rounded-lg transition-all
+            flex items-center gap-3 p-3 rounded-lg transition-all cursor-pointer
             ${selectedDeckId === deck.id
               ? 'bg-red-600/30 border-2 border-red-500'
               : 'bg-gray-700 hover:bg-gray-600 border-2 border-transparent'}
@@ -44,17 +51,39 @@ function DeckSelector() {
           {deck.leader && (
             <CardDisplay card={deck.leader} size="sm" />
           )}
-          <div className="flex-1 text-left">
-            <p className="font-medium text-white">{deck.name}</p>
-            <p className="text-sm text-gray-400">
+          <div className="flex-1 text-left min-w-0">
+            <p className="font-medium text-white truncate">{deck.name}</p>
+            <p className="text-sm text-gray-400 truncate">
               {deck.leader?.name || 'No leader'}
             </p>
           </div>
-          {selectedDeckId === deck.id && (
-            <span className="text-green-400">&#10003;</span>
-          )}
-        </button>
+          <div className="flex items-center gap-2">
+            {selectedDeckId === deck.id && (
+              <span className="text-green-400">&#10003;</span>
+            )}
+            <button
+              onClick={(e) => handleEditDeck(deck.id, e)}
+              className="p-1.5 bg-gray-600 hover:bg-gray-500 rounded text-gray-300 hover:text-white transition-colors"
+              title="Edit deck"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            </button>
+          </div>
+        </div>
       ))}
+
+      {/* Add Deck button */}
+      <button
+        onClick={handleAddDeck}
+        className="w-full flex items-center justify-center gap-2 p-3 rounded-lg bg-gray-700 hover:bg-gray-600 border-2 border-dashed border-gray-500 hover:border-gray-400 transition-all text-gray-300 hover:text-white"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        </svg>
+        <span>Add Deck</span>
+      </button>
     </div>
   );
 }
@@ -320,11 +349,14 @@ function QueuePanel() {
 }
 
 export default function LobbyPage() {
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, user, loginAsGuest } = useAuthStore();
   const { decks, initializeStarterDecks, hasStarterDecks } = useDeckStore();
   const { cards, loadCards } = useCardStore();
   const navigate = useNavigate();
   const [joinCode, setJoinCode] = useState('');
+  const [showGuestInput, setShowGuestInput] = useState(false);
+  const [guestName, setGuestName] = useState('');
+  const [guestLoading, setGuestLoading] = useState(false);
   const {
     lobby,
     lobbyStatus,
@@ -354,19 +386,75 @@ export default function LobbyPage() {
     return deck.leader && cardCount === 50;
   });
 
+  const handleGuestLogin = async () => {
+    setGuestLoading(true);
+    try {
+      await loginAsGuest(guestName || undefined);
+    } catch {
+      // Error handled in store
+    } finally {
+      setGuestLoading(false);
+    }
+  };
+
   if (!isAuthenticated) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-16 text-center">
-        <h1 className="text-3xl font-bold mb-4">Login Required</h1>
+      <div className="max-w-md mx-auto px-4 py-16 text-center">
+        <h1 className="text-3xl font-bold mb-4">Play</h1>
         <p className="text-gray-400 mb-8">
-          You need to be logged in to play matches.
+          Login to access ranked matches and AI games, or play as a guest to jump right in.
         </p>
-        <button
-          onClick={() => navigate('/login')}
-          className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium"
-        >
-          Login
-        </button>
+
+        <div className="space-y-4">
+          <button
+            onClick={() => navigate('/login')}
+            className="w-full bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium"
+          >
+            Login / Register
+          </button>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-600"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-gray-900 text-gray-400">or</span>
+            </div>
+          </div>
+
+          {!showGuestInput ? (
+            <button
+              onClick={() => setShowGuestInput(true)}
+              className="w-full bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-medium"
+            >
+              Play as Guest
+            </button>
+          ) : (
+            <div className="bg-gray-800 rounded-lg p-4 space-y-3">
+              <input
+                type="text"
+                value={guestName}
+                onChange={(e) => setGuestName(e.target.value)}
+                placeholder="Enter nickname (optional)"
+                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500"
+                maxLength={12}
+                onKeyDown={(e) => e.key === 'Enter' && handleGuestLogin()}
+              />
+              <button
+                onClick={handleGuestLogin}
+                disabled={guestLoading}
+                className="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium disabled:opacity-50"
+              >
+                {guestLoading ? 'Joining...' : 'Join as Guest'}
+              </button>
+              <p className="text-xs text-gray-500">
+                Guests can create or join lobbies to play with friends.
+                <br />
+                Create an account for AI games and ranked matches.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     );
   }

@@ -40,10 +40,20 @@ export default function DeckBuilderPage() {
     if (card.type === 'LEADER') {
       setLeader(card);
     } else {
-      const added = addCard(card);
-      if (!added) {
-        // Could show a toast notification here
+      const countInDeck = getCardCount(card.id);
+      const totalCards = currentDeck.cards.reduce((s, c) => s + c.count, 0);
+
+      if (countInDeck >= 4) {
+        alert(`Cannot add more than 4 copies of ${card.name}`);
+        return;
       }
+
+      if (totalCards >= 50) {
+        alert('Deck is full (50 cards maximum)');
+        return;
+      }
+
+      addCard(card);
     }
   };
 
@@ -142,11 +152,13 @@ export default function DeckBuilderPage() {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-2">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(165px,1fr))] gap-4">
               {paginatedCards.map(card => {
                 const countInDeck = getCardCount(card.id);
                 const isLeader = currentDeck?.leader?.id === card.id;
                 const canAdd = card.type === 'LEADER' || (countInDeck < 4 && (currentDeck?.cards.reduce((s, c) => s + c.count, 0) || 0) < 50);
+                // Visual disabled state - but clicks still work to show feedback
+                const isVisuallyDisabled = currentDeck && !canAdd && !isLeader;
 
                 return (
                   <CardDisplay
@@ -155,7 +167,7 @@ export default function DeckBuilderPage() {
                     size="md"
                     showCount={countInDeck > 0 ? countInDeck : undefined}
                     onClick={() => handleCardClick(card)}
-                    disabled={!currentDeck || (!canAdd && !isLeader)}
+                    disabled={isVisuallyDisabled || false}
                     selected={isLeader}
                   />
                 );

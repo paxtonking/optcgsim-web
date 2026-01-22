@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { GameScene } from './GameScene';
 import { GameStateManager, GameState, GameAction, ActionType } from '@optcgsim/shared';
-import { socket } from '../services/socket';
+import { getSocket } from '../services/socket';
+import { useLobbyStore } from '../stores/lobbyStore';
 
 export class GameController {
   private game?: Phaser.Game;
@@ -11,17 +12,46 @@ export class GameController {
   private playerId?: string;
   private isAIGame: boolean;
   private isSpectator: boolean;
+  private lastStateSignature?: string;
+  private socketListenersSetup = false;
 
   constructor(isAIGame: boolean = false, isSpectator: boolean = false) {
     this.isAIGame = isAIGame;
     this.isSpectator = isSpectator;
-    this.setupSocketListeners();
+    // Don't set up socket listeners here - do it in initialize()
+  }
+
+  /**
+   * Create a signature/hash of the game state for deduplication
+   */
+  private createStateSignature(state: GameState): string {
+    const playerSigs = Object.entries(state.players).map(([id, player]) => {
+      return `${id}:h${player.hand.length}:f${player.field.length}:l${player.lifeCards.length}:d${player.donField.length}:dd${player.donDeck}`;
+    }).join('|');
+
+    return `${state.phase}:${state.turn}:${state.activePlayerId}:${playerSigs}:${state.currentCombat?.attackerId || 'none'}`;
   }
 
   public initialize(container: HTMLElement, gameId: string, playerId: string) {
+    console.log('[GameController] initialize() called. gameId:', gameId, 'playerId:', playerId);
+    console.log('[GameController] Container:', container.id || container.className || 'unnamed');
+
+    // Check if already initialized
+    if (this.game) {
+      console.warn('[GameController] Already initialized! Destroying previous game instance.');
+      this.game.destroy(true);
+      this.game = undefined;
+    }
+
     this.gameId = gameId;
     this.playerId = playerId;
-    
+
+    // Set up socket listeners only once
+    if (!this.socketListenersSetup) {
+      this.setupSocketListeners();
+      this.socketListenersSetup = true;
+    }
+
     const config: Phaser.Types.Core.GameConfig = {
       type: Phaser.AUTO,
       parent: container,
@@ -33,11 +63,10 @@ export class GameController {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,
       },
-      physics: {
-        default: 'arcade',
-        arcade: {
-          debug: false
-        }
+      // Limit FPS to reduce CPU usage
+      fps: {
+        target: 30,
+        forceSetTimeOut: true
       }
     };
 
@@ -54,7 +83,8 @@ export class GameController {
 
       // Join as spectator or request game state
       if (this.isSpectator) {
-        socket?.emit('spectate:join', this.gameId, (response: { success: boolean; state?: GameState; error?: string }) => {
+        console.log('[GameController] Joining as spectator...');
+        getSocket().emit('spectate:join', this.gameId, (response: { success: boolean; state?: GameState; error?: string }) => {
           if (response.success && response.state) {
             this.handleStateUpdate(response.state);
           } else {
@@ -64,7 +94,8 @@ export class GameController {
       } else {
         // Request initial game state using appropriate event for AI or regular games
         const getStateEvent = this.isAIGame ? 'ai:getState' : 'game:getState';
-        socket?.emit(getStateEvent, { gameId: this.gameId });
+        console.log(`[GameController] Requesting game state via ${getStateEvent}, gameId: ${this.gameId}`);
+        getSocket().emit(getStateEvent, { gameId: this.gameId });
       }
     });
   }
@@ -149,32 +180,69 @@ export class GameController {
         data: { activate: false }
       });
     });
+
+    // Mulligan events
+    this.gameScene.events.on('keepHand', () => {
+      this.sendAction({
+        id: this.generateActionId(),
+        type: ActionType.KEEP_HAND,
+        playerId: this.playerId!,
+        timestamp: Date.now(),
+        data: {}
+      });
+    });
+
+    this.gameScene.events.on('mulligan', () => {
+      this.sendAction({
+        id: this.generateActionId(),
+        type: ActionType.MULLIGAN,
+        playerId: this.playerId!,
+        timestamp: Date.now(),
+        data: {}
+      });
+    });
   }
 
   private setupSocketListeners() {
+    console.log('[GameController] Setting up socket listeners...');
+    const socket = getSocket();
+    console.log('[GameController] Socket connected:', socket.connected);
+
     // Listen for game state updates
-    socket?.on('game:state', (data: { gameState: GameState }) => {
+    socket.on('game:state', (data: { gameState: GameState }) => {
       this.handleStateUpdate(data.gameState);
     });
 
-    socket?.on('game:action:result', (data: { success: boolean; error?: string }) => {
+    socket.on('game:action:result', (data: { success: boolean; error?: string }) => {
+      console.log('[GameController] Received game:action:result', data);
       if (!data.success) {
         console.error('Action failed:', data.error);
         // TODO: Show error to user
       }
     });
 
-    socket?.on('game:ended', (data: { winner: string; reason: string }) => {
+    socket.on('game:ended', (data: { winner: string; reason: string }) => {
+      console.log('[GameController] Received game:ended', data);
       this.handleGameEnd(data.winner, data.reason);
     });
 
-    socket?.on('game:error', (data: { error: string }) => {
-      console.error('Game error:', data.error);
+    socket.on('game:error', (data: { error: string }) => {
+      console.error('[GameController] Game error:', data.error);
       // TODO: Show error to user
     });
   }
 
   private handleStateUpdate(state: GameState) {
+    // Deduplicate: skip if this state is identical to the last one
+    const signature = this.createStateSignature(state);
+    if (signature === this.lastStateSignature) {
+      console.log('[GameController] Skipping duplicate state update');
+      return;
+    }
+    this.lastStateSignature = signature;
+
+    console.log('[GameController] handleStateUpdate - Phase:', state.phase, 'Turn:', state.turn);
+
     if (!this.stateManager) {
       // Initialize state manager with the received state
       this.stateManager = new GameStateManager(state.id, '', '');
@@ -188,9 +256,12 @@ export class GameController {
       // Spectators view from the first player's perspective
       const playerIds = Object.keys(state.players);
       const viewerId = this.isSpectator ? playerIds[0] : this.playerId;
+      console.log('[GameController] Updating game scene for viewer:', viewerId);
       if (viewerId) {
         this.gameScene.updateGameState(state, viewerId);
       }
+    } else {
+      console.warn('[GameController] gameScene not ready yet');
     }
 
     // Spectators can never take actions
@@ -212,7 +283,7 @@ export class GameController {
 
     // Use appropriate event for AI or regular games
     const actionEvent = this.isAIGame ? 'ai:action' : 'game:action';
-    socket?.emit(actionEvent, {
+    getSocket().emit(actionEvent, {
       gameId: this.gameId,
       action: action
     });
@@ -220,7 +291,10 @@ export class GameController {
 
   private handleGameEnd(winner: string, reason: string) {
     console.log(`Game ended! Winner: ${winner}, Reason: ${reason}`);
-    
+
+    // Reset lobby state so user doesn't get redirected back to game
+    useLobbyStore.getState().reset();
+
     // TODO: Show game over UI
     const isWinner = winner === this.playerId;
     const message = isWinner ? 'Victory!' : 'Defeat';
@@ -279,8 +353,11 @@ export class GameController {
   public destroy() {
     // Leave spectator mode if applicable
     if (this.isSpectator && this.gameId) {
-      socket?.emit('spectate:leave', this.gameId);
+      getSocket().emit('spectate:leave', this.gameId);
     }
+
+    // Reset lobby state to prevent navigation loop
+    useLobbyStore.getState().reset();
 
     if (this.game) {
       this.game.destroy(true);
@@ -288,10 +365,10 @@ export class GameController {
     }
 
     // Clean up socket listeners
-    socket?.off('game:state');
-    socket?.off('game:action:result');
-    socket?.off('game:ended');
-    socket?.off('game:error');
+    getSocket().off('game:state');
+    getSocket().off('game:action:result');
+    getSocket().off('game:ended');
+    getSocket().off('game:error');
   }
 
   public getIsSpectator(): boolean {

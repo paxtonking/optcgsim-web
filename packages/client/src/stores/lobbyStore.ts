@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { socketService } from '../services/socket';
+import { useDeckStore } from './deckStore';
 
 export type LobbyStatus = 'idle' | 'creating' | 'joining' | 'waiting' | 'ready' | 'starting';
 export type QueueStatus = 'idle' | 'searching' | 'matched' | 'starting';
@@ -95,10 +96,17 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
       return;
     }
 
+    // Get server deck ID
+    const serverDeckId = useDeckStore.getState().getServerDeckId(selectedDeckId);
+    if (!serverDeckId) {
+      set({ lobbyError: 'Deck not synced to server. Please wait or try again.' });
+      return;
+    }
+
     set({ lobbyStatus: 'creating', lobbyError: null });
 
     socketService.emit('lobby:create', {
-      deckId: selectedDeckId,
+      deckId: serverDeckId,
       isRanked,
     });
   },
@@ -110,11 +118,18 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
       return;
     }
 
+    // Get server deck ID
+    const serverDeckId = useDeckStore.getState().getServerDeckId(selectedDeckId);
+    if (!serverDeckId) {
+      set({ lobbyError: 'Deck not synced to server. Please wait or try again.' });
+      return;
+    }
+
     set({ lobbyStatus: 'joining', lobbyError: null });
 
     socketService.emit('lobby:join', {
       code,
-      deckId: selectedDeckId,
+      deckId: serverDeckId,
     });
   },
 
@@ -148,10 +163,17 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
       return;
     }
 
+    // Get server deck ID
+    const serverDeckId = useDeckStore.getState().getServerDeckId(selectedDeckId);
+    if (!serverDeckId) {
+      set({ queueError: 'Deck not synced to server. Please wait or try again.' });
+      return;
+    }
+
     set({ queueStatus: 'searching', queueError: null, queueTime: 0 });
 
     socketService.emit('queue:join', {
-      deckId: selectedDeckId,
+      deckId: serverDeckId,
     });
 
     // Start timer
@@ -177,10 +199,17 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
       return;
     }
 
+    // Get server deck ID
+    const serverDeckId = useDeckStore.getState().getServerDeckId(selectedDeckId);
+    if (!serverDeckId) {
+      set({ aiError: 'Deck not synced to server. Please wait or try again.' });
+      return;
+    }
+
     set({ aiGameStatus: 'starting', aiDifficulty: difficulty, aiError: null });
 
     socketService.emit('ai:start', {
-      deckId: selectedDeckId,
+      deckId: serverDeckId,
       difficulty,
     });
   },
@@ -219,16 +248,30 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
   },
 }));
 
+// Track if listeners have been set up to prevent duplicates
+let listenersInitialized = false;
+
 // Socket event listeners setup
 export function setupLobbySocketListeners() {
+  // Prevent duplicate listener registration
+  if (listenersInitialized) {
+    return;
+  }
+  listenersInitialized = true;
+
   const store = useLobbyStore.getState();
 
   socketService.on<Lobby>('lobby:update', (lobby: Lobby) => {
     store.handleLobbyUpdate(lobby);
   });
 
-  socketService.on<{ gameId: string }>('lobby:start', ({ gameId }: { gameId: string }) => {
-    store.handleLobbyStart(gameId);
+  // Single consolidated listener for lobby:start that handles both AI and regular games
+  socketService.on<{ gameId: string; state?: unknown; isAIGame?: boolean }>('lobby:start', (data) => {
+    if (data.isAIGame) {
+      store.handleAIGameStart(data.gameId);
+    } else {
+      store.handleLobbyStart(data.gameId);
+    }
   });
 
   socketService.on<{ gameId: string; opponent: string }>('queue:matched', (data: { gameId: string; opponent: string }) => {
@@ -237,15 +280,6 @@ export function setupLobbySocketListeners() {
 
   socketService.on<{ position: number }>('queue:status', (_data: { position: number }) => {
     // Optional: show queue position
-  });
-
-  // AI game events
-  socketService.on<{ gameId: string; state: unknown; isAIGame: boolean }>('lobby:start', (data) => {
-    if (data.isAIGame) {
-      store.handleAIGameStart(data.gameId);
-    } else {
-      store.handleLobbyStart(data.gameId);
-    }
   });
 
   socketService.on<{ message: string }>('error', ({ message }: { message: string }) => {
@@ -258,4 +292,14 @@ export function setupLobbySocketListeners() {
       aiGameStatus: 'idle',
     });
   });
+}
+
+// Reset listeners flag (useful for testing or logout)
+export function cleanupLobbySocketListeners() {
+  listenersInitialized = false;
+  socketService.off('lobby:update');
+  socketService.off('lobby:start');
+  socketService.off('queue:matched');
+  socketService.off('queue:status');
+  socketService.off('error');
 }

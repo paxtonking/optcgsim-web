@@ -24,6 +24,10 @@ export class GameScene extends Phaser.Scene {
   private loadedTextures: Set<string> = new Set();
   private cardDataMap: Map<string, CardData> = new Map();
   private cardDataLoaded = false;
+  private renderDebounceTimer?: number;
+  private pendingImageLoads = 0;
+  private sceneReady = false;
+  private pendingStateUpdate?: { state: GameState; playerId: string };
 
   // UI elements
   private turnIndicator?: Phaser.GameObjects.Text;
@@ -40,6 +44,9 @@ export class GameScene extends Phaser.Scene {
   // Trigger Step UI
   private triggerPanel?: Phaser.GameObjects.Container;
 
+  // Mulligan UI
+  private mulliganPanel?: Phaser.GameObjects.Container;
+
   // Sound effects
   private soundEnabled = true;
 
@@ -53,15 +60,26 @@ export class GameScene extends Phaser.Scene {
   }
 
   preload() {
+    console.log('[GameScene] preload() called');
+
     // Load card back images
     this.load.image('card-back', '/assets/cardbacks/CardBackRegular.png');
     this.load.image('don-back', '/assets/cardbacks/CardBackDon.png');
 
-    // Load playmat/background (create placeholder if doesn't exist)
-    this.load.image('playmat', '/assets/playmats/playmat.png');
+    // Load playmat/background
+    this.load.image('playmat', '/assets/playmats/Red.png');
 
     // Load card data
     this.load.json('cardData', '/data/cards.json');
+
+    // Log when loading completes
+    this.load.on('complete', () => {
+      console.log('[GameScene] All assets loaded');
+    });
+
+    this.load.on('loaderror', (file: any) => {
+      console.error('[GameScene] Failed to load:', file.key, file.url);
+    });
   }
 
   /**
@@ -71,12 +89,18 @@ export class GameScene extends Phaser.Scene {
     if (this.cardDataLoaded) return;
 
     const cardData = this.cache.json.get('cardData') as CardData[];
+    console.log('[GameScene] loadCardData called, cardData:', cardData ? `${cardData.length} items` : 'null');
     if (cardData && Array.isArray(cardData)) {
       cardData.forEach(card => {
         this.cardDataMap.set(card.id, card);
       });
       this.cardDataLoaded = true;
       console.log(`[GameScene] Loaded ${this.cardDataMap.size} card definitions`);
+      // Log a sample card to verify format
+      const sampleCard = this.cardDataMap.get('ST01-001');
+      console.log('[GameScene] Sample card ST01-001:', sampleCard);
+    } else {
+      console.error('[GameScene] Failed to load card data from JSON!');
     }
   }
 
@@ -88,19 +112,48 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * Schedule a debounced render to avoid cascading re-renders when loading images
+   */
+  private scheduleRender() {
+    // Clear any existing timer
+    if (this.renderDebounceTimer) {
+      clearTimeout(this.renderDebounceTimer);
+    }
+
+    // Wait for a short delay to batch multiple image loads
+    this.renderDebounceTimer = window.setTimeout(() => {
+      this.renderDebounceTimer = undefined;
+      // Only render if no more images are pending
+      if (this.pendingImageLoads === 0) {
+        this.renderGameState();
+      } else {
+        // If still loading, schedule another check
+        this.scheduleRender();
+      }
+    }, 100) as unknown as number;
+  }
+
+  /**
    * Dynamically load a card image if not already loaded
+   * Returns texture key or 'card-back-failed' if image failed to load
    */
   private loadCardImage(cardId: string): string {
     const textureKey = `card-${cardId}`;
 
-    // Return if already loaded
+    // Return if already loaded successfully
     if (this.loadedTextures.has(textureKey)) {
       return textureKey;
+    }
+
+    // Return special marker if image failed to load (for CORS or other errors)
+    if (this.loadedTextures.has(`failed-${textureKey}`)) {
+      return 'card-back-failed';
     }
 
     // Check if card data exists
     const cardData = this.getCardData(cardId);
     if (!cardData) {
+      console.warn(`[GameScene] loadCardImage: No card data found for ${cardId}`);
       return 'card-back';
     }
 
@@ -110,6 +163,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.textures.exists(textureKey) && !this.loadedTextures.has(`loading-${textureKey}`)) {
       // Mark as loading to prevent duplicate requests
       this.loadedTextures.add(`loading-${textureKey}`);
+      this.pendingImageLoads++;
 
       // For external URLs, use setCORS to handle cross-origin requests
       if (imageUrl.startsWith('http')) {
@@ -121,14 +175,18 @@ export class GameScene extends Phaser.Scene {
       this.load.once('complete', () => {
         this.loadedTextures.delete(`loading-${textureKey}`);
         this.loadedTextures.add(textureKey);
-        // Re-render to show the loaded image
-        this.renderGameState();
+        this.pendingImageLoads--;
+        // Debounced re-render to avoid cascading renders
+        this.scheduleRender();
       });
       this.load.once('loaderror', () => {
         console.warn(`[GameScene] Failed to load card image: ${imageUrl}`);
         this.loadedTextures.delete(`loading-${textureKey}`);
         // Mark as failed to prevent retries
         this.loadedTextures.add(`failed-${textureKey}`);
+        this.pendingImageLoads--;
+        // Re-render to show placeholder for failed images
+        this.scheduleRender();
       });
       this.load.start();
     }
@@ -139,6 +197,15 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     const { width, height } = this.scale;
+    console.log('[GameScene] create() called. Canvas size:', width, 'x', height);
+
+    // Check card-back texture dimensions
+    if (this.textures.exists('card-back')) {
+      const frame = this.textures.getFrame('card-back');
+      console.log('[GameScene] card-back texture size:', frame.width, 'x', frame.height);
+    } else {
+      console.error('[GameScene] card-back texture NOT loaded!');
+    }
 
     // Load card data from JSON
     this.loadCardData();
@@ -160,6 +227,17 @@ export class GameScene extends Phaser.Scene {
 
     // Setup input handlers
     this.setupInputHandlers();
+
+    // Mark scene as ready
+    this.sceneReady = true;
+    console.log('[GameScene] Scene is now ready');
+
+    // Process any pending state update that came in before create() finished
+    if (this.pendingStateUpdate) {
+      console.log('[GameScene] Processing pending state update');
+      this.updateGameState(this.pendingStateUpdate.state, this.pendingStateUpdate.playerId);
+      this.pendingStateUpdate = undefined;
+    }
   }
 
   /**
@@ -542,6 +620,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   public updateGameState(state: GameState, playerId: string) {
+    console.log('[GameScene] updateGameState called. sceneReady:', this.sceneReady);
+    console.log('[GameScene] playerId:', playerId);
+    console.log('[GameScene] state.players:', Object.keys(state.players));
+    console.log('[GameScene] state.phase:', state.phase);
+    console.log('[GameScene] state.turn:', state.turn);
+
+    // If scene is not ready yet, store the state for later
+    if (!this.sceneReady) {
+      console.log('[GameScene] Scene not ready, storing state for later');
+      this.pendingStateUpdate = { state, playerId };
+      return;
+    }
+
     const previousActivePlayer = this.gameState?.activePlayerId;
 
     this.gameState = state;
@@ -558,6 +649,9 @@ export class GameScene extends Phaser.Scene {
 
     // Update action buttons based on whose turn it is
     this.updateActionButtons(state.activePlayerId === playerId);
+
+    // Check if we need to show/hide mulligan UI
+    this.checkMulliganUI();
 
     // Check if we need to show/hide counter step UI
     this.checkCounterStepUI();
@@ -577,15 +671,19 @@ export class GameScene extends Phaser.Scene {
     if (this.phaseIndicator) {
       const isYourTurn = this.gameState.activePlayerId === this.playerId;
       const phaseNames: Record<string, string> = {
+        'START_MULLIGAN': 'MULLIGAN PHASE',
         'refresh': 'REFRESH PHASE',
         'draw': 'DRAW PHASE',
         'don': 'DON!! PHASE',
         'main': 'MAIN PHASE',
+        'MAIN_PHASE': 'MAIN PHASE',
         'battle': 'BATTLE PHASE',
         'counter': 'COUNTER STEP',
+        'COUNTER_STEP': 'COUNTER STEP',
         'damage': 'DAMAGE STEP',
         'end': 'END PHASE',
         'game_over': 'GAME OVER',
+        'GAME_OVER': 'GAME OVER',
       };
 
       const phaseName = phaseNames[this.gameState.phase] || this.gameState.phase.toUpperCase();
@@ -597,22 +695,43 @@ export class GameScene extends Phaser.Scene {
   }
 
   private renderGameState() {
-    if (!this.gameState || !this.playerId) return;
-    
+    if (!this.gameState || !this.playerId) {
+      console.log('[GameScene] renderGameState: No gameState or playerId');
+      return;
+    }
+
+    console.log('[GameScene] renderGameState called. Clearing', this.cardSprites.size, 'existing sprites');
+
     // Clear existing sprites
     this.cardSprites.forEach(sprite => sprite.destroy());
     this.cardSprites.clear();
-    
+
     const player = this.gameState.players[this.playerId];
     const opponent = Object.values(this.gameState.players).find(p => p.id !== this.playerId);
-    
+
+    console.log('[GameScene] Player:', player ? {
+      leader: player.leaderCard?.cardId,
+      hand: player.hand.length,
+      field: player.field.length,
+      life: player.lifeCards.length
+    } : 'null');
+
+    console.log('[GameScene] Opponent:', opponent ? {
+      leader: opponent.leaderCard?.cardId,
+      hand: opponent.hand.length,
+      field: opponent.field.length,
+      life: opponent.lifeCards.length
+    } : 'null');
+
     if (player) {
       this.renderPlayerCards(player, 'player');
     }
-    
+
     if (opponent) {
       this.renderPlayerCards(opponent, 'opp');
     }
+
+    console.log('[GameScene] renderGameState complete. Total sprites:', this.cardSprites.size);
   }
 
   private renderPlayerCards(player: PlayerState, prefix: string) {
@@ -695,13 +814,34 @@ export class GameScene extends Phaser.Scene {
     // Determine which texture to use
     let texture = 'card-back';
     const showPlaceholder = faceUp && card.cardId !== 'DON';
+    let imageFailed = false;
 
     if (showPlaceholder) {
-      texture = this.loadCardImage(card.cardId);
+      const loadedTexture = this.loadCardImage(card.cardId);
+      if (loadedTexture === 'card-back-failed') {
+        // Image failed to load (CORS, 404, etc) - use card-back but show placeholder
+        texture = 'card-back';
+        imageFailed = true;
+      } else {
+        texture = loadedTexture;
+      }
     }
 
+    console.log('[GameScene] createCardSprite:', {
+      cardId: card.cardId,
+      position: { x, y },
+      faceUp,
+      texture,
+      imageFailed,
+      showPlaceholder
+    });
+
+    // Calculate the target display size (use explicit dimensions instead of scale)
+    const displayWidth = this.CARD_WIDTH * this.CARD_SCALE;
+    const displayHeight = this.CARD_HEIGHT * this.CARD_SCALE;
+
     const sprite = this.add.image(x, y, texture)
-      .setScale(this.CARD_SCALE)
+      .setDisplaySize(displayWidth, displayHeight)
       .setInteractive({ useHandCursor: true })
       .setData('cardId', card.id)
       .setData('cardDefId', card.cardId);
@@ -717,8 +857,9 @@ export class GameScene extends Phaser.Scene {
     if (showPlaceholder) {
       const cardData = this.getCardData(card.cardId);
 
-      // If image failed to load, show detailed placeholder
-      if (texture === 'card-back' && cardData) {
+      // If image failed to load, show detailed placeholder and hide the card-back
+      if (imageFailed && cardData) {
+        sprite.setAlpha(0); // Hide the card-back sprite
         this.createCardPlaceholder(x, y, card, cardData);
       } else if (cardData) {
         // Show power for characters/leaders (overlay on actual image)
@@ -751,16 +892,27 @@ export class GameScene extends Phaser.Scene {
    * Create a detailed placeholder for cards without loaded images
    */
   private createCardPlaceholder(x: number, y: number, card: GameCard, cardData: CardData) {
+    console.log('[GameScene] createCardPlaceholder called:', {
+      cardId: card.cardId,
+      cardName: cardData.name,
+      position: { x, y },
+      colors: cardData.colors
+    });
+
     const color = this.getColorHex(cardData.colors[0] || 'BLACK');
     const cardWidth = this.CARD_WIDTH * this.CARD_SCALE;
     const cardHeight = this.CARD_HEIGHT * this.CARD_SCALE;
 
-    // Background with color border
-    this.add.rectangle(x, y, cardWidth, cardHeight, color, 0.8)
-      .setStrokeStyle(3, color);
+    console.log('[GameScene] Placeholder dimensions:', cardWidth, 'x', cardHeight);
 
-    // Inner background
-    this.add.rectangle(x, y, cardWidth - 6, cardHeight - 6, 0x1a1a1a, 0.95);
+    // Background with color border - fully opaque to cover card-back
+    this.add.rectangle(x, y, cardWidth, cardHeight, color, 1)
+      .setStrokeStyle(3, color)
+      .setDepth(10);
+
+    // Inner background - fully opaque
+    this.add.rectangle(x, y, cardWidth - 6, cardHeight - 6, 0x1a1a1a, 1)
+      .setDepth(11);
 
     // Card type indicator at top
     const typeColors: Record<string, number> = {
@@ -775,7 +927,7 @@ export class GameScene extends Phaser.Scene {
       fontSize: '8px',
       color: `#${typeColor.toString(16).padStart(6, '0')}`,
       fontStyle: 'bold'
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(12);
 
     // Card name (wrapped)
     const name = cardData.name.length > 12 ? cardData.name.substring(0, 11) + '...' : cardData.name;
@@ -785,13 +937,13 @@ export class GameScene extends Phaser.Scene {
       fontStyle: 'bold',
       wordWrap: { width: cardWidth - 10 },
       align: 'center'
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(12);
 
     // Card ID
     this.add.text(x, y + 5, card.cardId, {
       fontSize: '8px',
       color: '#888888'
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(12);
 
     // Stats at bottom
     let statsText = '';
@@ -808,7 +960,7 @@ export class GameScene extends Phaser.Scene {
         fontSize: '10px',
         color: '#ffff00',
         fontStyle: 'bold'
-      }).setOrigin(0.5);
+      }).setOrigin(0.5).setDepth(12);
     }
 
     // Counter value if exists
@@ -816,7 +968,7 @@ export class GameScene extends Phaser.Scene {
       this.add.text(x, y + cardHeight / 2 - 28, `+${cardData.counter}`, {
         fontSize: '9px',
         color: '#00ff00'
-      }).setOrigin(0.5);
+      }).setOrigin(0.5).setDepth(12);
     }
   }
 
@@ -832,7 +984,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onCardHover(gameObject: Phaser.GameObjects.Image) {
-    gameObject.setScale(this.CARD_SCALE * 1.1);
+    // Slightly enlarge on hover (1.1x normal size)
+    const hoverWidth = this.CARD_WIDTH * this.CARD_SCALE * 1.1;
+    const hoverHeight = this.CARD_HEIGHT * this.CARD_SCALE * 1.1;
+    gameObject.setDisplaySize(hoverWidth, hoverHeight);
 
     // Show card preview
     if (this.hoverCard) {
@@ -847,9 +1002,11 @@ export class GameScene extends Phaser.Scene {
     this.hoverCard = this.add.container(width - 150, height / 2);
     this.hoverCard.setDepth(2000);
 
-    // Card image (larger)
+    // Card image (larger preview - about 2x normal size)
     const texture = this.loadCardImage(cardDefId);
-    const cardImage = this.add.image(0, -50, texture).setScale(2.5);
+    const previewWidth = this.CARD_WIDTH * 2;
+    const previewHeight = this.CARD_HEIGHT * 2;
+    const cardImage = this.add.image(0, -50, texture).setDisplaySize(previewWidth, previewHeight);
     this.hoverCard.add(cardImage);
 
     // Card info panel
@@ -912,7 +1069,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onCardHoverEnd(gameObject: Phaser.GameObjects.Image) {
-    gameObject.setScale(this.CARD_SCALE);
+    // Restore to normal size
+    const normalWidth = this.CARD_WIDTH * this.CARD_SCALE;
+    const normalHeight = this.CARD_HEIGHT * this.CARD_SCALE;
+    gameObject.setDisplaySize(normalWidth, normalHeight);
 
     if (this.hoverCard) {
       this.hoverCard.destroy();
@@ -1055,10 +1215,10 @@ export class GameScene extends Phaser.Scene {
         const x = startX + index * 75;
         const y = -20;
 
-        // Card sprite
+        // Card sprite (slightly smaller for counter panel)
         const texture = this.loadCardImage(card.cardId);
         const cardSprite = this.add.image(x, y, texture)
-          .setScale(1.0)
+          .setDisplaySize(this.CARD_WIDTH, this.CARD_HEIGHT)
           .setInteractive({ useHandCursor: true })
           .setData('cardId', card.id);
 
@@ -1153,11 +1313,11 @@ export class GameScene extends Phaser.Scene {
     if (this.selectedCounterCards.has(cardId)) {
       this.selectedCounterCards.delete(cardId);
       sprite.clearTint();
-      sprite.setScale(1.0);
+      sprite.setDisplaySize(this.CARD_WIDTH, this.CARD_HEIGHT);
     } else {
       this.selectedCounterCards.add(cardId);
       sprite.setTint(0x00ff00);
-      sprite.setScale(1.1);
+      sprite.setDisplaySize(this.CARD_WIDTH * 1.1, this.CARD_HEIGHT * 1.1);
     }
 
     this.updateCounterTotal();
@@ -1346,9 +1506,11 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5);
     this.triggerPanel.add(subtitle);
 
-    // Card display
+    // Card display (larger for trigger panel - about 1.5x normal)
     const texture = this.loadCardImage(triggerCard.cardId);
-    const cardImage = this.add.image(0, -30, texture).setScale(1.8);
+    const triggerCardWidth = this.CARD_WIDTH * 1.5;
+    const triggerCardHeight = this.CARD_HEIGHT * 1.5;
+    const cardImage = this.add.image(0, -30, texture).setDisplaySize(triggerCardWidth, triggerCardHeight);
     this.triggerPanel.add(cardImage);
 
     // Card name
@@ -1434,6 +1596,169 @@ export class GameScene extends Phaser.Scene {
     if (this.triggerPanel) {
       this.triggerPanel.destroy();
       this.triggerPanel = undefined;
+    }
+  }
+
+  // ==================== MULLIGAN UI ====================
+
+  /**
+   * Check if mulligan UI should be shown
+   */
+  private checkMulliganUI() {
+    if (!this.gameState || !this.playerId) return;
+
+    const isMulliganPhase = this.gameState.phase === 'START_MULLIGAN';
+
+    if (isMulliganPhase) {
+      // Show mulligan panel if not already shown
+      if (!this.mulliganPanel) {
+        this.showMulliganUI();
+      }
+    } else {
+      this.hideMulliganUI();
+    }
+  }
+
+  /**
+   * Show the mulligan UI panel
+   */
+  private showMulliganUI() {
+    if (!this.gameState || !this.playerId) return;
+
+    const { width, height } = this.scale;
+    const player = this.gameState.players[this.playerId];
+    if (!player) return;
+
+    // Create container
+    this.mulliganPanel = this.add.container(width / 2, height / 2);
+    this.mulliganPanel.setDepth(5000);
+
+    // Semi-transparent overlay
+    const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.7);
+    this.mulliganPanel.add(overlay);
+
+    // Panel background
+    const panelWidth = 600;
+    const panelHeight = 400;
+    const panelBg = this.add.rectangle(0, 0, panelWidth, panelHeight, 0x222233, 0.95)
+      .setStrokeStyle(3, 0x4444ff);
+    this.mulliganPanel.add(panelBg);
+
+    // Title
+    const title = this.add.text(0, -panelHeight / 2 + 30, 'MULLIGAN PHASE', {
+      fontSize: '28px',
+      color: '#ffd700',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.mulliganPanel.add(title);
+
+    // Instructions
+    const instructions = this.add.text(0, -panelHeight / 2 + 70,
+      'Your starting hand is shown below.\nYou may keep this hand or mulligan once for a new hand.', {
+      fontSize: '16px',
+      color: '#cccccc',
+      align: 'center'
+    }).setOrigin(0.5);
+    this.mulliganPanel.add(instructions);
+
+    // Display hand cards
+    const cardStartX = -(player.hand.length - 1) * 45;
+    const cardY = 20;
+    const displayWidth = this.CARD_WIDTH * this.CARD_SCALE;
+    const displayHeight = this.CARD_HEIGHT * this.CARD_SCALE;
+
+    player.hand.forEach((card, index) => {
+      const x = cardStartX + index * 90;
+      const cardData = this.cardDataMap.get(card.cardId);
+
+      // Use card texture if loaded, otherwise card-back
+      let texture = 'card-back';
+      if (this.loadedTextures.has(card.cardId)) {
+        texture = card.cardId;
+      }
+
+      const cardSprite = this.add.image(x, cardY, texture)
+        .setDisplaySize(displayWidth, displayHeight);
+      this.mulliganPanel!.add(cardSprite);
+
+      // Show card name below
+      if (cardData) {
+        const nameText = this.add.text(x, cardY + displayHeight / 2 + 10, cardData.name, {
+          fontSize: '10px',
+          color: '#ffffff',
+          align: 'center',
+          wordWrap: { width: 80 }
+        }).setOrigin(0.5, 0);
+        this.mulliganPanel!.add(nameText);
+      }
+    });
+
+    // Button Y position
+    const buttonY = panelHeight / 2 - 50;
+
+    // Keep Hand button
+    const keepBtn = this.add.rectangle(-100, buttonY, 150, 45, 0x00aa00)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.confirmKeepHand())
+      .on('pointerover', () => keepBtn.setFillStyle(0x00cc00))
+      .on('pointerout', () => keepBtn.setFillStyle(0x00aa00));
+    const keepBtnText = this.add.text(-100, buttonY, 'KEEP HAND', {
+      fontSize: '18px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.mulliganPanel.add(keepBtn);
+    this.mulliganPanel.add(keepBtnText);
+
+    // Mulligan button
+    const mulliganBtn = this.add.rectangle(100, buttonY, 150, 45, 0xaa6600)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.performMulligan())
+      .on('pointerover', () => mulliganBtn.setFillStyle(0xcc8800))
+      .on('pointerout', () => mulliganBtn.setFillStyle(0xaa6600));
+    const mulliganBtnText = this.add.text(100, buttonY, 'MULLIGAN', {
+      fontSize: '18px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.mulliganPanel.add(mulliganBtn);
+    this.mulliganPanel.add(mulliganBtnText);
+
+    // Animate panel appearance
+    this.mulliganPanel.setScale(0.8);
+    this.mulliganPanel.setAlpha(0);
+    this.tweens.add({
+      targets: this.mulliganPanel,
+      scale: 1,
+      alpha: 1,
+      duration: 300,
+      ease: 'Power2'
+    });
+  }
+
+  /**
+   * Confirm keeping the current hand
+   */
+  private confirmKeepHand() {
+    this.events.emit('keepHand');
+    this.hideMulliganUI();
+  }
+
+  /**
+   * Perform mulligan - request new hand
+   */
+  private performMulligan() {
+    this.events.emit('mulligan');
+    this.hideMulliganUI();
+  }
+
+  /**
+   * Hide the mulligan UI
+   */
+  private hideMulliganUI() {
+    if (this.mulliganPanel) {
+      this.mulliganPanel.destroy();
+      this.mulliganPanel = undefined;
     }
   }
 }

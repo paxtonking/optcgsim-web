@@ -223,11 +223,14 @@ export function setupWebSocket(io: SocketServer) {
     });
 
     socket.on('ai:getState', (data) => {
+      console.log('[WebSocket] ai:getState received. gameId:', data.gameId, 'userId:', socket.userId);
       const gameId = data.gameId;
       const state = aiGameManager.getGameState(socket, gameId);
       if (state) {
+        console.log('[WebSocket] Sending game:state. Phase:', state.phase, 'Players:', Object.keys(state.players).length);
         socket.emit('game:state', { gameState: state });
       } else {
+        console.log('[WebSocket] Game not found or user not authorized');
         socket.emit('game:error', { error: 'AI game not found' });
       }
     });

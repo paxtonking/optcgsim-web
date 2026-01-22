@@ -1,11 +1,30 @@
+import { useEffect } from 'react';
 import { Outlet, Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { connectSocket, disconnectSocket } from '../services/socket';
+import { setupLobbySocketListeners, cleanupLobbySocketListeners } from '../stores/lobbyStore';
 
 export default function Layout() {
   const { isAuthenticated, user, logout } = useAuthStore();
   const navigate = useNavigate();
 
+  // Connect socket and set up listeners when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      connectSocket();
+      setupLobbySocketListeners();
+    }
+
+    return () => {
+      if (!isAuthenticated) {
+        cleanupLobbySocketListeners();
+        disconnectSocket();
+      }
+    };
+  }, [isAuthenticated]);
+
   const handleLogout = async () => {
+    disconnectSocket();
     await logout();
     navigate('/');
   };

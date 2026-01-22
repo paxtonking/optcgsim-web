@@ -1,10 +1,14 @@
 import { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useDeckStore } from '../stores/deckStore';
 import { useCardStore } from '../stores/cardStore';
 import { CardDisplay } from './CardDisplay';
 import { COLOR_HEX, type CardColor } from '../types/card';
 
 export function DeckPanel() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const fromLobby = (location.state as { fromLobby?: boolean })?.fromLobby ?? false;
   const {
     currentDeck,
     decks,
@@ -138,28 +142,30 @@ export function DeckPanel() {
 
         {/* Create new deck */}
         {isCreating ? (
-          <div className="flex gap-2">
+          <div className="space-y-2">
             <input
               type="text"
               value={newDeckName}
               onChange={(e) => setNewDeckName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleCreateDeck()}
               placeholder="Deck name..."
-              className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-500"
+              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-500"
               autoFocus
             />
-            <button
-              onClick={handleCreateDeck}
-              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
-            >
-              Create
-            </button>
-            <button
-              onClick={() => setIsCreating(false)}
-              className="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded"
-            >
-              Cancel
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={handleCreateDeck}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
+              >
+                Create
+              </button>
+              <button
+                onClick={() => setIsCreating(false)}
+                className="flex-1 bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         ) : (
           <div className="space-y-2">
@@ -392,6 +398,19 @@ export function DeckPanel() {
         <div className="mt-4 p-3 bg-green-900/30 border border-green-700 rounded text-center">
           <p className="text-green-400 text-sm font-medium">✓ Deck is valid!</p>
         </div>
+      )}
+
+      {/* Back to Lobby button - only shown when coming from lobby */}
+      {fromLobby && (
+        <button
+          onClick={() => navigate('/lobby')}
+          className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 17l-5-5m0 0l5-5m-5 5h12" />
+          </svg>
+          Back to Lobby
+        </button>
       )}
     </div>
   );

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User } from '@optcgsim/shared';
 import { api } from '../services/api';
+import { useDeckStore } from './deckStore';
 
 interface AuthState {
   user: User | null;
@@ -46,6 +47,11 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: true,
             isLoading: false,
           });
+
+          // Sync decks with server after login (don't await to not block UI)
+          useDeckStore.getState().syncDecksWithServer().catch(err => {
+            console.error('[AuthStore] Failed to sync decks after login:', err);
+          });
         } catch (error: any) {
           set({
             error: error.response?.data?.message || 'Login failed',
@@ -75,6 +81,11 @@ export const useAuthStore = create<AuthState>()(
             refreshToken,
             isAuthenticated: true,
             isLoading: false,
+          });
+
+          // Sync decks with server after registration (don't await to not block UI)
+          useDeckStore.getState().syncDecksWithServer().catch(err => {
+            console.error('[AuthStore] Failed to sync decks after registration:', err);
           });
         } catch (error: any) {
           set({

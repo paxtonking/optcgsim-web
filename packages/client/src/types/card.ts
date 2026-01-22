@@ -23,6 +23,7 @@ export interface DeckCard {
 
 export interface Deck {
   id: string;
+  serverId?: string; // Database ID - undefined means not synced to server
   name: string;
   leader: Card | null;
   cards: DeckCard[];

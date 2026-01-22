@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { GameController } from '../game/GameController';
 import { useAuthStore } from '../stores/authStore';
+import { useLobbyStore } from '../stores/lobbyStore';
 import { socketService } from '../services/socket';
 import { ChatPanel } from '../components/ChatPanel';
 
@@ -58,6 +59,8 @@ export default function GamePage() {
             if (isAIGame && !isSpectator) {
               socketService.emit('ai:surrender', {});
             }
+            // Reset lobby state to prevent navigation loop
+            useLobbyStore.getState().reset();
             navigate('/lobby');
           }}
           className={`px-4 py-2 rounded transition ${

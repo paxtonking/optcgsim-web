@@ -23,7 +23,9 @@ import {
 export class GameStateManager {
   private state: GameState;
   private effectEngine: EffectEngine;
-  
+  private mulliganConfirmed: Set<string> = new Set();
+  private mulliganUsed: Set<string> = new Set();
+
   constructor(gameId: string, player1Id: string, player2Id: string) {
     this.state = this.initializeGameState(gameId, player1Id, player2Id);
     this.effectEngine = new EffectEngine();
@@ -119,11 +121,128 @@ export class GameStateManager {
     this.state.phase = GamePhase.START_MULLIGAN;
     this.state.turn = 1;
 
+    // Reset mulligan confirmations
+    this.mulliganConfirmed.clear();
+
     // Draw initial hands
     Object.keys(this.state.players).forEach(playerId => {
       this.drawCards(playerId, DEFAULT_GAME_CONFIG.startingHand);
       this.setupLife(playerId);
     });
+  }
+
+  /**
+   * Confirm keeping hand (skip mulligan)
+   * When both players confirm, move to MAIN_PHASE
+   */
+  public confirmKeepHand(playerId: string): boolean {
+    if (this.state.phase !== GamePhase.START_MULLIGAN) {
+      return false;
+    }
+
+    // Check if player exists
+    if (!this.state.players[playerId]) {
+      return false;
+    }
+
+    // Mark this player as confirmed
+    this.mulliganConfirmed.add(playerId);
+
+    // Check if both players have confirmed
+    const playerIds = Object.keys(this.state.players);
+    const allConfirmed = playerIds.every(id => this.mulliganConfirmed.has(id));
+
+    if (allConfirmed) {
+      // Both players confirmed - start first turn
+      this.beginFirstTurn();
+    }
+
+    return true;
+  }
+
+  /**
+   * Perform mulligan - shuffle hand back into deck and draw new hand
+   * Can only be done once per player during START_MULLIGAN phase
+   */
+  public performMulligan(playerId: string): boolean {
+    if (this.state.phase !== GamePhase.START_MULLIGAN) {
+      return false;
+    }
+
+    const player = this.state.players[playerId];
+    if (!player) {
+      return false;
+    }
+
+    // Check if player already used their mulligan
+    if (this.mulliganUsed.has(playerId)) {
+      return false;
+    }
+
+    // Mark mulligan as used
+    this.mulliganUsed.add(playerId);
+
+    // Shuffle hand back into deck
+    while (player.hand.length > 0) {
+      const card = player.hand.pop()!;
+      card.zone = CardZone.DECK;
+      player.deck.push(card);
+    }
+
+    // Shuffle the deck
+    player.deck = this.shuffleArray(player.deck);
+
+    // Draw new starting hand
+    this.drawCards(playerId, DEFAULT_GAME_CONFIG.startingHand);
+
+    // Auto-confirm after mulligan (player can't mulligan again)
+    this.confirmKeepHand(playerId);
+
+    return true;
+  }
+
+  /**
+   * Check if a player has already used their mulligan
+   */
+  public hasMulliganBeenUsed(playerId: string): boolean {
+    return this.mulliganUsed.has(playerId);
+  }
+
+  /**
+   * Check if a player has confirmed their hand (keep or mulligan)
+   */
+  public hasConfirmedHand(playerId: string): boolean {
+    return this.mulliganConfirmed.has(playerId);
+  }
+
+  /**
+   * Begin the first turn after mulligan
+   * Special handling: first player draws 1 DON (not 2) and doesn't draw a card
+   */
+  private beginFirstTurn(): void {
+    const activePlayer = this.state.players[this.state.activePlayerId];
+    if (!activePlayer) return;
+
+    // Mark player as active
+    activePlayer.isActive = true;
+
+    // DON phase - first player only gets 1 DON on turn 1
+    this.state.phase = GamePhase.DON_PHASE;
+    const donToDraw = Math.min(1, activePlayer.donDeck);
+    for (let i = 0; i < donToDraw; i++) {
+      activePlayer.donDeck--;
+      activePlayer.donField.push({
+        id: `${this.state.activePlayerId}-don-${Date.now()}-${i}`,
+        cardId: 'DON',
+        zone: CardZone.DON_FIELD,
+        state: CardState.ACTIVE,
+        owner: this.state.activePlayerId
+      });
+    }
+
+    // Skip draw phase on turn 1 for first player (already drew starting hand)
+    // Move directly to main phase
+    this.state.phase = GamePhase.MAIN_PHASE;
   }
 
   // Card movement methods
@@ -769,6 +888,12 @@ export class GameStateManager {
   // Process game action
   public processAction(action: GameAction): boolean {
     switch (action.type) {
+      case ActionType.KEEP_HAND:
+        return this.confirmKeepHand(action.playerId);
+
+      case ActionType.MULLIGAN:
+        return this.performMulligan(action.playerId);
+
       case ActionType.PLAY_CARD:
         return this.playCard(action.playerId, action.data.cardId, action.data.zone);
 

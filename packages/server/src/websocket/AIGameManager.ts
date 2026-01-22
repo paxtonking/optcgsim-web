@@ -85,22 +85,27 @@ export class AIGameManager {
     socket: AuthenticatedSocket,
     deckId: string,
     difficulty: 'basic' | 'medium' | 'hard' = 'basic',
-    callback: (response: { success: boolean; gameId?: string; error?: string }) => void
+    callback?: (response: { success: boolean; gameId?: string; error?: string }) => void
   ) {
     if (!socket.userId) {
-      return callback({ success: false, error: 'Not authenticated' });
+      callback?.({ success: false, error: 'Not authenticated' });
+      return;
     }
 
     // Check if player is already in a game
     if (this.playerToGame.has(socket.userId)) {
-      return callback({ success: false, error: 'Already in a game' });
+      callback?.({ success: false, error: 'Already in a game' });
+      return;
     }
 
     try {
+      console.log('[AIGameManager] Starting AI game for user:', socket.userId, 'with deck:', deckId, 'difficulty:', difficulty);
+
       // Ensure cards are loaded
       await cardLoaderService.loadAllCards();
 
       const gameId = uuidv4();
+      console.log('[AIGameManager] Created gameId:', gameId);
       const aiPlayer = createAIPlayer(difficulty);
 
       // Select random AI deck
@@ -128,6 +133,8 @@ export class AIGameManager {
       const firstPlayerId = Math.random() < 0.5 ? socket.userId : aiPlayer.getPlayerId();
       stateManager.startGame(firstPlayerId);
 
+      // Don't skip mulligan - let both players decide
+
       const game: AIGameRoom = {
         id: gameId,
         humanPlayerId: socket.userId,
@@ -143,28 +150,36 @@ export class AIGameManager {
 
       this.games.set(gameId, game);
       this.playerToGame.set(socket.userId, gameId);
+      console.log('[AIGameManager] Game stored. Total games:', this.games.size);
 
       // Join game room
       socket.join(`game:${gameId}`);
 
       // Send initial state
+      const initialState = stateManager.getState();
+      console.log('[AIGameManager] Emitting lobby:start with state. Phase:', initialState.phase, 'Turn:', initialState.turn);
+      console.log('[AIGameManager] Players:', Object.keys(initialState.players));
       socket.emit(WS_EVENTS.LOBBY_START, {
         gameId,
-        state: stateManager.getState(),
+        state: initialState,
         isAIGame: true,
         aiDifficulty: difficulty,
       });
 
-      callback({ success: true, gameId });
+      callback?.({ success: true, gameId });
 
-      // If AI goes first, process AI turn
-      if (firstPlayerId === aiPlayer.getPlayerId()) {
-        this.processAITurn(gameId);
-      }
+      // During mulligan phase, AI should make its decision regardless of who goes first
+      // Delay AI mulligan decision to let the UI load first
+      console.log('[AIGameManager] Processing AI mulligan decision...');
+      setTimeout(() => {
+        this.processAIMulliganDecision(gameId);
+      }, game.aiThinkDelay);
 
     } catch (error) {
       console.error('[AIGameManager] Error starting AI game:', error);
-      callback({ success: false, error: 'Failed to start game' });
+      callback?.({ success: false, error: 'Failed to start game' });
+      // Emit error to client if callback not provided
+      socket.emit('error', { message: 'Failed to start AI game' });
     }
   }
 
@@ -180,13 +195,36 @@ export class AIGameManager {
       throw new Error('Deck not found');
     }
 
+    // Get all card IDs including the leader
     const deckCards = deck.cards as any[];
     const cardIds = deckCards.map(c => c.cardId);
+
+    // Add leader ID to the list if it exists and isn't already included
+    if (deck.leaderId && !cardIds.includes(deck.leaderId)) {
+      cardIds.push(deck.leaderId);
+    }
+
     const cards = await prisma.card.findMany({
       where: { id: { in: cardIds } }
     });
 
     const fullDeck: any[] = [];
+
+    // Add leader card first (required for game setup)
+    if (deck.leaderId) {
+      const leaderCard = cards.find((c: any) => c.id === deck.leaderId);
+      if (leaderCard) {
+        fullDeck.push({
+          ...leaderCard,
+          instanceId: `${leaderCard.id}-leader`
+        });
+        console.log('[AIGameManager] Added leader card:', deck.leaderId);
+      } else {
+        console.error('[AIGameManager] Leader card not found:', deck.leaderId);
+      }
+    }
+
+    // Add the rest of the deck cards
     deckCards.forEach(deckCard => {
       const card = cards.find((c: any) => c.id === deckCard.cardId);
       if (card) {
@@ -235,16 +273,18 @@ export class AIGameManager {
   handleAction(
     socket: AuthenticatedSocket,
     action: GameAction,
-    callback: (response: { success: boolean; error?: string }) => void
+    callback?: (response: { success: boolean; error?: string }) => void
   ) {
     const gameId = this.playerToGame.get(socket.userId!);
     if (!gameId) {
-      return callback({ success: false, error: 'Not in a game' });
+      callback?.({ success: false, error: 'Not in a game' });
+      return;
     }
 
     const game = this.games.get(gameId);
     if (!game) {
-      return callback({ success: false, error: 'Game not found' });
+      callback?.({ success: false, error: 'Game not found' });
+      return;
     }
 
     const state = game.stateManager.getState();
@@ -252,8 +292,13 @@ export class AIGameManager {
     // Validate it's the player's turn (not AI's)
     if (state.activePlayerId !== socket.userId) {
       // Allow defensive actions during opponent's turn
-      if (state.phase !== GamePhase.COUNTER_STEP && state.phase !== GamePhase.BLOCKER_STEP) {
-        return callback({ success: false, error: 'Not your turn' });
+      // Allow mulligan actions during mulligan phase (both players decide)
+      const isMulliganAction = state.phase === GamePhase.START_MULLIGAN;
+      const isDefensivePhase = state.phase === GamePhase.COUNTER_STEP || state.phase === GamePhase.BLOCKER_STEP;
+
+      if (!isMulliganAction && !isDefensivePhase) {
+        callback?.({ success: false, error: 'Not your turn' });
+        return;
       }
     }
 
@@ -267,7 +312,8 @@ export class AIGameManager {
     const success = game.stateManager.processAction(processedAction);
 
     if (!success) {
-      return callback({ success: false, error: 'Invalid action' });
+      callback?.({ success: false, error: 'Invalid action' });
+      return;
     }
 
     game.actionLog.push(processedAction);
@@ -276,12 +322,13 @@ export class AIGameManager {
     // Check for game end
     if (updatedState.phase === GamePhase.GAME_OVER && updatedState.winner) {
       this.endGame(gameId, updatedState.winner, 'normal');
-      return callback({ success: true });
+      callback?.({ success: true });
+      return;
     }
 
     // Broadcast updated state
     socket.emit('game:state', { gameState: updatedState });
-    callback({ success: true });
+    callback?.({ success: true });
 
     // Check if it's now AI's turn OR if AI needs to respond defensively
     if (updatedState.activePlayerId === game.aiPlayer.getPlayerId()) {
@@ -371,19 +418,88 @@ export class AIGameManager {
   }
 
   /**
-   * Process AI's turn
+   * Process AI's mulligan decision
    */
-  private async processAITurn(gameId: string) {
+  private processAIMulliganDecision(gameId: string) {
+    console.log('[AIGameManager] processAIMulliganDecision called. gameId:', gameId);
     const game = this.games.get(gameId);
-    if (!game) return;
+    if (!game) {
+      console.log('[AIGameManager] Game not found in processAIMulliganDecision');
+      return;
+    }
 
     const state = game.stateManager.getState();
 
+    // Only process if we're in mulligan phase
+    if (state.phase !== GamePhase.START_MULLIGAN) {
+      console.log('[AIGameManager] Not in mulligan phase, skipping AI mulligan decision');
+      return;
+    }
+
+    // Get AI's mulligan decision
+    const decision = game.aiPlayer.getNextAction(state);
+    console.log('[AIGameManager] AI mulligan decision:', decision);
+
+    if (decision) {
+      const aiAction: GameAction = {
+        id: uuidv4(),
+        type: decision.action,
+        playerId: game.aiPlayer.getPlayerId(),
+        timestamp: Date.now(),
+        data: decision.data,
+      };
+
+      const success = game.stateManager.processAction(aiAction);
+      console.log('[AIGameManager] AI mulligan action processed:', success);
+
+      if (success) {
+        game.actionLog.push(aiAction);
+      }
+
+      const updatedState = game.stateManager.getState();
+
+      // Broadcast state to human player
+      const humanSocket = this.io.sockets.sockets.get(game.humanSocketId);
+      if (humanSocket) {
+        humanSocket.emit('game:state', { gameState: updatedState });
+      }
+
+      // If mulligan phase is complete (both players decided), process first turn
+      if (updatedState.phase !== GamePhase.START_MULLIGAN) {
+        console.log('[AIGameManager] Mulligan phase complete, phase is now:', updatedState.phase);
+        // If it's AI's turn, start processing AI actions
+        if (updatedState.activePlayerId === game.aiPlayer.getPlayerId()) {
+          setTimeout(() => {
+            this.processAITurn(gameId);
+          }, game.aiThinkDelay);
+        }
+      }
+    }
+  }
+
+  /**
+   * Process AI's turn
+   */
+  private async processAITurn(gameId: string) {
+    console.log('[AIGameManager] processAITurn called. gameId:', gameId);
+    const game = this.games.get(gameId);
+    if (!game) {
+      console.log('[AIGameManager] Game not found in processAITurn');
+      return;
+    }
+
+    const state = game.stateManager.getState();
+    console.log('[AIGameManager] Current state - Phase:', state.phase, 'Turn:', state.turn, 'ActivePlayer:', state.activePlayerId);
+
     // Check if game is over
-    if (state.phase === GamePhase.GAME_OVER) return;
+    if (state.phase === GamePhase.GAME_OVER) {
+      console.log('[AIGameManager] Game is already over');
+      return;
+    }
 
     // Get AI decision
     const decision = game.aiPlayer.getNextAction(state);
+    console.log('[AIGameManager] AI decision:', decision);
 
     if (decision) {
       const aiAction: GameAction = {
@@ -442,6 +558,7 @@ export class AIGameManager {
    * End the game
    */
   private async endGame(gameId: string, winnerId: string, reason: string) {
+    console.log('[AIGameManager] endGame called. gameId:', gameId, 'winner:', winnerId, 'reason:', reason);
     const game = this.games.get(gameId);
     if (!game) return;
 
@@ -458,23 +575,8 @@ export class AIGameManager {
       });
     }
 
-    // Save match to database (record AI games separately)
-    const duration = Math.floor((Date.now() - game.startedAt.getTime()) / 1000);
-
+    // Update player stats (skip match record - AI player ID isn't a real user)
     try {
-      await prisma.match.create({
-        data: {
-          id: gameId,
-          player1Id: game.humanPlayerId,
-          player2Id: game.aiPlayer.getPlayerId(),
-          winnerId,
-          gameLog: game.actionLog as any,
-          ranked: false, // AI games are never ranked
-          duration,
-        },
-      });
-
-      // Update player stats if human won
       if (winnerId === game.humanPlayerId) {
         await prisma.user.update({
           where: { id: game.humanPlayerId },
@@ -492,7 +594,7 @@ export class AIGameManager {
         });
       }
     } catch (error) {
-      console.error('[AIGameManager] Error saving match:', error);
+      console.error('[AIGameManager] Error updating player stats:', error);
     }
 
     // Clean up
@@ -518,13 +620,20 @@ export class AIGameManager {
    * Get game state for reconnection
    */
   getGameState(socket: AuthenticatedSocket, gameId: string): GameState | null {
+    console.log('[AIGameManager] getGameState called. gameId:', gameId, 'userId:', socket.userId);
+    console.log('[AIGameManager] Available games:', Array.from(this.games.keys()));
     const game = this.games.get(gameId);
-    if (!game) return null;
-
-    if (socket.userId !== game.humanPlayerId) {
+    if (!game) {
+      console.log('[AIGameManager] Game not found in games map');
       return null;
     }
 
+    if (socket.userId !== game.humanPlayerId) {
+      console.log('[AIGameManager] User mismatch. Expected:', game.humanPlayerId, 'Got:', socket.userId);
+      return null;
+    }
+
+    console.log('[AIGameManager] Returning game state');
     return game.stateManager.getState();
   }
 }
