@@ -54,6 +54,18 @@ export default function Layout() {
                 >
                   Leaderboard
                 </Link>
+                <Link
+                  to="/tournaments"
+                  className="text-gray-300 hover:text-white transition-colors"
+                >
+                  Tournaments
+                </Link>
+                <Link
+                  to="/game-modes"
+                  className="text-gray-300 hover:text-white transition-colors"
+                >
+                  Game Modes
+                </Link>
               </div>
             </div>
 

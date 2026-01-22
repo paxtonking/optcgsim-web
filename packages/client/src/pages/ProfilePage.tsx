@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useDeckStore } from '../stores/deckStore';
 import { CardDisplay } from '../components/CardDisplay';
 import { ProfileCustomization, AvatarDisplay } from '../components/ProfileCustomization';
+import ReportUserModal from '../components/ReportUserModal';
+import { api } from '../services/api';
 
 function getRankInfo(elo: number) {
   if (elo >= 1800) return { name: 'Master', color: '#FFD700', icon: '♔' };
@@ -24,14 +26,49 @@ function StatCard({ label, value, subtext }: { label: string; value: string | nu
   );
 }
 
+interface ProfileData {
+  id: string;
+  username: string;
+  email?: string;
+  avatarId: string;
+  eloRating: number;
+  gamesPlayed: number;
+  gamesWon: number;
+  badges: string[];
+  createdAt: string;
+}
+
 export default function ProfilePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuthStore();
   const { decks } = useDeckStore();
 
-  // For now, only show own profile
+  const [profileData, setProfileData] = useState<ProfileData | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
+
   const isOwnProfile = !id || id === user?.id;
+
+  useEffect(() => {
+    if (id && id !== user?.id) {
+      loadProfile(id);
+    }
+  }, [id, user?.id]);
+
+  const loadProfile = async (userId: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await api.get<ProfileData>(`/users/${userId}`);
+      setProfileData(response.data);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to load profile');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   if (!isAuthenticated || !user) {
     return (
@@ -50,13 +87,44 @@ export default function ProfilePage() {
     );
   }
 
-  const [avatarId, setAvatarId] = useState(user.avatarId || 'default');
-  const rankInfo = getRankInfo(user.eloRating || 1000);
-  const gamesPlayed = user.gamesPlayed || 0;
-  const gamesWon = user.gamesWon || 0;
-  const winRate = gamesPlayed > 0 ? ((gamesWon / gamesPlayed) * 100).toFixed(1) : '0.0';
-  const badges = user.badges || [];
+  if (isLoading) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500"></div>
+        </div>
+      </div>
+    );
+  }
 
+  if (error) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-16 text-center">
+        <h1 className="text-3xl font-bold mb-4 text-red-500">Error</h1>
+        <p className="text-gray-400 mb-8">{error}</p>
+        <button
+          onClick={() => navigate(-1)}
+          className="bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-medium"
+        >
+          Go Back
+        </button>
+      </div>
+    );
+  }
+
+  // Use profile data from API for other users, or own user data
+  const displayUser = isOwnProfile ? user : profileData;
+  if (!displayUser) {
+    return null;
+  }
+
+  const [localAvatarId, setLocalAvatarId] = useState(displayUser.avatarId || 'default');
+  const avatarId = isOwnProfile ? localAvatarId : (displayUser.avatarId || 'default');
+  const rankInfo = getRankInfo(displayUser.eloRating || 1000);
+  const gamesPlayed = displayUser.gamesPlayed || 0;
+  const gamesWon = displayUser.gamesWon || 0;
+  const winRate = gamesPlayed > 0 ? ((gamesWon / gamesPlayed) * 100).toFixed(1) : '0.0';
+  const badges = displayUser.badges || [];
 
   const handleLogout = async () => {
     await logout();
@@ -73,8 +141,8 @@ export default function ProfilePage() {
             <AvatarDisplay avatarId={avatarId} size="lg" className="w-24 h-24 text-4xl" />
 
             <div>
-              <h1 className="text-3xl font-bold text-white">{user.username}</h1>
-              <p className="text-gray-400">{user.email}</p>
+              <h1 className="text-3xl font-bold text-white">{displayUser.username}</h1>
+              {isOwnProfile && <p className="text-gray-400">{user.email}</p>}
               <div className="flex items-center gap-2 mt-2">
                 <span
                   className="px-3 py-1 rounded-full text-sm font-medium"
@@ -89,13 +157,22 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {isOwnProfile && (
+          {isOwnProfile ? (
             <div className="flex gap-2">
               <button
                 onClick={handleLogout}
                 className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded"
               >
                 Logout
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowReportModal(true)}
+                className="bg-red-600/20 hover:bg-red-600/30 text-red-400 px-4 py-2 rounded"
+              >
+                Report User
               </button>
             </div>
           )}
@@ -215,7 +292,7 @@ export default function ProfilePage() {
             { name: 'Diamond', min: 1600, color: '#B9F2FF' },
             { name: 'Master', min: 1800, color: '#FFD700' },
           ].map((tier, i) => {
-            const elo = user.eloRating || 1000;
+            const elo = displayUser.eloRating || 1000;
             const isCurrentTier = elo >= tier.min && (i === 5 || elo < [0, 1000, 1200, 1400, 1600, 1800, Infinity][i + 1]);
 
             return (
@@ -242,7 +319,7 @@ export default function ProfilePage() {
         {/* Progress bar to next rank */}
         <div className="mt-4">
           {(() => {
-            const elo = user.eloRating || 1000;
+            const elo = displayUser.eloRating || 1000;
             const tiers = [0, 1000, 1200, 1400, 1600, 1800, Infinity];
             const currentTierIndex = tiers.findIndex((min, i) => elo >= min && elo < tiers[i + 1]);
             const currentMin = tiers[currentTierIndex];
@@ -283,9 +360,18 @@ export default function ProfilePage() {
           <ProfileCustomization
             currentAvatarId={avatarId}
             currentBadges={badges}
-            onAvatarChange={setAvatarId}
+            onAvatarChange={setLocalAvatarId}
           />
         </div>
+      )}
+
+      {/* Report Modal */}
+      {showReportModal && profileData && (
+        <ReportUserModal
+          targetId={profileData.id}
+          targetUsername={profileData.username}
+          onClose={() => setShowReportModal(false)}
+        />
       )}
     </div>
   );

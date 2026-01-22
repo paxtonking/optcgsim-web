@@ -69,6 +69,16 @@ packages/
 | `client/src/pages/CardsPage.tsx` | Public card database browser |
 | `client/src/pages/DecksPage.tsx` | Public deck browser |
 | `client/src/components/AnnouncementsBanner.tsx` | Homepage announcements display |
+| `server/src/api/tournaments.ts` | Tournament system API endpoints |
+| `server/src/api/reports.ts` | User report submission API |
+| `client/src/pages/TournamentsPage.tsx` | Public tournaments list |
+| `client/src/pages/TournamentDetailPage.tsx` | Tournament details, bracket, registration |
+| `client/src/pages/admin/AdminTournaments.tsx` | Tournament management |
+| `client/src/pages/admin/AdminReports.tsx` | Report moderation |
+| `client/src/pages/admin/AdminSuspensions.tsx` | User suspension management |
+| `client/src/components/ReportUserModal.tsx` | User report submission UI |
+| `server/src/api/gameModes.ts` | Custom game modes API (series, draft, sealed) |
+| `client/src/pages/GameModesPage.tsx` | Custom game modes UI |
 
 ## Development Phases & Status
 
@@ -79,11 +89,7 @@ packages/
 - **Phase 4**: Ranked & Competitive (ELO rating, leaderboards, AI opponent, spectator mode, match replays)
 - **Phase 5**: Social Features (friends system, challenges, online status, lobby chat, in-game chat, emotes, profile customization)
 - **Phase 6**: Content & Admin Tools (admin dashboard, user management, card database browser, public deck browser, announcements system, analytics dashboard)
-
-### In Progress (Phase 7)
-- Tournament system
-- Custom game modes
-- Advanced reporting
+- **Phase 7**: Tournament & Advanced Features (tournament system, reporting/moderation, custom game modes)
 
 ## Running the Project
 ```bash
@@ -124,7 +130,10 @@ npm run dev
 - Public card database browser with filters
 - Public deck browser with search and filters
 - Announcements system with types (Info, Update, Event, Maintenance, Alert)
-- ~10,000+ lines of TypeScript
+- Tournament system (Single/Double Elimination, Swiss, Round Robin formats)
+- User reporting and suspension system
+- Custom game modes (Best-of-3/5 series, Draft mode, Sealed mode)
+- ~14,000+ lines of TypeScript
 - 0% test coverage (needs implementation)
 
 ## Coding Patterns

@@ -30,6 +30,10 @@ model User {
   sessions            Session[]
   sentFriendRequests  Friendship[] @relation("FriendshipSender")
   receivedFriendRequests Friendship[] @relation("FriendshipReceiver")
+  tournamentParticipations TournamentParticipant[]
+  reportsMade         Report[]     @relation("ReportAuthor")
+  reportsReceived     Report[]     @relation("ReportTarget")
+  suspensions         Suspension[]
 
   @@index([email])
   @@index([username])
@@ -103,29 +107,143 @@ model CardSet {
 }
 
 model Match {
-  id               String   @id @default(uuid())
+  id               String      @id @default(uuid())
   player1Id        String
   player2Id        String
   winnerId         String?
-  gameLog          Json     // Array of game actions
-  initialState     Json?    // Initial game state for replay
-  player1DeckId    String?  // Deck used by player 1
-  player2DeckId    String?  // Deck used by player 2
-  ranked           Boolean  @default(false)
-  duration         Int?     // Duration in seconds
-  player1EloChange Int?     // ELO change for player 1
-  player2EloChange Int?     // ELO change for player 2
-  player1EloBefore Int?     // Player 1 ELO before match
-  player2EloBefore Int?     // Player 2 ELO before match
-  createdAt        DateTime @default(now())
+  gameLog          Json        // Array of game actions
+  initialState     Json?       // Initial game state for replay
+  player1DeckId    String?     // Deck used by player 1
+  player2DeckId    String?     // Deck used by player 2
+  ranked           Boolean     @default(false)
+  duration         Int?        // Duration in seconds
+  player1EloChange Int?        // ELO change for player 1
+  player2EloChange Int?        // ELO change for player 2
+  player1EloBefore Int?        // Player 1 ELO before match
+  player2EloBefore Int?        // Player 2 ELO before match
+  gameMode         GameMode    @default(STANDARD)
+  seriesId         String?     // Link to series if part of best-of-X
+  draftLobbyId     String?     // Link to draft lobby if draft mode
+  sealedPoolId     String?     // Link to sealed pool if sealed mode
+  createdAt        DateTime    @default(now())
 
-  player1 User @relation("Player1", fields: [player1Id], references: [id])
-  player2 User @relation("Player2", fields: [player2Id], references: [id])
+  player1 User         @relation("Player1", fields: [player1Id], references: [id])
+  player2 User         @relation("Player2", fields: [player2Id], references: [id])
+  series  GameSeries?  @relation(fields: [seriesId], references: [id])
 
   @@index([player1Id])
   @@index([player2Id])
   @@index([createdAt])
   @@index([ranked])
+  @@index([seriesId])
+  @@index([gameMode])
+}
+
+// Game Modes
+enum GameMode {
+  STANDARD
+  BEST_OF_3
+  BEST_OF_5
+  DRAFT
+  SEALED
+}
+
+// Best-of-X Series tracking
+enum SeriesStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+model GameSeries {
+  id           String        @id @default(uuid())
+  player1Id    String
+  player2Id    String
+  bestOf       Int           @default(3) // 3 or 5
+  player1Wins  Int           @default(0)
+  player2Wins  Int           @default(0)
+  winnerId     String?
+  status       SeriesStatus  @default(IN_PROGRESS)
+  ranked       Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  matches      Match[]
+
+  @@index([player1Id])
+  @@index([player2Id])
+  @@index([status])
+}
+
+// Draft Mode
+enum DraftLobbyStatus {
+  WAITING       // Waiting for players
+  DRAFTING      // Draft in progress
+  DECK_BUILDING // Players building decks from drafted cards
+  PLAYING       // Games in progress
+  COMPLETED     // Draft event finished
+}
+
+model DraftLobby {
+  id              String            @id @default(uuid())
+  name            String
+  hostId          String
+  maxPlayers      Int               @default(8)
+  packsPerPlayer  Int               @default(3)
+  cardsPerPack    Int               @default(15)
+  pickTimeSeconds Int               @default(45)
+  setRestrictions String[]          @default([]) // Empty = all sets
+  status          DraftLobbyStatus  @default(WAITING)
+  currentPack     Int               @default(0)
+  currentPick     Int               @default(0)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  players         DraftPlayer[]
+
+  @@index([status])
+  @@index([hostId])
+}
+
+model DraftPlayer {
+  id           String      @id @default(uuid())
+  lobbyId      String
+  userId       String
+  seatPosition Int         // 0-7 for 8-player draft
+  draftedCards Json        @default("[]") // Array of cardIds
+  currentPack  Json        @default("[]") // Cards in current pack
+  isReady      Boolean     @default(false)
+  finalDeckId  String?     // Deck built from drafted cards
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  lobby        DraftLobby  @relation(fields: [lobbyId], references: [id], onDelete: Cascade)
+
+  @@unique([lobbyId, userId])
+  @@index([lobbyId])
+}
+
+// Sealed Mode
+enum SealedPoolStatus {
+  DECK_BUILDING // Player building deck from pool
+  READY         // Deck submitted
+  PLAYING       // Games in progress
+  COMPLETED     // Event finished
+}
+
+model SealedPool {
+  id            String            @id @default(uuid())
+  userId        String
+  cardPool      Json              // Array of cardIds in the pool
+  packCount     Int               @default(6)
+  setRestrictions String[]        @default([]) // Empty = all sets
+  finalDeckId   String?           // Deck built from pool
+  status        SealedPoolStatus  @default(DECK_BUILDING)
+  expiresAt     DateTime?         // Pool expires if not used
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([userId])
+  @@index([status])
 }
 
 model Leaderboard {
@@ -190,4 +308,179 @@ model Announcement {
   @@index([isActive])
   @@index([publishedAt])
   @@index([isPinned])
+}
+
+// Tournament System
+enum TournamentStatus {
+  DRAFT
+  REGISTRATION
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TournamentFormat {
+  SINGLE_ELIMINATION
+  DOUBLE_ELIMINATION
+  SWISS
+  ROUND_ROBIN
+}
+
+model Tournament {
+  id              String           @id @default(uuid())
+  name            String
+  description     String?          @db.Text
+  format          TournamentFormat @default(SINGLE_ELIMINATION)
+  status          TournamentStatus @default(DRAFT)
+  maxParticipants Int              @default(32)
+  minParticipants Int              @default(4)
+  registrationStart DateTime?
+  registrationEnd DateTime?
+  startDate       DateTime?
+  endDate         DateTime?
+  rules           String?          @db.Text
+  prizes          String?          @db.Text
+  isRanked        Boolean          @default(false)
+  bestOf          Int              @default(1) // Best of 1, 3, 5
+  createdById     String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  participants    TournamentParticipant[]
+  matches         TournamentMatch[]
+
+  @@index([status])
+  @@index([startDate])
+}
+
+enum ParticipantStatus {
+  REGISTERED
+  CHECKED_IN
+  ACTIVE
+  ELIMINATED
+  DISQUALIFIED
+  WITHDRAWN
+}
+
+model TournamentParticipant {
+  id           String            @id @default(uuid())
+  tournamentId String
+  userId       String
+  deckId       String?
+  seed         Int?
+  status       ParticipantStatus @default(REGISTERED)
+  placement    Int?              // Final placement (1st, 2nd, etc.)
+  wins         Int               @default(0)
+  losses       Int               @default(0)
+  checkedInAt  DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  tournament   Tournament        @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, userId])
+  @@index([tournamentId])
+  @@index([userId])
+  @@index([status])
+}
+
+enum TournamentMatchStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  BYE
+}
+
+model TournamentMatch {
+  id            String                 @id @default(uuid())
+  tournamentId  String
+  round         Int                    // 1, 2, 3... (or negative for losers bracket)
+  matchNumber   Int                    // Match number within the round
+  player1Id     String?                // Can be null if TBD
+  player2Id     String?
+  winnerId      String?
+  player1Score  Int                    @default(0)
+  player2Score  Int                    @default(0)
+  status        TournamentMatchStatus  @default(PENDING)
+  scheduledAt   DateTime?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  matchId       String?                // Reference to actual Match record
+  nextMatchId   String?                // Winner advances to this match
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  tournament    Tournament             @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@index([tournamentId])
+  @@index([round])
+  @@index([status])
+}
+
+// Reporting System
+enum ReportType {
+  CHEATING
+  HARASSMENT
+  INAPPROPRIATE_NAME
+  BUG_EXPLOIT
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  UNDER_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
+model Report {
+  id          String       @id @default(uuid())
+  type        ReportType
+  status      ReportStatus @default(PENDING)
+  authorId    String
+  targetId    String
+  matchId     String?      // Optional match reference
+  description String       @db.Text
+  evidence    String?      @db.Text // Screenshots, logs, etc.
+  resolution  String?      @db.Text
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  author      User         @relation("ReportAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  target      User         @relation("ReportTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([authorId])
+  @@index([targetId])
+  @@index([createdAt])
+}
+
+// Suspension/Ban System
+enum SuspensionType {
+  WARNING
+  MUTE
+  TEMPORARY_BAN
+  PERMANENT_BAN
+}
+
+model Suspension {
+  id          String         @id @default(uuid())
+  userId      String
+  type        SuspensionType
+  reason      String         @db.Text
+  reportId    String?        // Link to report that caused this
+  expiresAt   DateTime?      // Null for permanent
+  issuedBy    String
+  isActive    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isActive])
+  @@index([expiresAt])
 }

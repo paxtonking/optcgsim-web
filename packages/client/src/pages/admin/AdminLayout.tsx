@@ -33,6 +33,9 @@ export default function AdminLayout() {
     { path: '/admin/analytics', label: 'Analytics' },
     { path: '/admin/cards', label: 'Card Sets' },
     { path: '/admin/announcements', label: 'Announcements' },
+    { path: '/admin/tournaments', label: 'Tournaments' },
+    { path: '/admin/reports', label: 'Reports' },
+    { path: '/admin/suspensions', label: 'Suspensions' },
   ];
 
   const isActive = (path: string, exact = false) => {

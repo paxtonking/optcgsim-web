@@ -19,6 +19,12 @@ import AdminAnalytics from './pages/admin/AdminAnalytics';
 import AdminCardSets from './pages/admin/AdminCardSets';
 import AdminUserDetail from './pages/admin/AdminUserDetail';
 import AdminAnnouncements from './pages/admin/AdminAnnouncements';
+import AdminTournaments from './pages/admin/AdminTournaments';
+import AdminReports from './pages/admin/AdminReports';
+import AdminSuspensions from './pages/admin/AdminSuspensions';
+import TournamentsPage from './pages/TournamentsPage';
+import TournamentDetailPage from './pages/TournamentDetailPage';
+import GameModesPage from './pages/GameModesPage';
 
 function App() {
   const { isLoading } = useAuthStore();
@@ -46,6 +52,10 @@ function App() {
         <Route path="cards" element={<CardsPage />} />
         <Route path="browse/decks" element={<DecksPage />} />
         <Route path="replay/:matchId" element={<ReplayPage />} />
+        <Route path="tournaments" element={<TournamentsPage />} />
+        <Route path="tournaments/:id" element={<TournamentDetailPage />} />
+        <Route path="game-modes" element={<GameModesPage />} />
+        <Route path="game-modes/*" element={<GameModesPage />} />
       </Route>
       <Route path="/game/:id" element={<GamePage />} />
       <Route path="/admin" element={<AdminLayout />}>
@@ -55,6 +65,9 @@ function App() {
         <Route path="analytics" element={<AdminAnalytics />} />
         <Route path="cards" element={<AdminCardSets />} />
         <Route path="announcements" element={<AdminAnnouncements />} />
+        <Route path="tournaments" element={<AdminTournaments />} />
+        <Route path="reports" element={<AdminReports />} />
+        <Route path="suspensions" element={<AdminSuspensions />} />
       </Route>
     </Routes>
   );
