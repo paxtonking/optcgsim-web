@@ -1,19 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { GameController } from '../game/GameController';
 import { useAuthStore } from '../stores/authStore';
 import { useLobbyStore } from '../stores/lobbyStore';
 import { socketService } from '../services/socket';
 import { ChatPanel } from '../components/ChatPanel';
+import { GameBoard } from '../components/game/GameBoard';
 
 export default function GamePage() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const gameContainerRef = useRef<HTMLDivElement>(null);
-  const gameControllerRef = useRef<GameController | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
 
   const isAIGame = searchParams.get('ai') === 'true';
   const isSpectator = searchParams.get('spectate') === 'true';
@@ -23,22 +20,20 @@ export default function GamePage() {
       navigate('/lobby');
       return;
     }
+  }, [id, user, navigate]);
 
-    // Initialize game controller
-    if (gameContainerRef.current && !gameControllerRef.current) {
-      gameControllerRef.current = new GameController(isAIGame, isSpectator);
-      gameControllerRef.current.initialize(gameContainerRef.current, id, user.id);
-      setIsLoading(false);
+  const handleLeave = () => {
+    if (isAIGame && !isSpectator) {
+      socketService.emit('ai:surrender', {});
     }
+    // Reset lobby state to prevent navigation loop
+    useLobbyStore.getState().reset();
+    navigate('/lobby');
+  };
 
-    // Cleanup on unmount
-    return () => {
-      if (gameControllerRef.current) {
-        gameControllerRef.current.destroy();
-        gameControllerRef.current = null;
-      }
-    };
-  }, [id, user, navigate, isAIGame, isSpectator]);
+  if (!id || !user) {
+    return null;
+  }
 
   return (
     <div className="h-screen bg-background flex flex-col">
@@ -55,14 +50,7 @@ export default function GamePage() {
           <span className="text-sm text-gray-400">ID: {id?.slice(0, 8)}...</span>
         </div>
         <button
-          onClick={() => {
-            if (isAIGame && !isSpectator) {
-              socketService.emit('ai:surrender', {});
-            }
-            // Reset lobby state to prevent navigation loop
-            useLobbyStore.getState().reset();
-            navigate('/lobby');
-          }}
+          onClick={handleLeave}
           className={`px-4 py-2 rounded transition ${
             isSpectator
               ? 'bg-gray-600 hover:bg-gray-700'
@@ -77,15 +65,13 @@ export default function GamePage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Game container */}
         <div className="flex-1 relative">
-          {isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background z-10">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
-                <p className="text-gray-400">Loading game...</p>
-              </div>
-            </div>
-          )}
-          <div ref={gameContainerRef} className="w-full h-full" />
+          <GameBoard
+            gameId={id}
+            playerId={user.id}
+            isAIGame={isAIGame}
+            isSpectator={isSpectator}
+            onLeave={handleLeave}
+          />
         </div>
 
         {/* Chat sidebar */}
@@ -96,4 +82,3 @@ export default function GamePage() {
     </div>
   );
 }
-
