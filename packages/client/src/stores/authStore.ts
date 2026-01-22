@@ -13,6 +13,7 @@ interface AuthState {
 
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, username: string, password: string) => Promise<void>;
+  loginAsGuest: (username?: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
   clearError: () => void;
@@ -84,12 +85,40 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      logout: async () => {
-        const { refreshToken } = get();
+      loginAsGuest: async (username?: string) => {
+        set({ isLoading: true, error: null });
         try {
-          await api.post('/auth/logout', { refreshToken });
-        } catch {
-          // Ignore errors on logout
+          const response = await api.post<{
+            user: User;
+            accessToken: string;
+          }>('/auth/guest', { username });
+          const { user, accessToken } = response.data;
+
+          set({
+            user,
+            accessToken,
+            refreshToken: null, // Guests don't get refresh tokens
+            isAuthenticated: true,
+            isLoading: false,
+          });
+        } catch (error: any) {
+          set({
+            error: error.response?.data?.message || 'Guest login failed',
+            isLoading: false,
+          });
+          throw error;
+        }
+      },
+
+      logout: async () => {
+        const { refreshToken, user } = get();
+        // Only call logout API for registered users
+        if (refreshToken && !user?.isGuest) {
+          try {
+            await api.post('/auth/logout', { refreshToken });
+          } catch {
+            // Ignore errors on logout
+          }
         }
 
         set({
@@ -101,8 +130,9 @@ export const useAuthStore = create<AuthState>()(
       },
 
       refreshAuth: async () => {
-        const { refreshToken } = get();
-        if (!refreshToken) return;
+        const { refreshToken, user } = get();
+        // Guests don't have refresh tokens
+        if (!refreshToken || user?.isGuest) return;
 
         try {
           const response = await api.post<{

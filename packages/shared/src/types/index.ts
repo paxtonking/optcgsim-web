@@ -178,12 +178,13 @@ export interface DeckCard {
 // User Types
 export interface User {
   id: string;
-  email: string;
+  email?: string;
   username: string;
-  eloRating: number;
-  gamesPlayed: number;
-  gamesWon: number;
-  createdAt: Date;
+  eloRating?: number;
+  gamesPlayed?: number;
+  gamesWon?: number;
+  createdAt?: Date;
+  isGuest?: boolean;
 }
 
 export interface UserProfile extends User {

@@ -10,6 +10,7 @@ import { AIGameManager } from './AIGameManager.js';
 interface AuthenticatedSocket extends Socket {
   userId?: string;
   username?: string;
+  isGuest?: boolean;
 }
 
 export function setupWebSocket(io: SocketServer) {
@@ -27,8 +28,21 @@ export function setupWebSocket(io: SocketServer) {
         return next(new Error('Authentication required'));
       }
 
-      const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+      const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
+        userId: string;
+        username?: string;
+        isGuest?: boolean;
+      };
 
+      // Handle guest users - no database lookup needed
+      if (decoded.isGuest) {
+        socket.userId = decoded.userId;
+        socket.username = decoded.username || 'Guest';
+        socket.isGuest = true;
+        return next();
+      }
+
+      // Regular users - verify in database
       const user = await prisma.user.findUnique({
         where: { id: decoded.userId },
         select: { id: true, username: true },
@@ -40,6 +54,7 @@ export function setupWebSocket(io: SocketServer) {
 
       socket.userId = user.id;
       socket.username = user.username;
+      socket.isGuest = false;
       next();
     } catch (error) {
       next(new Error('Invalid token'));
@@ -48,6 +63,11 @@ export function setupWebSocket(io: SocketServer) {
 
   io.on('connection', (socket: AuthenticatedSocket) => {
     console.log(`User connected: ${socket.username} (${socket.userId})`);
+
+    // Register socket for challenge notifications
+    if (socket.userId) {
+      lobbyManager.registerUserSocket(socket.userId, socket.id);
+    }
 
     // Lobby events
     socket.on(WS_EVENTS.LOBBY_CREATE, (settings, callback) => {
@@ -73,8 +93,11 @@ export function setupWebSocket(io: SocketServer) {
       }
     });
 
-    // Queue events
+    // Queue events (ranked - requires login)
     socket.on(WS_EVENTS.QUEUE_JOIN, (deckId, callback) => {
+      if ((socket as AuthenticatedSocket).isGuest) {
+        return callback?.({ success: false, error: 'Ranked queue requires a registered account' });
+      }
       queueManager.joinQueue(socket, deckId, callback);
     });
 
@@ -122,8 +145,33 @@ export function setupWebSocket(io: SocketServer) {
       gameManager.removeSpectator(socket, gameId);
     });
 
-    // AI Game events
+    socket.on('spectate:getLiveGames', (callback) => {
+      const liveGames = gameManager.getLiveGames();
+      callback?.({ success: true, games: liveGames });
+    });
+
+    // Challenge events
+    socket.on(WS_EVENTS.CHALLENGE_SEND, (data, callback) => {
+      lobbyManager.sendChallenge(socket, data, callback);
+    });
+
+    socket.on(WS_EVENTS.CHALLENGE_ACCEPT, (data, callback) => {
+      lobbyManager.acceptChallenge(socket, data, callback);
+    });
+
+    socket.on(WS_EVENTS.CHALLENGE_DECLINE, (data, callback) => {
+      lobbyManager.declineChallenge(socket, data, callback);
+    });
+
+    socket.on('challenge:cancel', (data, callback) => {
+      lobbyManager.cancelChallenge(socket, data, callback);
+    });
+
+    // AI Game events (requires login)
     socket.on('ai:start', (data, callback) => {
+      if ((socket as AuthenticatedSocket).isGuest) {
+        return callback?.({ success: false, error: 'AI games require a registered account' });
+      }
       const { deckId, difficulty = 'basic' } = data;
       aiGameManager.startAIGame(socket, deckId, difficulty, callback);
     });
@@ -149,6 +197,9 @@ export function setupWebSocket(io: SocketServer) {
     // Disconnect
     socket.on('disconnect', () => {
       console.log(`User disconnected: ${socket.username}`);
+      if (socket.userId) {
+        lobbyManager.unregisterUserSocket(socket.userId);
+      }
       lobbyManager.handleDisconnect(socket);
       queueManager.leaveQueue(socket);
       gameManager.handleDisconnect(socket);

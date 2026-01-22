@@ -9,6 +9,7 @@ import {
 } from '@optcgsim/shared';
 import { prisma } from '../services/prisma.js';
 import { cardLoaderService } from '../services/CardLoaderService.js';
+import { calculateEloChange, getCurrentSeason, getPlayerRankInfo } from '../services/EloService.js';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -24,8 +25,13 @@ interface GameRoom {
   player2SocketId: string;
   player1DeckId: string;
   player2DeckId: string;
+  player1EloRating: number;
+  player2EloRating: number;
+  player1GamesPlayed: number;
+  player2GamesPlayed: number;
   stateManager: GameStateManager;
   actionLog: GameAction[];
+  initialState?: GameState;  // For replay
   ranked: boolean;
   startedAt: Date;
   spectators: Set<string>;
@@ -75,10 +81,18 @@ export class GameManager {
     stateManager.loadCardDefinitions(cardDefinitions);
     console.log(`[GameManager] Loaded ${cardDefinitions.length} card definitions for game ${gameId}`);
 
-    // Load player decks from database
-    const [deck1, deck2] = await Promise.all([
+    // Load player decks and ELO ratings from database
+    const [deck1, deck2, user1, user2] = await Promise.all([
       this.loadPlayerDeck(player1.id, player1.deckId),
-      this.loadPlayerDeck(player2.id, player2.deckId)
+      this.loadPlayerDeck(player2.id, player2.deckId),
+      prisma.user.findUnique({
+        where: { id: player1.id },
+        select: { eloRating: true, gamesPlayed: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: player2.id },
+        select: { eloRating: true, gamesPlayed: true },
+      }),
     ]);
 
     // Setup players with their decks
@@ -89,6 +103,9 @@ export class GameManager {
     const firstPlayerId = Math.random() < 0.5 ? player1.id : player2.id;
     stateManager.startGame(firstPlayerId);
 
+    // Capture initial state for replay
+    const initialState = JSON.parse(JSON.stringify(stateManager.getState()));
+
     const game: GameRoom = {
       id: gameId,
       lobbyId: lobby.id,
@@ -98,9 +115,14 @@ export class GameManager {
       player2SocketId: player2.socketId,
       player1DeckId: player1.deckId,
       player2DeckId: player2.deckId,
+      player1EloRating: user1?.eloRating ?? 1000,
+      player2EloRating: user2?.eloRating ?? 1000,
+      player1GamesPlayed: user1?.gamesPlayed ?? 0,
+      player2GamesPlayed: user2?.gamesPlayed ?? 0,
       stateManager,
       actionLog: [],
-      ranked: lobby.settings.isRanked,
+      initialState,
+      ranked: lobby.settings.isRanked ?? false,
       startedAt: new Date(),
       spectators: new Set(),
     };
@@ -290,6 +312,56 @@ export class GameManager {
     }
   }
 
+  /**
+   * Get list of live games available for spectating
+   */
+  getLiveGames(): Array<{
+    gameId: string;
+    player1: { id: string; username: string };
+    player2: { id: string; username: string };
+    ranked: boolean;
+    spectatorCount: number;
+    startedAt: Date;
+    turnCount: number;
+  }> {
+    const liveGames: Array<{
+      gameId: string;
+      player1: { id: string; username: string };
+      player2: { id: string; username: string };
+      ranked: boolean;
+      spectatorCount: number;
+      startedAt: Date;
+      turnCount: number;
+    }> = [];
+
+    for (const [gameId, game] of this.games) {
+      const state = game.stateManager.getState();
+      liveGames.push({
+        gameId,
+        player1: {
+          id: game.player1Id,
+          username: state.players[game.player1Id]?.username || 'Player 1',
+        },
+        player2: {
+          id: game.player2Id,
+          username: state.players[game.player2Id]?.username || 'Player 2',
+        },
+        ranked: game.ranked,
+        spectatorCount: game.spectators.size,
+        startedAt: game.startedAt,
+        turnCount: state.turn || 0,
+      });
+    }
+
+    // Sort by spectator count (most popular first), then by start time
+    return liveGames.sort((a, b) => {
+      if (b.spectatorCount !== a.spectatorCount) {
+        return b.spectatorCount - a.spectatorCount;
+      }
+      return b.startedAt.getTime() - a.startedAt.getTime();
+    });
+  }
+
   getGameState(socket: AuthenticatedSocket, gameId: string): GameState | null {
     const game = this.games.get(gameId);
     if (!game) return null;
@@ -314,12 +386,41 @@ export class GameManager {
     if (!game) return;
 
     const state = game.stateManager.getState();
+    const loserId = winnerId === game.player1Id ? game.player2Id : game.player1Id;
+
+    // Calculate ELO changes for ranked games
+    let eloResult: { player1NewRating: number; player2NewRating: number; player1Change: number; player2Change: number } | null = null;
+
+    if (game.ranked) {
+      const winner = winnerId === game.player1Id ? 1 : 2;
+      eloResult = calculateEloChange(
+        game.player1EloRating,
+        game.player2EloRating,
+        game.player1GamesPlayed,
+        game.player2GamesPlayed,
+        winner as 1 | 2
+      );
+    }
 
     // Notify players
     this.io.to(`game:${gameId}`).emit('game:ended', {
       winner: winnerId,
       reason,
       gameState: state,
+      eloChanges: game.ranked && eloResult ? {
+        [game.player1Id]: {
+          oldRating: game.player1EloRating,
+          newRating: eloResult.player1NewRating,
+          change: eloResult.player1Change,
+          rankInfo: getPlayerRankInfo(eloResult.player1NewRating, game.player1GamesPlayed + 1),
+        },
+        [game.player2Id]: {
+          oldRating: game.player2EloRating,
+          newRating: eloResult.player2NewRating,
+          change: eloResult.player2Change,
+          rankInfo: getPlayerRankInfo(eloResult.player2NewRating, game.player2GamesPlayed + 1),
+        },
+      } : undefined,
     });
 
     // Save match to database
@@ -334,27 +435,86 @@ export class GameManager {
         player2Id: game.player2Id,
         winnerId,
         gameLog: game.actionLog as any,
+        initialState: game.initialState as any,
+        player1DeckId: game.player1DeckId,
+        player2DeckId: game.player2DeckId,
         ranked: game.ranked,
         duration,
+        player1EloBefore: game.ranked ? game.player1EloRating : null,
+        player2EloBefore: game.ranked ? game.player2EloRating : null,
+        player1EloChange: eloResult?.player1Change ?? null,
+        player2EloChange: eloResult?.player2Change ?? null,
       },
     });
 
-    // Update player stats
+    // Update player stats and ELO ratings
     await Promise.all([
       prisma.user.update({
         where: { id: winnerId },
         data: {
           gamesPlayed: { increment: 1 },
           gamesWon: { increment: 1 },
+          ...(game.ranked && eloResult ? {
+            eloRating: winnerId === game.player1Id
+              ? eloResult.player1NewRating
+              : eloResult.player2NewRating,
+          } : {}),
         },
       }),
       prisma.user.update({
-        where: { id: winnerId === game.player1Id ? game.player2Id : game.player1Id },
+        where: { id: loserId },
         data: {
           gamesPlayed: { increment: 1 },
+          ...(game.ranked && eloResult ? {
+            eloRating: loserId === game.player1Id
+              ? eloResult.player1NewRating
+              : eloResult.player2NewRating,
+          } : {}),
         },
       }),
     ]);
+
+    // Update seasonal leaderboard for ranked games
+    if (game.ranked && eloResult) {
+      const season = getCurrentSeason();
+
+      await Promise.all([
+        prisma.leaderboard.upsert({
+          where: { season_userId: { season, userId: game.player1Id } },
+          create: {
+            season,
+            userId: game.player1Id,
+            username: state.players[game.player1Id]?.username || 'Unknown',
+            eloRating: eloResult.player1NewRating,
+            rank: 0, // Will be recalculated
+            gamesWon: winnerId === game.player1Id ? 1 : 0,
+            gamesLost: winnerId === game.player1Id ? 0 : 1,
+          },
+          update: {
+            eloRating: eloResult.player1NewRating,
+            gamesWon: winnerId === game.player1Id ? { increment: 1 } : undefined,
+            gamesLost: winnerId !== game.player1Id ? { increment: 1 } : undefined,
+          },
+        }),
+        prisma.leaderboard.upsert({
+          where: { season_userId: { season, userId: game.player2Id } },
+          create: {
+            season,
+            userId: game.player2Id,
+            username: state.players[game.player2Id]?.username || 'Unknown',
+            eloRating: eloResult.player2NewRating,
+            rank: 0, // Will be recalculated
+            gamesWon: winnerId === game.player2Id ? 1 : 0,
+            gamesLost: winnerId === game.player2Id ? 0 : 1,
+          },
+          update: {
+            eloRating: eloResult.player2NewRating,
+            gamesWon: winnerId === game.player2Id ? { increment: 1 } : undefined,
+            gamesLost: winnerId !== game.player2Id ? { increment: 1 } : undefined,
+          },
+        }),
+      ]);
+    }
 
     // Clean up
     this.playerToGame.delete(game.player1Id);

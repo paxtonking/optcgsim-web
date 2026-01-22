@@ -10,6 +10,7 @@ import ProfilePage from './pages/ProfilePage';
 import LeaderboardPage from './pages/LeaderboardPage';
 import GamePage from './pages/GamePage';
 import CardsPage from './pages/CardsPage';
+import ReplayPage from './pages/ReplayPage';
 
 function App() {
   const { isLoading } = useAuthStore();
@@ -35,6 +36,7 @@ function App() {
         <Route path="profile/:id" element={<ProfilePage />} />
         <Route path="leaderboard" element={<LeaderboardPage />} />
         <Route path="cards" element={<CardsPage />} />
+        <Route path="replay/:matchId" element={<ReplayPage />} />
       </Route>
       <Route path="/game/:id" element={<GamePage />} />
     </Routes>

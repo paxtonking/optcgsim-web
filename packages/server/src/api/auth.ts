@@ -213,3 +213,41 @@ authRouter.post('/logout', authenticate, async (req, res, next) => {
     next(error);
   }
 });
+
+// Guest session - allows playing casual matches without account
+authRouter.post('/guest', async (req, res, next) => {
+  try {
+    const { username } = req.body;
+
+    // Generate a guest username if not provided
+    const guestUsername = username
+      ? `Guest_${username.substring(0, 12)}`
+      : `Guest_${Math.random().toString(36).substring(2, 8)}`;
+
+    // Generate a temporary guest ID
+    const guestId = `guest_${uuidv4()}`;
+
+    // Generate a guest token (longer expiry since no refresh)
+    const accessToken = jwt.sign(
+      {
+        userId: guestId,
+        username: guestUsername,
+        isGuest: true,
+      },
+      process.env.JWT_SECRET!,
+      { expiresIn: '24h' } // Guest sessions last 24 hours
+    );
+
+    res.json({
+      user: {
+        id: guestId,
+        username: guestUsername,
+        isGuest: true,
+      },
+      accessToken,
+      // No refresh token for guests
+    });
+  } catch (error) {
+    next(error);
+  }
+});

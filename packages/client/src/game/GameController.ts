@@ -10,9 +10,11 @@ export class GameController {
   private gameId?: string;
   private playerId?: string;
   private isAIGame: boolean;
+  private isSpectator: boolean;
 
-  constructor(isAIGame: boolean = false) {
+  constructor(isAIGame: boolean = false, isSpectator: boolean = false) {
     this.isAIGame = isAIGame;
+    this.isSpectator = isSpectator;
     this.setupSocketListeners();
   }
 
@@ -44,11 +46,26 @@ export class GameController {
     // Get scene reference once it's created
     this.game.events.once('ready', () => {
       this.gameScene = this.game?.scene.getScene('GameScene') as GameScene;
-      this.setupSceneListeners();
 
-      // Request initial game state using appropriate event for AI or regular games
-      const getStateEvent = this.isAIGame ? 'ai:getState' : 'game:getState';
-      socket?.emit(getStateEvent, { gameId: this.gameId });
+      // Only setup action listeners if not spectating
+      if (!this.isSpectator) {
+        this.setupSceneListeners();
+      }
+
+      // Join as spectator or request game state
+      if (this.isSpectator) {
+        socket?.emit('spectate:join', this.gameId, (response: { success: boolean; state?: GameState; error?: string }) => {
+          if (response.success && response.state) {
+            this.handleStateUpdate(response.state);
+          } else {
+            console.error('Failed to join as spectator:', response.error);
+          }
+        });
+      } else {
+        // Request initial game state using appropriate event for AI or regular games
+        const getStateEvent = this.isAIGame ? 'ai:getState' : 'game:getState';
+        socket?.emit(getStateEvent, { gameId: this.gameId });
+      }
     });
   }
 
@@ -165,12 +182,23 @@ export class GameController {
     } else {
       this.stateManager.setState(state);
     }
-    
+
     // Update the visual representation
-    if (this.gameScene && this.playerId) {
-      this.gameScene.updateGameState(state, this.playerId);
+    if (this.gameScene) {
+      // Spectators view from the first player's perspective
+      const playerIds = Object.keys(state.players);
+      const viewerId = this.isSpectator ? playerIds[0] : this.playerId;
+      if (viewerId) {
+        this.gameScene.updateGameState(state, viewerId);
+      }
     }
-    
+
+    // Spectators can never take actions
+    if (this.isSpectator) {
+      this.disableActions();
+      return;
+    }
+
     // Check if it's our turn
     if (state.activePlayerId === this.playerId) {
       this.enableActions();
@@ -249,15 +277,24 @@ export class GameController {
   }
 
   public destroy() {
+    // Leave spectator mode if applicable
+    if (this.isSpectator && this.gameId) {
+      socket?.emit('spectate:leave', this.gameId);
+    }
+
     if (this.game) {
       this.game.destroy(true);
       this.game = undefined;
     }
-    
+
     // Clean up socket listeners
     socket?.off('game:state');
     socket?.off('game:action:result');
     socket?.off('game:ended');
     socket?.off('game:error');
+  }
+
+  public getIsSpectator(): boolean {
+    return this.isSpectator;
   }
 }

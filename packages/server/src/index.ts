@@ -10,6 +10,8 @@ import { usersRouter } from './api/users.js';
 import { decksRouter } from './api/decks.js';
 import { cardsRouter } from './api/cards.js';
 import { matchesRouter } from './api/matches.js';
+import { leaderboardRouter } from './api/leaderboard.js';
+import friendsRouter from './api/friends.js';
 import { setupWebSocket } from './websocket/index.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
@@ -48,6 +50,8 @@ app.use('/api/users', usersRouter);
 app.use('/api/decks', decksRouter);
 app.use('/api/cards', cardsRouter);
 app.use('/api/matches', matchesRouter);
+app.use('/api/leaderboard', leaderboardRouter);
+app.use('/api/friends', friendsRouter);
 
 // Error handling
 app.use(errorHandler);

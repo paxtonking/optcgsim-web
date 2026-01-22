@@ -60,8 +60,8 @@ matchesRouter.get('/:id', optionalAuth, async (req, res, next) => {
     const match = await prisma.match.findUnique({
       where: { id: req.params.id },
       include: {
-        player1: { select: { id: true, username: true } },
-        player2: { select: { id: true, username: true } },
+        player1: { select: { id: true, username: true, eloRating: true } },
+        player2: { select: { id: true, username: true, eloRating: true } },
       },
     });
 
@@ -71,13 +71,24 @@ matchesRouter.get('/:id', optionalAuth, async (req, res, next) => {
 
     res.json({
       id: match.id,
-      player1: match.player1,
-      player2: match.player2,
+      player1: {
+        ...match.player1,
+        eloBefore: match.player1EloBefore,
+        eloChange: match.player1EloChange,
+      },
+      player2: {
+        ...match.player2,
+        eloBefore: match.player2EloBefore,
+        eloChange: match.player2EloChange,
+      },
       winnerId: match.winnerId,
       ranked: match.ranked,
       duration: match.duration,
       createdAt: match.createdAt,
+      // Replay data
+      initialState: match.initialState,
       gameLog: match.gameLog,
+      hasReplay: !!(match.initialState && match.gameLog),
     });
   } catch (error) {
     next(error);

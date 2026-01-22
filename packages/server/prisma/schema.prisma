@@ -22,10 +22,12 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  decks         Deck[]
-  matchesAsP1   Match[]   @relation("Player1")
-  matchesAsP2   Match[]   @relation("Player2")
-  sessions      Session[]
+  decks               Deck[]
+  matchesAsP1         Match[]      @relation("Player1")
+  matchesAsP2         Match[]      @relation("Player2")
+  sessions            Session[]
+  sentFriendRequests  Friendship[] @relation("FriendshipSender")
+  receivedFriendRequests Friendship[] @relation("FriendshipReceiver")
 
   @@index([email])
   @@index([username])
@@ -99,14 +101,21 @@ model CardSet {
 }
 
 model Match {
-  id        String   @id @default(uuid())
-  player1Id String
-  player2Id String
-  winnerId  String?
-  gameLog   Json     // Array of game actions
-  ranked    Boolean  @default(false)
-  duration  Int?     // Duration in seconds
-  createdAt DateTime @default(now())
+  id               String   @id @default(uuid())
+  player1Id        String
+  player2Id        String
+  winnerId         String?
+  gameLog          Json     // Array of game actions
+  initialState     Json?    // Initial game state for replay
+  player1DeckId    String?  // Deck used by player 1
+  player2DeckId    String?  // Deck used by player 2
+  ranked           Boolean  @default(false)
+  duration         Int?     // Duration in seconds
+  player1EloChange Int?     // ELO change for player 1
+  player2EloChange Int?     // ELO change for player 2
+  player1EloBefore Int?     // Player 1 ELO before match
+  player2EloBefore Int?     // Player 2 ELO before match
+  createdAt        DateTime @default(now())
 
   player1 User @relation("Player1", fields: [player1Id], references: [id])
   player2 User @relation("Player2", fields: [player2Id], references: [id])
@@ -130,4 +139,27 @@ model Leaderboard {
 
   @@unique([season, userId])
   @@index([season, rank])
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+model Friendship {
+  id         String           @id @default(uuid())
+  senderId   String
+  receiverId String
+  status     FriendshipStatus @default(PENDING)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  sender   User @relation("FriendshipSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("FriendshipReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([status])
 }

@@ -2,8 +2,11 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useDeckStore } from '../stores/deckStore';
+import { useCardStore } from '../stores/cardStore';
 import { useLobbyStore, type AIDifficulty } from '../stores/lobbyStore';
 import { CardDisplay } from '../components/CardDisplay';
+import { LiveGamesPanel } from '../components/LiveGamesPanel';
+import { FriendsPanel } from '../components/FriendsPanel';
 
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -316,8 +319,9 @@ function QueuePanel() {
 }
 
 export default function LobbyPage() {
-  const { isAuthenticated } = useAuthStore();
-  const { decks } = useDeckStore();
+  const { isAuthenticated, user } = useAuthStore();
+  const { decks, initializeStarterDecks, hasStarterDecks } = useDeckStore();
+  const { cards, loadCards } = useCardStore();
   const navigate = useNavigate();
   const [joinCode, setJoinCode] = useState('');
   const {
@@ -328,6 +332,20 @@ export default function LobbyPage() {
     createLobby,
     joinLobby,
   } = useLobbyStore();
+
+  const isGuest = user?.isGuest || false;
+
+  // Load cards and initialize starter decks for guests
+  useEffect(() => {
+    loadCards();
+  }, [loadCards]);
+
+  useEffect(() => {
+    // Initialize starter decks for guests when cards are loaded
+    if (isGuest && cards.length > 0 && !hasStarterDecks()) {
+      initializeStarterDecks(cards);
+    }
+  }, [isGuest, cards, hasStarterDecks, initializeStarterDecks]);
 
   // Count valid decks
   const validDecks = decks.filter(deck => {
@@ -398,8 +416,21 @@ export default function LobbyPage() {
 
         {/* Right column - Play options */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Quick Match */}
-          <QueuePanel />
+          {/* Quick Match - Hidden for guests */}
+          {!isGuest && <QueuePanel />}
+
+          {/* Guest notice */}
+          {isGuest && (
+            <div className="bg-blue-900/30 border border-blue-600 rounded-lg p-4">
+              <p className="text-blue-400">
+                Playing as guest. You can create or join lobbies to play with friends.
+                <br />
+                <span className="text-blue-300 text-sm">
+                  Create an account to access AI games and ranked matches.
+                </span>
+              </p>
+            </div>
+          )}
 
           {/* Create & Join Lobby */}
           <div className="grid md:grid-cols-2 gap-6">
@@ -450,8 +481,14 @@ export default function LobbyPage() {
             </div>
           </div>
 
-          {/* Practice vs AI */}
-          <AIPanel />
+          {/* Practice vs AI - Hidden for guests */}
+          {!isGuest && <AIPanel />}
+
+          {/* Live Games - Spectate */}
+          <LiveGamesPanel />
+
+          {/* Friends Panel - Hidden for guests */}
+          {!isGuest && <FriendsPanel />}
 
           {/* Selected deck info */}
           {!selectedDeckId && validDecks.length > 0 && (

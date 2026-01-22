@@ -1,6 +1,8 @@
 import type { Server as SocketServer, Socket } from 'socket.io';
 import { WS_EVENTS } from '@optcgsim/shared';
 import type { GameManager } from './GameManager.js';
+import { prisma } from '../services/prisma.js';
+import { canMatch } from '../services/EloService.js';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -30,7 +32,7 @@ export class QueueManager {
     this.startMatchmaking();
   }
 
-  joinQueue(
+  async joinQueue(
     socket: AuthenticatedSocket,
     deckId: string,
     callback: (response: { success: boolean; position?: number; error?: string }) => void
@@ -39,31 +41,55 @@ export class QueueManager {
       return callback({ success: false, error: 'Already in queue' });
     }
 
-    // TODO: Validate deck exists and belongs to user
-    // TODO: Get user's ELO rating from database
+    try {
+      // Validate deck exists and belongs to user
+      const deck = await prisma.deck.findFirst({
+        where: {
+          id: deckId,
+          userId: socket.userId!,
+        },
+      });
 
-    const entry: QueueEntry = {
-      id: socket.userId!,
-      username: socket.username!,
-      socketId: socket.id,
-      deckId,
-      eloRating: 1000, // TODO: Fetch from DB
-      joinedAt: new Date(),
-    };
+      if (!deck) {
+        return callback({ success: false, error: 'Invalid deck' });
+      }
 
-    this.queue.set(socket.userId!, entry);
+      // Get user's ELO rating from database
+      const user = await prisma.user.findUnique({
+        where: { id: socket.userId! },
+        select: { eloRating: true, gamesPlayed: true },
+      });
 
-    // Send queue position
-    callback({
-      success: true,
-      position: this.queue.size,
-    });
+      if (!user) {
+        return callback({ success: false, error: 'User not found' });
+      }
 
-    // Notify user of queue status
-    socket.emit(WS_EVENTS.QUEUE_STATUS, {
-      position: this.queue.size,
-      estimatedWait: this.estimateWaitTime(),
-    });
+      const entry: QueueEntry = {
+        id: socket.userId!,
+        username: socket.username!,
+        socketId: socket.id,
+        deckId,
+        eloRating: user.eloRating,
+        joinedAt: new Date(),
+      };
+
+      this.queue.set(socket.userId!, entry);
+
+      // Send queue position
+      callback({
+        success: true,
+        position: this.queue.size,
+      });
+
+      // Notify user of queue status
+      socket.emit(WS_EVENTS.QUEUE_STATUS, {
+        position: this.queue.size,
+        estimatedWait: this.estimateWaitTime(),
+      });
+    } catch (error) {
+      console.error('Error joining queue:', error);
+      callback({ success: false, error: 'Failed to join queue' });
+    }
   }
 
   leaveQueue(socket: AuthenticatedSocket) {
@@ -81,30 +107,44 @@ export class QueueManager {
     if (this.queue.size < 2) return;
 
     const entries = Array.from(this.queue.values());
+    const matched = new Set<string>();
 
     // Sort by ELO for better matching
     entries.sort((a, b) => a.eloRating - b.eloRating);
 
-    // Simple matching: pair adjacent players
-    // In production, use more sophisticated rating-based matching
-    while (entries.length >= 2) {
-      const player1 = entries.shift()!;
-      const player2 = entries.shift()!;
+    // Find best matches based on ELO and queue time
+    for (let i = 0; i < entries.length; i++) {
+      if (matched.has(entries[i].id)) continue;
 
-      // Check ELO difference (expand range over time)
-      const waitTime1 = Date.now() - player1.joinedAt.getTime();
-      const waitTime2 = Date.now() - player2.joinedAt.getTime();
-      const maxWait = Math.max(waitTime1, waitTime2);
+      const player1 = entries[i];
+      const waitTime1 = (Date.now() - player1.joinedAt.getTime()) / 1000;
 
-      // Expand ELO range: 100 base + 50 per 30 seconds waiting
-      const eloRange = 100 + Math.floor(maxWait / 30000) * 50;
+      // Find best match for this player
+      let bestMatch: QueueEntry | null = null;
+      let bestMatchScore = Infinity;
 
-      if (Math.abs(player1.eloRating - player2.eloRating) <= eloRange) {
-        this.createMatch(player1, player2);
-      } else {
-        // Put back in queue for next iteration
-        entries.push(player1, player2);
-        break;
+      for (let j = i + 1; j < entries.length; j++) {
+        if (matched.has(entries[j].id)) continue;
+
+        const player2 = entries[j];
+        const waitTime2 = (Date.now() - player2.joinedAt.getTime()) / 1000;
+        const maxWaitTime = Math.max(waitTime1, waitTime2);
+
+        // Check if players can be matched based on ELO and wait time
+        if (canMatch(player1.eloRating, player2.eloRating, maxWaitTime)) {
+          // Score based on ELO difference (lower is better)
+          const score = Math.abs(player1.eloRating - player2.eloRating);
+          if (score < bestMatchScore) {
+            bestMatch = player2;
+            bestMatchScore = score;
+          }
+        }
+      }
+
+      if (bestMatch) {
+        matched.add(player1.id);
+        matched.add(bestMatch.id);
+        this.createMatch(player1, bestMatch);
       }
     }
   }
@@ -127,8 +167,8 @@ export class QueueManager {
 
     // Notify players they've been matched
     const matchData = {
-      player1: { id: player1.id, username: player1.username },
-      player2: { id: player2.id, username: player2.username },
+      player1: { id: player1.id, username: player1.username, eloRating: player1.eloRating },
+      player2: { id: player2.id, username: player2.username, eloRating: player2.eloRating },
     };
 
     socket1.emit(WS_EVENTS.QUEUE_MATCHED, matchData);
@@ -138,8 +178,20 @@ export class QueueManager {
     const lobby = {
       id: `ranked-${Date.now()}`,
       players: [
-        { id: player1.id, username: player1.username, socketId: player1.socketId },
-        { id: player2.id, username: player2.username, socketId: player2.socketId },
+        {
+          id: player1.id,
+          username: player1.username,
+          socketId: player1.socketId,
+          deckId: player1.deckId,
+          eloRating: player1.eloRating,
+        },
+        {
+          id: player2.id,
+          username: player2.username,
+          socketId: player2.socketId,
+          deckId: player2.deckId,
+          eloRating: player2.eloRating,
+        },
       ],
       settings: {
         isRanked: true,

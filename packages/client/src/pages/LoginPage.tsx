@@ -5,13 +5,24 @@ import { useAuthStore } from '../stores/authStore';
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { login, isLoading, error, clearError } = useAuthStore();
+  const [guestName, setGuestName] = useState('');
+  const [showGuestInput, setShowGuestInput] = useState(false);
+  const { login, loginAsGuest, isLoading, error, clearError } = useAuthStore();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       await login(email, password);
+      navigate('/lobby');
+    } catch {
+      // Error handled in store
+    }
+  };
+
+  const handleGuestLogin = async () => {
+    try {
+      await loginAsGuest(guestName || undefined);
       navigate('/lobby');
     } catch {
       // Error handled in store
@@ -73,6 +84,45 @@ export default function LoginPage() {
             Sign up
           </Link>
         </p>
+
+        <div className="relative my-6">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-600"></div>
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="px-2 bg-gray-800 text-gray-400">or</span>
+          </div>
+        </div>
+
+        {!showGuestInput ? (
+          <button
+            onClick={() => setShowGuestInput(true)}
+            className="btn-secondary w-full"
+          >
+            Play as Guest
+          </button>
+        ) : (
+          <div className="space-y-3">
+            <input
+              type="text"
+              value={guestName}
+              onChange={(e) => setGuestName(e.target.value)}
+              placeholder="Enter nickname (optional)"
+              className="input"
+              maxLength={12}
+            />
+            <button
+              onClick={handleGuestLogin}
+              disabled={isLoading}
+              className="btn-secondary w-full"
+            >
+              {isLoading ? 'Joining...' : 'Join as Guest'}
+            </button>
+            <p className="text-xs text-gray-500 text-center">
+              Guests can play casual matches with friends. Create an account to play AI or ranked modes.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

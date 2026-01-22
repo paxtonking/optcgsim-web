@@ -131,6 +131,18 @@ export const WS_EVENTS = {
   // Spectator
   SPECTATE_JOIN: 'spectate:join',
   SPECTATE_LEAVE: 'spectate:leave',
+
+  // Challenges
+  CHALLENGE_SEND: 'challenge:send',
+  CHALLENGE_RECEIVED: 'challenge:received',
+  CHALLENGE_ACCEPT: 'challenge:accept',
+  CHALLENGE_DECLINE: 'challenge:decline',
+  CHALLENGE_CANCELLED: 'challenge:cancelled',
+
+  // Chat
+  CHAT_MESSAGE: 'chat:message',
+  CHAT_RECEIVE: 'chat:receive',
+  CHAT_SYSTEM: 'chat:system',
 } as const;
 
 // Validation

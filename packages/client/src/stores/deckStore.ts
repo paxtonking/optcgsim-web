@@ -5,6 +5,43 @@ import type { Card, Deck, DeckCard } from '../types/card';
 const DECK_SIZE = 50;
 const MAX_CARD_COPIES = 4;
 
+// Starter Deck card IDs
+const STARTER_DECKS = {
+  'Starter Deck 01 - Straw Hat Crew (Red)': {
+    leader: 'ST01-001', // Luffy
+    cards: [
+      { id: 'ST01-004', count: 4 }, // Usopp
+      { id: 'ST01-005', count: 4 }, // Karoo
+      { id: 'ST01-006', count: 4 }, // Sanji
+      { id: 'ST01-007', count: 4 }, // Jinbe
+      { id: 'ST01-008', count: 4 }, // Chopper
+      { id: 'ST01-009', count: 4 }, // Nami
+      { id: 'ST01-010', count: 4 }, // Robin
+      { id: 'ST01-011', count: 4 }, // Franky
+      { id: 'ST01-012', count: 4 }, // Sanji (Rush)
+      { id: 'ST01-013', count: 4 }, // Zoro (Blocker)
+      { id: 'ST01-014', count: 4 }, // Gum-Gum Jet Pistol
+      { id: 'ST01-015', count: 2 }, // Gum-Gum Pistol
+    ],
+  },
+  'Starter Deck 02 - Worst Generation (Green)': {
+    leader: 'ST02-001', // Kid
+    cards: [
+      { id: 'ST02-002', count: 4 }, // Killer
+      { id: 'ST02-003', count: 4 }, // Apoo
+      { id: 'ST02-004', count: 4 }, // Bonney
+      { id: 'ST02-005', count: 4 }, // Law
+      { id: 'ST02-006', count: 4 }, // Hawkins
+      { id: 'ST02-007', count: 4 }, // Heat
+      { id: 'ST02-008', count: 4 }, // Bepo
+      { id: 'ST02-009', count: 4 }, // Bege
+      { id: 'ST02-010', count: 4 }, // Urouge
+      { id: 'ST02-011', count: 4 }, // X Drake
+      { id: 'ST02-013', count: 6 }, // Kid (Character)
+    ],
+  },
+};
+
 interface DeckStore {
   decks: Deck[];
   currentDeck: Deck | null;
@@ -33,6 +70,10 @@ interface DeckStore {
   // Import/Export
   exportDeck: () => string;
   importDeck: (data: string) => boolean;
+
+  // Guest starter decks
+  initializeStarterDecks: (cards: Card[]) => void;
+  hasStarterDecks: () => boolean;
 }
 
 function generateId(): string {
@@ -352,6 +393,49 @@ export const useDeckStore = create<DeckStore>()(
           return true;
         } catch {
           return false;
+        }
+      },
+
+      hasStarterDecks: () => {
+        const { decks } = get();
+        return decks.some(d => d.name.startsWith('Starter Deck'));
+      },
+
+      initializeStarterDecks: (cards: Card[]) => {
+        // Don't re-initialize if already have starter decks
+        if (get().hasStarterDecks()) return;
+
+        const cardMap = new Map(cards.map(c => [c.id, c]));
+        const newDecks: Deck[] = [];
+
+        for (const [deckName, deckData] of Object.entries(STARTER_DECKS)) {
+          const leader = cardMap.get(deckData.leader);
+          if (!leader) continue;
+
+          const deckCards: DeckCard[] = [];
+          for (const { id, count } of deckData.cards) {
+            const card = cardMap.get(id);
+            if (card) {
+              deckCards.push({ card, count });
+            }
+          }
+
+          const deck: Deck = {
+            id: generateId(),
+            name: deckName,
+            leader,
+            cards: deckCards,
+            isPublic: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          newDecks.push(deck);
+        }
+
+        if (newDecks.length > 0) {
+          set((state) => ({
+            decks: [...state.decks, ...newDecks],
+          }));
         }
       },
     }),
