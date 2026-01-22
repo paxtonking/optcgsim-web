@@ -62,13 +62,7 @@ packages/
 - **Phase 1**: Foundation (monorepo, TypeScript, Prisma, JWT auth)
 - **Phase 2**: Core Features (deck builder, lobby UI, user profiles)
 - **Phase 3**: Game Engine (GameStateManager, Phaser rendering, effects, multiplayer)
-- **Phase 4 Partial**: AI opponent (3 difficulties), visual polish, 85+ card definitions
-
-### In Progress (Phase 4 Remaining)
-- [ ] Counter Step UI - player choices during combat
-- [ ] Trigger Step UI - life card effect choices
-- [ ] More card effect definitions (85 → 200+)
-- [ ] Sound effects
+- **Phase 4**: AI & Polish (AI opponent, Counter/Trigger UI, 45+ card definitions, sound effects)
 
 ### Not Started (Phases 5-7)
 - Ranked mode with ELO
@@ -102,9 +96,11 @@ npm run dev
 
 ## Current Stats
 - 2,188 cards from 48 sets
-- 85+ card effect definitions
+- 45+ card effect definitions (Starter Decks 01/02 + popular cards)
 - 80+ effect triggers, 200+ effect types
-- 5,000+ lines of TypeScript
+- Counter Step & Trigger Step UI implemented
+- Procedural sound effects for game actions
+- ~6,000+ lines of TypeScript
 - 0% test coverage (needs implementation)
 
 ## Coding Patterns
