@@ -101,6 +101,7 @@ packages/
 - **Mulligan Phase Rendering**: Fixed duplicate card rendering during mulligan - cards now render only in mulligan panel, not behind it
 - **Mulligan Overlay Fix**: Made mulligan overlay interactive to block hover events on cards behind the panel
 - **Hand Rendering After Mulligan**: Fixed hand cards not appearing after clicking "Keep Hand" - now renders immediately without waiting for server phase change
+- **Mulligan Panel Reappearing**: Fixed bug where mulligan panel would reappear after playing cards when going first - added `mulliganDecisionMade` flag to track player's decision
 - **Texture Loading Fix**: Fixed async texture loading so cards show actual images instead of card-backs after images load
 - **Card Placeholders**: When card images fail to load (CORS), colored placeholders display card type, power, and name
 - **Card Sizing**: Fixed oversized cards by using explicit `setDisplaySize()` instead of scale-based sizing

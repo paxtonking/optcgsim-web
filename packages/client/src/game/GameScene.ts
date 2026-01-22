@@ -46,6 +46,7 @@ export class GameScene extends Phaser.Scene {
 
   // Mulligan UI
   private mulliganPanel?: Phaser.GameObjects.Container;
+  private mulliganDecisionMade = false; // Track if player has already made mulligan decision
 
   // Sound effects
   private soundEnabled = true;
@@ -1730,12 +1731,16 @@ export class GameScene extends Phaser.Scene {
     const isMulliganPhase = this.gameState.phase === GamePhase.START_MULLIGAN;
 
     if (isMulliganPhase) {
-      // Only create mulligan panel if it doesn't exist
-      // The panel will be refreshed by scheduleRender() when images load
-      if (!this.mulliganPanel) {
+      // Only create mulligan panel if:
+      // 1. Panel doesn't exist AND
+      // 2. Player hasn't already made their mulligan decision
+      // This prevents panel from reappearing while waiting for opponent
+      if (!this.mulliganPanel && !this.mulliganDecisionMade) {
         this.showMulliganUI();
       }
     } else {
+      // Transitioning out of mulligan phase - reset the flag for next game
+      this.mulliganDecisionMade = false;
       this.hideMulliganUI();
     }
   }
@@ -1880,6 +1885,7 @@ export class GameScene extends Phaser.Scene {
    * Confirm keeping the current hand
    */
   private confirmKeepHand() {
+    this.mulliganDecisionMade = true; // Prevent panel from reappearing while waiting for opponent
     this.events.emit('keepHand');
     this.hideMulliganUI();
   }
@@ -1888,6 +1894,7 @@ export class GameScene extends Phaser.Scene {
    * Perform mulligan - request new hand
    */
   private performMulligan() {
+    this.mulliganDecisionMade = true; // Prevent panel from reappearing while waiting for opponent
     this.events.emit('mulligan');
     this.hideMulliganUI();
   }
