@@ -40,6 +40,9 @@ export class GameScene extends Phaser.Scene {
   // Trigger Step UI
   private triggerPanel?: Phaser.GameObjects.Container;
 
+  // Sound effects
+  private soundEnabled = true;
+
   // Zone dimensions
   private readonly CARD_WIDTH = 63;
   private readonly CARD_HEIGHT = 88;
@@ -140,6 +143,9 @@ export class GameScene extends Phaser.Scene {
     // Load card data from JSON
     this.loadCardData();
 
+    // Initialize sound system
+    this.initializeSounds();
+
     // Add background
     this.add.rectangle(0, 0, width, height, 0x1a1a1a).setOrigin(0);
 
@@ -154,6 +160,125 @@ export class GameScene extends Phaser.Scene {
 
     // Setup input handlers
     this.setupInputHandlers();
+  }
+
+  /**
+   * Initialize procedural sound effects using Web Audio
+   */
+  private initializeSounds() {
+    // We'll use procedural audio for now since we don't have sound files
+    // This creates simple beeps and tones for feedback
+    this.soundEnabled = true;
+  }
+
+  /**
+   * Play a procedural sound effect
+   */
+  private playSound(soundType: 'cardPlay' | 'attack' | 'damage' | 'turnStart' | 'victory' | 'defeat' | 'click' | 'counter') {
+    if (!this.soundEnabled) return;
+
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      // Configure sound based on type
+      switch (soundType) {
+        case 'cardPlay':
+          oscillator.frequency.value = 440; // A4
+          oscillator.type = 'sine';
+          gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+          oscillator.start(audioContext.currentTime);
+          oscillator.stop(audioContext.currentTime + 0.1);
+          break;
+
+        case 'attack':
+          oscillator.frequency.value = 220; // A3
+          oscillator.type = 'sawtooth';
+          gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+          oscillator.start(audioContext.currentTime);
+          oscillator.stop(audioContext.currentTime + 0.2);
+          break;
+
+        case 'damage':
+          oscillator.frequency.value = 150;
+          oscillator.type = 'square';
+          gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.15);
+          oscillator.start(audioContext.currentTime);
+          oscillator.stop(audioContext.currentTime + 0.15);
+          break;
+
+        case 'turnStart':
+          // Two-tone chime
+          oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime); // C5
+          oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.1); // E5
+          oscillator.type = 'sine';
+          gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.25);
+          oscillator.start(audioContext.currentTime);
+          oscillator.stop(audioContext.currentTime + 0.25);
+          break;
+
+        case 'victory':
+          // Ascending triumphant chord
+          oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime); // C5
+          oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.15); // E5
+          oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime + 0.3); // G5
+          oscillator.type = 'sine';
+          gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+          oscillator.start(audioContext.currentTime);
+          oscillator.stop(audioContext.currentTime + 0.5);
+          break;
+
+        case 'defeat':
+          // Descending sad tone
+          oscillator.frequency.setValueAtTime(440, audioContext.currentTime); // A4
+          oscillator.frequency.linearRampToValueAtTime(220, audioContext.currentTime + 0.4); // A3
+          oscillator.type = 'sine';
+          gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
+          oscillator.start(audioContext.currentTime);
+          oscillator.stop(audioContext.currentTime + 0.4);
+          break;
+
+        case 'click':
+          oscillator.frequency.value = 800;
+          oscillator.type = 'sine';
+          gainNode.gain.setValueAtTime(0.05, audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.05);
+          oscillator.start(audioContext.currentTime);
+          oscillator.stop(audioContext.currentTime + 0.05);
+          break;
+
+        case 'counter':
+          // Quick shield-like sound
+          oscillator.frequency.value = 600;
+          oscillator.type = 'triangle';
+          gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.12);
+          oscillator.start(audioContext.currentTime);
+          oscillator.stop(audioContext.currentTime + 0.12);
+          break;
+      }
+    } catch (e) {
+      // Web Audio not supported or blocked
+      console.warn('Sound playback failed:', e);
+    }
+  }
+
+  /**
+   * Toggle sound on/off
+   */
+  public toggleSound(): boolean {
+    this.soundEnabled = !this.soundEnabled;
+    return this.soundEnabled;
   }
 
   private setupZones(width: number, height: number) {
@@ -277,6 +402,11 @@ export class GameScene extends Phaser.Scene {
 
   private showTurnBanner(isYourTurn: boolean) {
     if (!this.turnBanner) return;
+
+    // Play turn start sound
+    if (isYourTurn) {
+      this.playSound('turnStart');
+    }
 
     const text = this.turnBanner.getAt(1) as Phaser.GameObjects.Text;
     text.setText(isYourTurn ? 'YOUR TURN' : "OPPONENT'S TURN");
@@ -807,34 +937,38 @@ export class GameScene extends Phaser.Scene {
 
   private onCardDragEnd(gameObject: Phaser.GameObjects.Image, pointer: Phaser.Input.Pointer) {
     const cardId = gameObject.getData('cardId');
-    
+
     // Check which zone the card was dropped in
     this.zones.forEach((zone, name) => {
       if (zone.contains(pointer.x, pointer.y)) {
         console.log(`Card ${cardId} dropped in ${name}`);
-        
+
         // Emit play card event if dropped in field
         if (name === 'player-field') {
+          this.playSound('cardPlay');
           this.events.emit('playCard', { cardId, zone: CardZone.FIELD });
         }
       }
     });
-    
+
     // Reset card position if not played
     this.renderGameState();
   }
 
   private onAttackClick() {
     if (this.selectedCard) {
+      this.playSound('attack');
       this.events.emit('declareAttack', { attackerId: this.selectedCard });
     }
   }
 
   private onEndTurnClick() {
+    this.playSound('click');
     this.events.emit('endTurn');
   }
 
   private onPassClick() {
+    this.playSound('click');
     this.events.emit('pass');
   }
 
@@ -1061,6 +1195,7 @@ export class GameScene extends Phaser.Scene {
    */
   private confirmUseCounter() {
     const cardIds = Array.from(this.selectedCounterCards);
+    this.playSound('counter');
     this.events.emit('useCounter', { cardIds });
     this.hideCounterStepUI();
   }
