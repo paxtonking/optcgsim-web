@@ -1,8 +1,11 @@
 import Phaser from 'phaser';
 import { GameScene } from './GameScene';
-import { GameStateManager, GameState, GameAction, ActionType } from '@optcgsim/shared';
+import { GameStateManager, GameState, GameAction, ActionType, GamePhase } from '@optcgsim/shared';
 import { getSocket } from '../services/socket';
 import { useLobbyStore } from '../stores/lobbyStore';
+
+// Global tracking to prevent duplicate Phaser instances (React StrictMode creates double mounts)
+const activeGames = new Map<string, Phaser.Game>();
 
 export class GameController {
   private game?: Phaser.Game;
@@ -23,10 +26,17 @@ export class GameController {
 
   /**
    * Create a signature/hash of the game state for deduplication
+   * During mulligan phase, include card IDs to detect hand changes (same count, different cards)
    */
   private createStateSignature(state: GameState): string {
+    const isMulliganPhase = state.phase === GamePhase.START_MULLIGAN;
+
     const playerSigs = Object.entries(state.players).map(([id, player]) => {
-      return `${id}:h${player.hand.length}:f${player.field.length}:l${player.lifeCards.length}:d${player.donField.length}:dd${player.donDeck}`;
+      // During mulligan, include hand card IDs to detect card changes
+      const handSig = isMulliganPhase
+        ? player.hand.map(c => c.id).sort().join(',')
+        : `${player.hand.length}`;
+      return `${id}:h${handSig}:f${player.field.length}:l${player.lifeCards.length}:d${player.donField.length}:dd${player.donDeck}`;
     }).join('|');
 
     return `${state.phase}:${state.turn}:${state.activePlayerId}:${playerSigs}:${state.currentCombat?.attackerId || 'none'}`;
@@ -36,7 +46,27 @@ export class GameController {
     console.log('[GameController] initialize() called. gameId:', gameId, 'playerId:', playerId);
     console.log('[GameController] Container:', container.id || container.className || 'unnamed');
 
-    // Check if already initialized
+    // Check if a game already exists for this gameId (prevents React StrictMode double-mount issues)
+    if (activeGames.has(gameId)) {
+      console.warn('[GameController] Game already exists for this gameId, reusing existing instance');
+      this.game = activeGames.get(gameId);
+      this.gameId = gameId;
+      this.playerId = playerId;
+
+      // Get the existing scene
+      if (this.game) {
+        this.gameScene = this.game.scene.getScene('GameScene') as GameScene;
+      }
+
+      // Set up socket listeners if needed
+      if (!this.socketListenersSetup) {
+        this.setupSocketListeners();
+        this.socketListenersSetup = true;
+      }
+      return;
+    }
+
+    // Check if this controller already has a game
     if (this.game) {
       console.warn('[GameController] Already initialized! Destroying previous game instance.');
       this.game.destroy(true);
@@ -71,7 +101,11 @@ export class GameController {
     };
 
     this.game = new Phaser.Game(config);
-    
+
+    // Register in global tracking
+    activeGames.set(gameId, this.game);
+    console.log('[GameController] Registered new game instance for gameId:', gameId);
+
     // Get scene reference once it's created
     this.game.events.once('ready', () => {
       this.gameScene = this.game?.scene.getScene('GameScene') as GameScene;
@@ -358,6 +392,12 @@ export class GameController {
 
     // Reset lobby state to prevent navigation loop
     useLobbyStore.getState().reset();
+
+    // Remove from global tracking
+    if (this.gameId) {
+      activeGames.delete(this.gameId);
+      console.log('[GameController] Removed game instance for gameId:', this.gameId);
+    }
 
     if (this.game) {
       this.game.destroy(true);

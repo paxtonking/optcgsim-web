@@ -126,11 +126,38 @@ export class GameScene extends Phaser.Scene {
       // Only render if no more images are pending
       if (this.pendingImageLoads === 0) {
         this.renderGameState();
+
+        // Update mulligan panel textures in-place (don't destroy and recreate)
+        if (this.mulliganPanel && this.gameState?.phase === GamePhase.START_MULLIGAN) {
+          this.updateMulliganPanelTextures();
+        }
       } else {
         // If still loading, schedule another check
         this.scheduleRender();
       }
     }, 100) as unknown as number;
+  }
+
+  /**
+   * Update textures of cards in the mulligan panel without recreating it
+   */
+  private updateMulliganPanelTextures() {
+    if (!this.mulliganPanel) return;
+
+    // Iterate through panel children and update card textures
+    this.mulliganPanel.list.forEach((child) => {
+      if (child instanceof Phaser.GameObjects.Image) {
+        const cardDefId = child.getData('cardDefId');
+        if (cardDefId) {
+          const textureKey = `card-${cardDefId}`;
+          // Only update if texture is now loaded and sprite is using card-back
+          if (this.loadedTextures.has(textureKey) && child.texture.key === 'card-back') {
+            child.setTexture(textureKey);
+            console.log(`[GameScene] Updated mulligan card texture: ${textureKey}`);
+          }
+        }
+      }
+    });
   }
 
   /**
@@ -160,10 +187,15 @@ export class GameScene extends Phaser.Scene {
     // Try to load the image
     let imageUrl = cardData.imageUrl;
 
-    // Use backend proxy for optcgapi.com images to avoid CORS issues
-    if (imageUrl && imageUrl.includes('optcgapi.com/media/static/Card_Images/')) {
-      const filename = imageUrl.split('/').pop();
-      imageUrl = `/api/images/cards/${filename}`;
+    // Use backend proxy for external images to avoid CORS issues
+    if (imageUrl) {
+      if (imageUrl.includes('optcgapi.com/media/static/Card_Images/')) {
+        const filename = imageUrl.split('/').pop();
+        imageUrl = `/api/images/cards/${filename}`;
+      } else if (imageUrl.includes('en.onepiece-cardgame.com/images/cardlist/card/')) {
+        const filename = imageUrl.split('/').pop();
+        imageUrl = `/api/images/official/${filename}`;
+      }
     }
 
     if (!this.textures.exists(textureKey) && !this.loadedTextures.has(`loading-${textureKey}`)) {
@@ -176,16 +208,21 @@ export class GameScene extends Phaser.Scene {
         this.load.setCORS('anonymous');
       }
 
-      // Add to loader and start loading
+      // Add to loader with file-specific event listeners
       this.load.image(textureKey, imageUrl);
-      this.load.once('complete', () => {
+
+      // Use file-specific completion event (not global 'complete')
+      this.load.once(`filecomplete-image-${textureKey}`, () => {
+        console.log(`[GameScene] Image loaded successfully: ${textureKey}`);
         this.loadedTextures.delete(`loading-${textureKey}`);
         this.loadedTextures.add(textureKey);
         this.pendingImageLoads--;
         // Debounced re-render to avoid cascading renders
         this.scheduleRender();
       });
-      this.load.once('loaderror', () => {
+
+      // Use file-specific error event
+      this.load.once(`loaderror-image-${textureKey}`, () => {
         console.warn(`[GameScene] Failed to load card image: ${imageUrl}`);
         this.loadedTextures.delete(`loading-${textureKey}`);
         // Mark as failed to prevent retries
@@ -194,6 +231,7 @@ export class GameScene extends Phaser.Scene {
         // Re-render to show placeholder for failed images
         this.scheduleRender();
       });
+
       this.load.start();
     }
 
@@ -640,9 +678,16 @@ export class GameScene extends Phaser.Scene {
     }
 
     const previousActivePlayer = this.gameState?.activePlayerId;
+    const previousPhase = this.gameState?.phase;
 
     this.gameState = state;
     this.playerId = playerId;
+
+    // If we transitioned OUT of mulligan phase, ensure mulligan UI is cleaned up first
+    if (previousPhase === GamePhase.START_MULLIGAN && state.phase !== GamePhase.START_MULLIGAN) {
+      console.log('[GameScene] Transitioning out of mulligan phase, cleaning up mulligan UI');
+      this.hideMulliganUI();
+    }
 
     // Update UI indicators
     this.updateUIIndicators();
@@ -712,6 +757,11 @@ export class GameScene extends Phaser.Scene {
     this.cardSprites.forEach(sprite => sprite.destroy());
     this.cardSprites.clear();
 
+    // During mulligan, only render if panel is NOT visible (e.g., after clicking Keep Hand)
+    // This ensures the board isn't blank while waiting for server response
+    // Note: Hand cards are already skipped during mulligan in renderPlayerCards()
+    // The interactive overlay on the mulligan panel blocks hover events
+
     const player = this.gameState.players[this.playerId];
     const opponent = Object.values(this.gameState.players).find(p => p.id !== this.playerId);
 
@@ -771,10 +821,13 @@ export class GameScene extends Phaser.Scene {
       });
     }
     
-    // Render hand cards (skip during mulligan - handled by mulligan UI)
+    // Render hand cards (skip during mulligan only if panel is visible - handled by mulligan UI)
     const handZone = this.zones.get(`${prefix}-hand`);
     const isMulliganPhase = this.gameState?.phase === GamePhase.START_MULLIGAN;
-    if (handZone && !isMulliganPhase) {
+    const mulliganPanelVisible = this.mulliganPanel !== undefined;
+    // Only skip hand rendering if we're in mulligan phase AND the panel is visible
+    // This ensures hand renders after clicking "Keep Hand" even before server confirms phase change
+    if (handZone && !(isMulliganPhase && mulliganPanelVisible)) {
       const isMyHand = prefix === 'player';
       player.hand.forEach((card, index) => {
         const x = handZone.x + 50 + (index * 60);
@@ -994,6 +1047,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onCardHover(gameObject: Phaser.GameObjects.Image) {
+    // Don't show hover effects if mulligan panel is visible
+    if (this.mulliganPanel && this.gameState?.phase === GamePhase.START_MULLIGAN) {
+      return;
+    }
+
     // Slightly enlarge on hover (1.1x normal size)
     const hoverWidth = this.CARD_WIDTH * this.CARD_SCALE * 1.1;
     const hoverHeight = this.CARD_HEIGHT * this.CARD_SCALE * 1.1;
@@ -1661,10 +1719,11 @@ export class GameScene extends Phaser.Scene {
   private checkMulliganUI() {
     if (!this.gameState || !this.playerId) return;
 
-    const isMulliganPhase = this.gameState.phase === 'START_MULLIGAN';
+    const isMulliganPhase = this.gameState.phase === GamePhase.START_MULLIGAN;
 
     if (isMulliganPhase) {
-      // Show mulligan panel if not already shown
+      // Only create mulligan panel if it doesn't exist
+      // The panel will be refreshed by scheduleRender() when images load
       if (!this.mulliganPanel) {
         this.showMulliganUI();
       }
@@ -1679,16 +1738,25 @@ export class GameScene extends Phaser.Scene {
   private showMulliganUI() {
     if (!this.gameState || !this.playerId) return;
 
+    // Don't create a new panel if one already exists
+    if (this.mulliganPanel) {
+      console.log('[GameScene] Mulligan panel already exists, skipping creation');
+      return;
+    }
+
     const { width, height } = this.scale;
     const player = this.gameState.players[this.playerId];
     if (!player) return;
+
+    console.log('[GameScene] Creating mulligan panel with', player.hand.length, 'cards');
 
     // Create container
     this.mulliganPanel = this.add.container(width / 2, height / 2);
     this.mulliganPanel.setDepth(5000);
 
-    // Semi-transparent overlay
-    const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.7);
+    // Semi-transparent overlay (interactive to block clicks on cards behind)
+    const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.7)
+      .setInteractive();
     this.mulliganPanel.add(overlay);
 
     // Panel background
@@ -1823,6 +1891,8 @@ export class GameScene extends Phaser.Scene {
     if (this.mulliganPanel) {
       this.mulliganPanel.destroy();
       this.mulliganPanel = undefined;
+      // Re-render to show hand cards now that panel is hidden
+      this.scheduleRender();
     }
   }
 }

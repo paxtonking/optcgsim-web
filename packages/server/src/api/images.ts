@@ -2,11 +2,8 @@ import { Router } from 'express';
 
 export const imagesRouter = Router();
 
-// Proxy card images from optcgapi.com to avoid CORS issues
-imagesRouter.get('/cards/:filename', async (req, res) => {
-  const { filename } = req.params;
-  const imageUrl = `https://www.optcgapi.com/media/static/Card_Images/${filename}`;
-
+// Helper function to proxy images from external sources
+async function proxyImage(imageUrl: string, filename: string, res: any) {
   try {
     const response = await fetch(imageUrl);
 
@@ -30,4 +27,18 @@ imagesRouter.get('/cards/:filename', async (req, res) => {
     console.error(`[ImageProxy] Failed to fetch ${filename}:`, error);
     res.status(500).send('Failed to fetch image');
   }
+}
+
+// Proxy card images from optcgapi.com to avoid CORS issues
+imagesRouter.get('/cards/:filename', async (req, res) => {
+  const { filename } = req.params;
+  const imageUrl = `https://www.optcgapi.com/media/static/Card_Images/${filename}`;
+  await proxyImage(imageUrl, filename, res);
+});
+
+// Proxy card images from official onepiece-cardgame.com to avoid CORS issues
+imagesRouter.get('/official/:filename', async (req, res) => {
+  const { filename } = req.params;
+  const imageUrl = `https://en.onepiece-cardgame.com/images/cardlist/card/${filename}`;
+  await proxyImage(imageUrl, filename, res);
 });
