@@ -89,18 +89,23 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
     set({ selectedDeckId: deckId });
   },
 
-  createLobby: (isRanked = false) => {
+  createLobby: async (isRanked = false) => {
     const { selectedDeckId } = get();
     if (!selectedDeckId) {
       set({ lobbyError: 'Please select a deck first' });
       return;
     }
 
-    // Get server deck ID
-    const serverDeckId = useDeckStore.getState().getServerDeckId(selectedDeckId);
+    // Get server deck ID, or try to sync if not yet synced
+    let serverDeckId = useDeckStore.getState().getServerDeckId(selectedDeckId);
     if (!serverDeckId) {
-      set({ lobbyError: 'Deck not synced to server. Please wait or try again.' });
-      return;
+      set({ lobbyStatus: 'creating', lobbyError: null });
+      // Try to sync the deck to server
+      serverDeckId = await useDeckStore.getState().saveDeckToServer(selectedDeckId);
+      if (!serverDeckId) {
+        set({ lobbyError: 'Failed to sync deck to server. Please check deck validity.', lobbyStatus: 'idle' });
+        return;
+      }
     }
 
     set({ lobbyStatus: 'creating', lobbyError: null });
@@ -111,18 +116,23 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
     });
   },
 
-  joinLobby: (code) => {
+  joinLobby: async (code) => {
     const { selectedDeckId } = get();
     if (!selectedDeckId) {
       set({ lobbyError: 'Please select a deck first' });
       return;
     }
 
-    // Get server deck ID
-    const serverDeckId = useDeckStore.getState().getServerDeckId(selectedDeckId);
+    // Get server deck ID, or try to sync if not yet synced
+    let serverDeckId = useDeckStore.getState().getServerDeckId(selectedDeckId);
     if (!serverDeckId) {
-      set({ lobbyError: 'Deck not synced to server. Please wait or try again.' });
-      return;
+      set({ lobbyStatus: 'joining', lobbyError: null });
+      // Try to sync the deck to server
+      serverDeckId = await useDeckStore.getState().saveDeckToServer(selectedDeckId);
+      if (!serverDeckId) {
+        set({ lobbyError: 'Failed to sync deck to server. Please check deck validity.', lobbyStatus: 'idle' });
+        return;
+      }
     }
 
     set({ lobbyStatus: 'joining', lobbyError: null });
@@ -156,18 +166,23 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
     }
   },
 
-  joinQueue: () => {
+  joinQueue: async () => {
     const { selectedDeckId } = get();
     if (!selectedDeckId) {
       set({ queueError: 'Please select a deck first' });
       return;
     }
 
-    // Get server deck ID
-    const serverDeckId = useDeckStore.getState().getServerDeckId(selectedDeckId);
+    // Get server deck ID, or try to sync if not yet synced
+    let serverDeckId = useDeckStore.getState().getServerDeckId(selectedDeckId);
     if (!serverDeckId) {
-      set({ queueError: 'Deck not synced to server. Please wait or try again.' });
-      return;
+      set({ queueStatus: 'searching', queueError: null });
+      // Try to sync the deck to server
+      serverDeckId = await useDeckStore.getState().saveDeckToServer(selectedDeckId);
+      if (!serverDeckId) {
+        set({ queueError: 'Failed to sync deck to server. Please check deck validity.', queueStatus: 'idle' });
+        return;
+      }
     }
 
     set({ queueStatus: 'searching', queueError: null, queueTime: 0 });
@@ -192,18 +207,23 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
     set({ queueStatus: 'idle', queueTime: 0 });
   },
 
-  startAIGame: (difficulty: AIDifficulty) => {
+  startAIGame: async (difficulty: AIDifficulty) => {
     const { selectedDeckId } = get();
     if (!selectedDeckId) {
       set({ aiError: 'Please select a deck first' });
       return;
     }
 
-    // Get server deck ID
-    const serverDeckId = useDeckStore.getState().getServerDeckId(selectedDeckId);
+    // Get server deck ID, or try to sync if not yet synced
+    let serverDeckId = useDeckStore.getState().getServerDeckId(selectedDeckId);
     if (!serverDeckId) {
-      set({ aiError: 'Deck not synced to server. Please wait or try again.' });
-      return;
+      set({ aiGameStatus: 'starting', aiDifficulty: difficulty, aiError: null });
+      // Try to sync the deck to server
+      serverDeckId = await useDeckStore.getState().saveDeckToServer(selectedDeckId);
+      if (!serverDeckId) {
+        set({ aiError: 'Failed to sync deck to server. Please check deck validity.', aiGameStatus: 'idle' });
+        return;
+      }
     }
 
     set({ aiGameStatus: 'starting', aiDifficulty: difficulty, aiError: null });

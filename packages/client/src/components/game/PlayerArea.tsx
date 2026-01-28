@@ -1,5 +1,5 @@
 import React from 'react';
-import { PlayerState, GameCard as GameCardType } from '@optcgsim/shared';
+import { PlayerState, GameCard as GameCardType, CardState } from '@optcgsim/shared';
 import { GameCard, CardPile } from './GameCard';
 import { LifeBar } from './LifeBar';
 import './GameBoard.css';
@@ -7,10 +7,30 @@ import './GameBoard.css';
 interface CardDefinition {
   id: string;
   name: string;
-  cardType: string;
-  color: string;
-  cost?: number;
-  power?: number;
+  type?: string;
+  cardType?: string;
+  color?: string;
+  colors?: string[];
+  cost?: number | null;
+  power?: number | null;
+  counter?: number | null;
+  imageUrl?: string;
+  keywords?: string[];
+}
+
+// Create a fake DON deck card for the pile display
+const createDonDeckCard = (): GameCardType => ({
+  id: 'don-deck',
+  cardId: 'DON',
+  zone: 'DON_DECK' as any,
+  state: 'ACTIVE' as any,
+  owner: '',
+});
+
+interface AttackAnimation {
+  attackerId: string;
+  targetId: string;
+  phase: 'jumping' | 'returning' | 'done';
 }
 
 interface PlayerAreaProps {
@@ -19,11 +39,31 @@ interface PlayerAreaProps {
   cardDefinitions: Map<string, CardDefinition>;
   playableCards?: Set<string>;
   targetableCards?: Set<string>;
+  blockerCards?: Set<string>;
   selectedCard?: GameCardType | null;
+  selectedDon?: GameCardType | null;
+  donAttachTargets?: Set<string>;
+  activationDonTargets?: Set<string>;  // DON cards valid for activation ability selection
+  activationTargets?: Set<string>;      // Characters/Leader valid for activation ability target
+  attackEffectTargets?: Set<string>;    // Valid targets for ON_ATTACK effect selection
+  attackEffectSelected?: Set<string>;   // Currently selected targets for ON_ATTACK effect
+  playEffectTargets?: Set<string>;      // Valid targets for ON_PLAY effect selection
+  playEffectSelected?: Set<string>;     // Currently selected targets for ON_PLAY effect
+  eventEffectTargets?: Set<string>;     // Valid targets for event [Main] effect selection
+  eventEffectSelected?: Set<string>;    // Currently selected targets for event effect
+  counterEffectTargets?: Set<string>;   // Valid targets for event counter effect selection
+  counterEffectSelected?: Set<string>;  // Currently selected targets for counter effect
+  attackAnimation?: AttackAnimation | null;
   onCardHover: (card: GameCardType | null) => void;
   onCardClick: (card: GameCardType) => void;
+  onDonClick?: (don: GameCardType) => void;
   onDeckClick?: () => void;
   onTrashClick?: () => void;
+  visibleLifeCount?: number;
+  visibleDonCount?: number;  // Control how many DON cards to show (for animation)
+  hideLifeZone?: boolean;
+  gameOverResult?: 'winner' | 'loser' | null;  // Result for this player when game ends
+  playmatImage?: string;  // Custom playmat background image path
 }
 
 export const PlayerArea: React.FC<PlayerAreaProps> = ({
@@ -32,19 +72,83 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
   cardDefinitions,
   playableCards = new Set(),
   targetableCards = new Set(),
+  blockerCards = new Set(),
   selectedCard,
+  selectedDon,
+  donAttachTargets = new Set(),
+  activationDonTargets = new Set(),
+  activationTargets = new Set(),
+  attackEffectTargets = new Set(),
+  attackEffectSelected = new Set(),
+  playEffectTargets = new Set(),
+  playEffectSelected = new Set(),
+  eventEffectTargets = new Set(),
+  eventEffectSelected = new Set(),
+  counterEffectTargets = new Set(),
+  counterEffectSelected = new Set(),
+  attackAnimation,
   onCardHover,
   onCardClick,
+  // onDonClick - reserved for future use
   onDeckClick,
-  onTrashClick
+  onTrashClick,
+  visibleLifeCount,
+  visibleDonCount,
+  hideLifeZone = false,
+  gameOverResult,
+  playmatImage
 }) => {
+  // Helper to get attack animation class for a card
+  const getAttackAnimationClass = (cardId: string): string => {
+    if (!attackAnimation) return '';
+    if (attackAnimation.attackerId === cardId) {
+      if (attackAnimation.phase === 'jumping') return 'game-card--attack-jumping';
+      if (attackAnimation.phase === 'returning') return 'game-card--attack-returning';
+    }
+    if (attackAnimation.targetId === cardId && attackAnimation.phase === 'jumping') {
+      return 'game-card--attack-target';
+    }
+    return '';
+  };
   const areaClasses = [
     'player-area',
-    isOpponent ? 'player-area--opponent' : 'player-area--player'
-  ].join(' ');
+    isOpponent ? 'player-area--opponent' : 'player-area--player',
+    gameOverResult === 'winner' && 'player-area--winner',
+    gameOverResult === 'loser' && 'player-area--loser'
+  ].filter(Boolean).join(' ');
 
   // Get characters on field (non-leader)
   const characters = player.field.filter(card => card.zone === 'FIELD');
+
+  // Helper to get attached DON cards for a card
+  const getAttachedDon = (cardId: string): GameCardType[] => {
+    return player.donField.filter(don => don.attachedTo === cardId);
+  };
+
+  // Get unattached DON (shown in Cost Area)
+  const allUnattachedDon = player.donField.filter(don => !don.attachedTo);
+
+  // Slice to visible count if specified (for animation)
+  const unattachedDon = visibleDonCount !== undefined
+    ? allUnattachedDon.slice(0, visibleDonCount)
+    : allUnattachedDon;
+
+  // Count active DON in cost area (reserved for future use)
+  void unattachedDon.filter(d => d.state === 'ACTIVE').length;
+
+  // Helper to calculate buff total from a card's powerBuffs
+  const getBuffTotal = (card: GameCardType): number => {
+    if (!card.powerBuffs || card.powerBuffs.length === 0) return 0;
+    return card.powerBuffs.reduce((sum, buff) => sum + buff.value, 0);
+  };
+
+  // Helper to calculate effective power (base + buffs + DON)
+  const getEffectivePower = (card: GameCardType, attachedDonCount: number): number => {
+    const basePower = card.basePower ?? card.power ?? 0;
+    const buffTotal = getBuffTotal(card);
+    const donBonus = attachedDonCount * 1000;
+    return basePower + buffTotal + donBonus;
+  };
 
   return (
     <div className={areaClasses}>
@@ -52,106 +156,264 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
       <div
         className="player-area__playmat"
         style={{
-          backgroundImage: `url('/assets/playmats/playmatt.jpg')`
+          backgroundImage: `url('${playmatImage || '/assets/playmats/playmatt.jpg'}')`
         }}
       />
 
-      {/* Left section: Life & DON */}
+      {/* Game over result banner */}
+      {gameOverResult && (
+        <div className={`player-area__result-banner player-area__result-banner--${gameOverResult}`}>
+          {gameOverResult === 'winner' ? 'WINNER' : 'LOSER'}
+        </div>
+      )}
+
+      {/* Left column: Life Zone + DON Deck */}
       <div className="player-area__left">
-        {/* Life Zone */}
-        <div className="zone zone--life">
-          <span className="zone__label">Life</span>
+        <div className={`zone zone--life ${hideLifeZone ? 'zone--life--hidden' : ''}`}>
+          <span className="zone__label zone__label--inside">Life</span>
           <LifeBar
-            current={player.lifeCards.length}
-            max={5}
+            current={visibleLifeCount !== undefined && visibleLifeCount >= 0 ? visibleLifeCount : player.lifeCards.length}
+            max={player.maxLife ?? 5}
           />
-          <CardPile
-            cards={player.lifeCards}
-            label=""
-            showCount={false}
-            faceUp={false}
-          />
+          <div className="life-stack">
+            {(visibleLifeCount !== undefined && visibleLifeCount >= 0
+              ? player.lifeCards.slice(0, visibleLifeCount)
+              : player.lifeCards
+            ).map((card) => (
+              <GameCard
+                key={card.id}
+                card={card}
+                faceUp={false}
+                onHover={onCardHover}
+                onClick={onCardClick}
+              />
+            ))}
+          </div>
         </div>
 
-        {/* DON Zone */}
-        <div className="zone zone--don">
-          <span className="zone__label">DON!!</span>
-          <div className="don-count">{player.donField.length}</div>
-          {player.donField.length > 0 && (
-            <CardPile
-              cards={player.donField}
-              label=""
-              showCount={false}
-              faceUp={true}
-            />
-          )}
+        {/* DON Deck pile */}
+        <div className="zone zone--don-deck">
+          <span className="zone__label zone__label--bottom">DON Deck</span>
+          <div className="don-deck-pile">
+            {player.donDeck > 0 ? (
+              <>
+                {player.donDeck > 2 && <div className="don-deck-layer don-deck-layer--3" />}
+                {player.donDeck > 1 && <div className="don-deck-layer don-deck-layer--2" />}
+                <div className="don-deck-top">
+                  <GameCard
+                    card={createDonDeckCard()}
+                    faceUp={false}
+                    isDon={true}
+                  />
+                </div>
+                <div className="don-deck-count">{player.donDeck}</div>
+              </>
+            ) : (
+              <div className="don-deck-empty" />
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Center section: Leader & Characters */}
-      <div className="player-area__center">
+      {/* Second column: Leader, Stage, Deck (stacked vertically) */}
+      <div className="player-area__second-col">
         {/* Leader Zone */}
         <div className="zone zone--leader">
-          <span className="zone__label">Leader</span>
-          {player.leaderCard && (
+          <span className="zone__label zone__label--bottom">Leader</span>
+          {player.leaderCard && (() => {
+            const leaderDef = cardDefinitions.get(player.leaderCard.cardId);
+            const isLeaderRested = player.leaderCard.state === CardState.RESTED;
+            const leaderAttachedDons = getAttachedDon(player.leaderCard.id);
+            return (
+              <div className="card-with-stats">
+                <div className={`card-with-don ${isLeaderRested ? 'card-with-don--rested' : ''}`}>
+                  {leaderAttachedDons.length > 0 && (
+                    <div className="attached-don-stack">
+                      {leaderAttachedDons.map((don) => (
+                        <div key={don.id} className="attached-don-card">
+                          <GameCard
+                            card={don}
+                            faceUp={true}
+                            isDon={true}
+                            onHover={onCardHover}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <GameCard
+                    card={player.leaderCard}
+                    cardDef={leaderDef}
+                    faceUp={true}
+                    isTarget={targetableCards.has(player.leaderCard.id)}
+                    isDonTarget={!isOpponent && (donAttachTargets.has(player.leaderCard.id) || activationTargets.has(player.leaderCard.id))}
+                    isSelected={selectedCard?.id === player.leaderCard.id}
+                    isAttackEffectTarget={attackEffectTargets.has(player.leaderCard.id)}
+                    isAttackEffectSelected={attackEffectSelected.has(player.leaderCard.id)}
+                    isPlayEffectTarget={playEffectTargets.has(player.leaderCard.id)}
+                    isPlayEffectSelected={playEffectSelected.has(player.leaderCard.id)}
+                    isEventEffectTarget={eventEffectTargets.has(player.leaderCard.id)}
+                    isEventEffectSelected={eventEffectSelected.has(player.leaderCard.id)}
+                    isCounterEffectTarget={counterEffectTargets.has(player.leaderCard.id)}
+                    isCounterEffectSelected={counterEffectSelected.has(player.leaderCard.id)}
+                    attachedDonCount={leaderAttachedDons.length}
+                    effectivePower={getEffectivePower(player.leaderCard, leaderAttachedDons.length)}
+                    buffTotal={getBuffTotal(player.leaderCard)}
+                    className={[
+                      getAttackAnimationClass(player.leaderCard.id),
+                      gameOverResult === 'winner' && 'game-card--winner-leader',
+                      gameOverResult === 'loser' && 'game-card--loser-leader'
+                    ].filter(Boolean).join(' ')}
+                    onHover={onCardHover}
+                    onClick={onCardClick}
+                  />
+                </div>
+                <span className={`card-with-stats__stats ${getBuffTotal(player.leaderCard) > 0 ? 'card-with-stats__stats--buffed' : getBuffTotal(player.leaderCard) < 0 ? 'card-with-stats__stats--debuffed' : ''}`}>
+                  {getEffectivePower(player.leaderCard, leaderAttachedDons.length)}
+                </span>
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* Stage Zone */}
+        <div className="zone zone--stage">
+          <span className="zone__label zone__label--bottom">Stage</span>
+          {player.stage ? (
             <GameCard
-              card={player.leaderCard}
-              cardDef={cardDefinitions.get(player.leaderCard.cardId)}
+              card={player.stage}
+              cardDef={cardDefinitions.get(player.stage.cardId)}
               faceUp={true}
-              isTarget={targetableCards.has(player.leaderCard.id)}
-              isSelected={selectedCard?.id === player.leaderCard.id}
+              hasActiveEffect={player.stage.hasActiveEffect}
+              isEventEffectTarget={eventEffectTargets.has(player.stage.id)}
+              isEventEffectSelected={eventEffectSelected.has(player.stage.id)}
               onHover={onCardHover}
               onClick={onCardClick}
             />
+          ) : (
+            <div className="zone-empty-placeholder" />
           )}
         </div>
 
-        {/* Character Zone */}
-        <div className="zone zone--characters">
-          <span className="zone__label">Characters</span>
-          {characters.map(card => (
-            <GameCard
-              key={card.id}
-              card={card}
-              cardDef={cardDefinitions.get(card.cardId)}
-              faceUp={true}
-              isPlayable={!isOpponent && playableCards.has(card.id)}
-              isTarget={targetableCards.has(card.id)}
-              isSelected={selectedCard?.id === card.id}
-              onHover={onCardHover}
-              onClick={onCardClick}
-            />
-          ))}
+        {/* Deck Zone */}
+        <div className="zone zone--deck">
+          <span className="zone__label zone__label--bottom">Deck</span>
+          <CardPile
+            cards={player.deck}
+            label="Deck"
+            showCount={true}
+            faceUp={false}
+            onClick={onDeckClick}
+          />
         </div>
       </div>
 
-      {/* Right section: Deck & Trash */}
-      <div className="player-area__right">
-        {/* Stage Card */}
-        {player.field.find(c => c.cardId.includes('ST')) && (
-          <div className="zone zone--stage">
-            <span className="zone__label">Stage</span>
+      {/* Main center area: Characters, Cost Area, Trash */}
+      <div className="player-area__center">
+        {/* Character Area */}
+        <div className="zone zone--characters">
+          <span className="zone__label zone__label--inside">Characters</span>
+          {characters.map(card => {
+            const cardDef = cardDefinitions.get(card.cardId);
+            const isRested = card.state === CardState.RESTED;
+            const attachedDons = getAttachedDon(card.id);
+            const extraMarginRight = (isRested ? 28 : 0) + (attachedDons.length * 15);
+            const extraMarginLeft = isRested ? 28 : 0;
+            return (
+              <div
+                key={card.id}
+                className="card-with-stats"
+                style={{
+                  marginRight: extraMarginRight > 0 ? extraMarginRight : undefined,
+                  marginLeft: extraMarginLeft > 0 ? extraMarginLeft : undefined
+                }}
+              >
+                <div className={`card-with-don ${isRested ? 'card-with-don--rested' : ''}`}>
+                  {attachedDons.length > 0 && (
+                    <div className="attached-don-stack">
+                      {attachedDons.map((don) => (
+                        <div key={don.id} className="attached-don-card">
+                          <GameCard
+                            card={don}
+                            faceUp={true}
+                            isDon={true}
+                            onHover={onCardHover}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <GameCard
+                    card={card}
+                    cardDef={cardDef}
+                    faceUp={true}
+                    isPlayable={!isOpponent && (playableCards.has(card.id) || blockerCards.has(card.id))}
+                    isTarget={targetableCards.has(card.id)}
+                    isDonTarget={!isOpponent && (donAttachTargets.has(card.id) || activationTargets.has(card.id))}
+                    isSelected={selectedCard?.id === card.id}
+                    isAttackEffectTarget={attackEffectTargets.has(card.id)}
+                    isAttackEffectSelected={attackEffectSelected.has(card.id)}
+                    isPlayEffectTarget={playEffectTargets.has(card.id)}
+                    isPlayEffectSelected={playEffectSelected.has(card.id)}
+                    isEventEffectTarget={eventEffectTargets.has(card.id)}
+                    isEventEffectSelected={eventEffectSelected.has(card.id)}
+                    isCounterEffectTarget={counterEffectTargets.has(card.id)}
+                    isCounterEffectSelected={counterEffectSelected.has(card.id)}
+                    attachedDonCount={attachedDons.length}
+                    effectivePower={getEffectivePower(card, attachedDons.length)}
+                    buffTotal={getBuffTotal(card)}
+                    className={getAttackAnimationClass(card.id)}
+                    onHover={onCardHover}
+                    onClick={onCardClick}
+                  />
+                </div>
+                <span className={`card-with-stats__stats ${getBuffTotal(card) > 0 ? 'card-with-stats__stats--buffed' : getBuffTotal(card) < 0 ? 'card-with-stats__stats--debuffed' : ''}`}>
+                  {cardDef?.cost ?? '?'}/{getEffectivePower(card, attachedDons.length)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Bottom row: Cost Area | Trash */}
+        <div className="player-area__bottom-row">
+          {/* Cost Area (DON cards in play) */}
+          <div className="zone zone--cost-area">
+            <span className="zone__label zone__label--inside">Cost Area</span>
+            <div className="cost-area-cards">
+              {unattachedDon.map((don) => (
+                <GameCard
+                  key={don.id}
+                  card={don}
+                  faceUp={true}
+                  isDon={true}
+                  isPlayable={!isOpponent && don.state === 'ACTIVE'}
+                  isDonTarget={!isOpponent && activationDonTargets.has(don.id)}
+                  isSelected={selectedDon?.id === don.id}
+                  isPlayEffectTarget={playEffectTargets.has(don.id)}
+                  isPlayEffectSelected={playEffectSelected.has(don.id)}
+                  onHover={onCardHover}
+                  onClick={!isOpponent ? onCardClick : undefined}
+                />
+              ))}
+            </div>
           </div>
-        )}
 
-        {/* Deck */}
-        <CardPile
-          cards={player.deck}
-          label="Deck"
-          showCount={true}
-          faceUp={false}
-          onClick={onDeckClick}
-        />
-
-        {/* Trash */}
-        <CardPile
-          cards={player.trash}
-          label="Trash"
-          showCount={true}
-          faceUp={player.trash.length > 0}
-          onClick={onTrashClick}
-          onCardHover={onCardHover}
-        />
+          {/* Trash Zone */}
+          <div className="zone zone--trash">
+            <span className="zone__label zone__label--bottom">Trash</span>
+            <CardPile
+              cards={player.trash}
+              label="Trash"
+              showCount={true}
+              faceUp={player.trash.length > 0}
+              showLastCard={true}
+              onClick={onTrashClick}
+              onCardHover={onCardHover}
+              cardDefinitions={cardDefinitions}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -164,6 +426,8 @@ interface HandZoneProps {
   cardDefinitions: Map<string, CardDefinition>;
   playableCards?: Set<string>;
   selectedCard?: GameCardType | null;
+  pinnedCard?: GameCardType | null;  // For combat phase card selection highlighting
+  activateEffectSelectedTargets?: string[];  // Cards selected for activate effect
   onCardHover: (card: GameCardType | null) => void;
   onCardClick: (card: GameCardType) => void;
 }
@@ -174,6 +438,8 @@ export const HandZone: React.FC<HandZoneProps> = ({
   cardDefinitions,
   playableCards = new Set(),
   selectedCard,
+  pinnedCard,
+  activateEffectSelectedTargets = [],
   onCardHover,
   onCardClick
 }) => {
@@ -185,18 +451,27 @@ export const HandZone: React.FC<HandZoneProps> = ({
   return (
     <div className={classes}>
       <div className="hand-zone__cards">
-        {cards.map(card => (
-          <GameCard
-            key={card.id}
-            card={card}
-            cardDef={isOpponent ? undefined : cardDefinitions.get(card.cardId)}
-            faceUp={!isOpponent}
-            isPlayable={!isOpponent && playableCards.has(card.id)}
-            isSelected={!isOpponent && selectedCard?.id === card.id}
-            onHover={isOpponent ? undefined : onCardHover}
-            onClick={isOpponent ? undefined : onCardClick}
-          />
-        ))}
+        {cards.map(card => {
+          // Add extra spacing for rested cards shown in hand zone (during blocker step)
+          const isRested = card.state === CardState.RESTED;
+          return (
+            <div
+              key={card.id}
+              className={`hand-zone__card-wrapper ${isRested ? 'hand-zone__card-wrapper--rested' : ''}`}
+            >
+              <GameCard
+                card={card}
+                cardDef={isOpponent ? undefined : cardDefinitions.get(card.cardId)}
+                faceUp={!isOpponent}
+                isPlayable={!isOpponent && playableCards.has(card.id)}
+                isSelected={!isOpponent && (selectedCard?.id === card.id || pinnedCard?.id === card.id || activateEffectSelectedTargets.includes(card.id))}
+                hasCostModified={!isOpponent && card.modifiedCost !== undefined}
+                onHover={isOpponent ? undefined : onCardHover}
+                onClick={isOpponent ? undefined : onCardClick}
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );

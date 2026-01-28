@@ -27,8 +27,9 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-[calc(100vh-12rem)] flex items-center justify-center px-4">
-      <div className="card max-w-md w-full p-8">
-        <h1 className="text-2xl font-bold text-center mb-6">Create Account</h1>
+      <div className="panel max-w-md w-full p-8">
+        <p className="text-xs uppercase tracking-[0.3em] text-accent text-center">Join the Crew</p>
+        <h1 className="text-3xl text-center mb-6">Create Account</h1>
 
         {error && (
           <div className="bg-red-500/10 border border-red-500 text-red-400 px-4 py-2 rounded mb-4">
@@ -66,7 +67,7 @@ export default function RegisterPage() {
               maxLength={20}
               required
             />
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-muted mt-1">
               3-20 characters, letters, numbers, underscores, hyphens only
             </p>
           </div>
@@ -112,7 +113,7 @@ export default function RegisterPage() {
           </button>
         </form>
 
-        <p className="text-center mt-6 text-gray-400">
+        <p className="text-center mt-6 text-muted">
           Already have an account?{' '}
           <Link to="/login" className="text-primary hover:underline">
             Login

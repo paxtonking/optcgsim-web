@@ -4,6 +4,7 @@ import { useDeckStore } from '../stores/deckStore';
 import { useCardStore } from '../stores/cardStore';
 import { CardDisplay } from './CardDisplay';
 import { COLOR_HEX, type CardColor } from '../types/card';
+import { LeaderRestrictionDisplay } from './LeaderRestrictionDisplay';
 
 export function DeckPanel() {
   const navigate = useNavigate();
@@ -322,6 +323,11 @@ export function DeckPanel() {
           </div>
         )}
       </div>
+
+      {/* Leader restrictions display */}
+      {currentDeck.leader && (
+        <LeaderRestrictionDisplay effectText={currentDeck.leader.effect} />
+      )}
 
       {/* Card count */}
       <div className="mb-4">

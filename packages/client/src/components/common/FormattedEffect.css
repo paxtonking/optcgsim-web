@@ -1,0 +1,104 @@
+/* Formatted Effect Component Styles */
+
+.formatted-effect {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.formatted-effect--compact {
+  gap: 4px;
+}
+
+/* Keywords Section */
+.formatted-effect__keywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.formatted-effect__keyword-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Effect Section */
+.formatted-effect__section {
+  border-left: 3px solid #666;
+  padding-left: 10px;
+  margin-bottom: 6px;
+}
+
+.formatted-effect__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.formatted-effect__icon {
+  font-size: 14px;
+}
+
+.formatted-effect__label {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.formatted-effect__text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #e0e0e0;
+}
+
+/* Compact Mode - Used in game card preview */
+.formatted-effect--compact .formatted-effect__section {
+  padding-left: 10px;
+  border-left-width: 3px;
+}
+
+.formatted-effect--compact .formatted-effect__header {
+  margin-bottom: 3px;
+}
+
+.formatted-effect--compact .formatted-effect__label {
+  font-size: 13px;
+}
+
+.formatted-effect--compact .formatted-effect__text {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.formatted-effect--compact .formatted-effect__keyword-badge {
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+/* Category-specific colors (used as fallback if inline styles fail) */
+.effect-category--keyword { border-left-color: #f39c12; }
+.effect-category--on-play { border-left-color: #3498db; }
+.effect-category--activate-main { border-left-color: #9b59b6; }
+.effect-category--don-attached { border-left-color: #e74c3c; }
+.effect-category--your-turn { border-left-color: #2ecc71; }
+.effect-category--opponent-turn { border-left-color: #e67e22; }
+.effect-category--counter { border-left-color: #1abc9c; }
+.effect-category--trigger { border-left-color: #e74c3c; }
+.effect-category--on-attack { border-left-color: #c0392b; }
+.effect-category--on-block { border-left-color: #16a085; }
+.effect-category--on-ko { border-left-color: #7f8c8d; }
+.effect-category--end-of-turn { border-left-color: #8e44ad; }
+.effect-category--start-of-game { border-left-color: #f1c40f; }
+.effect-category--once-per-turn { border-left-color: #95a5a6; }
+.effect-category--main { border-left-color: #3498db; }
+.effect-category--other { border-left-color: #bdc3c7; }

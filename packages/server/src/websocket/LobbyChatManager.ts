@@ -6,6 +6,18 @@ interface AuthenticatedSocket extends Socket {
   username?: string;
 }
 
+// HTML escape function for XSS prevention
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  };
+  return text.replace(/[&<>"']/g, char => map[char]);
+}
+
 interface ChatMessage {
   id: string;
   senderId: string;
@@ -47,8 +59,8 @@ export class LobbyChatManager {
     if (!socket.userId || !socket.username) return;
     if (!message || typeof message !== 'string') return;
 
-    // Sanitize and limit message length
-    const sanitizedMessage = message.trim().slice(0, 200);
+    // Sanitize (XSS prevention) and limit message length
+    const sanitizedMessage = escapeHtml(message.trim().slice(0, 200));
     if (!sanitizedMessage) return;
 
     const chatMessage: ChatMessage = {

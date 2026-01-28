@@ -30,79 +30,60 @@ export default function Layout() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="site-shell flex flex-col">
       {/* Navigation */}
-      <nav className="bg-surface border-b border-gray-700">
+      <nav className="sticky top-0 z-40 bg-surface/90 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
+          <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-8">
               {/* Logo */}
-              <Link to="/" className="flex items-center">
-                <span className="font-display text-2xl text-accent">OPTCGSIM</span>
+              <Link to="/" className="flex items-center shrink-0">
+                <span className="text-xl font-extrabold text-sand tracking-tight">
+                  Davy Back Duels
+                </span>
               </Link>
 
               {/* Main Nav */}
-              <div className="hidden md:flex items-center gap-6">
-                <Link
-                  to="/lobby"
-                  className="text-gray-300 hover:text-white transition-colors"
-                >
+              <div className="hidden md:flex items-center gap-1">
+                <Link to="/lobby" className="nav-link">
                   Play
                 </Link>
-                <Link
-                  to="/decks"
-                  className="text-gray-300 hover:text-white transition-colors"
-                >
+                <Link to="/decks" className="nav-link">
                   Deck Builder
                 </Link>
-                <Link
-                  to="/cards"
-                  className="text-gray-300 hover:text-white transition-colors"
-                >
-                  Cards
-                </Link>
-                <Link
-                  to="/browse/decks"
-                  className="text-gray-300 hover:text-white transition-colors"
-                >
+                <Link to="/browse/decks" className="nav-link">
                   Browse Decks
                 </Link>
-                <Link
-                  to="/leaderboard"
-                  className="text-gray-300 hover:text-white transition-colors"
-                >
+                <Link to="/cards" className="nav-link">
+                  Cards
+                </Link>
+                <Link to="/leaderboard" className="nav-link">
                   Leaderboard
                 </Link>
-                <Link
-                  to="/tournaments"
-                  className="text-gray-300 hover:text-white transition-colors"
-                >
+                <Link to="/tournaments" className="nav-link">
                   Tournaments
                 </Link>
-                <Link
-                  to="/game-modes"
-                  className="text-gray-300 hover:text-white transition-colors"
-                >
+                <Link to="/game-modes" className="nav-link">
                   Game Modes
                 </Link>
               </div>
             </div>
 
             {/* User Section */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               {isAuthenticated ? (
                 <>
                   {user?.isAdmin && (
                     <Link
                       to="/admin"
-                      className="text-yellow-400 hover:text-yellow-300 transition-colors text-sm"
+                      className="px-3 py-1.5 rounded-md bg-accent/10 text-accent hover:bg-accent/20 transition-colors text-sm font-medium"
                     >
                       Admin
                     </Link>
                   )}
                   <Link
                     to="/profile"
-                    className="text-gray-300 hover:text-white transition-colors"
+                    className="text-muted hover:text-sand transition-colors text-sm font-medium"
                   >
                     {user?.username}
                   </Link>
@@ -115,7 +96,7 @@ export default function Layout() {
                 </>
               ) : (
                 <>
-                  <Link to="/login" className="btn-secondary text-sm">
+                  <Link to="/login" className="text-sand hover:text-muted transition-colors text-sm font-medium px-4 py-2">
                     Login
                   </Link>
                   <Link to="/register" className="btn-primary text-sm">
@@ -134,13 +115,14 @@ export default function Layout() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-surface border-t border-gray-700 py-6">
+      <footer className="bg-surface/80 border-t border-border/50 py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center">
-            <p className="text-gray-400 text-sm">
-              OPTCGSim - Fan-made One Piece TCG Simulator
-            </p>
-            <p className="text-gray-500 text-sm">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-sand">Davy Back Duels</span>
+              <span className="text-muted-dark text-sm">Fan-made One Piece TCG Simulator</span>
+            </div>
+            <p className="text-muted-dark text-xs">
               Not affiliated with Bandai or Shueisha
             </p>
           </div>

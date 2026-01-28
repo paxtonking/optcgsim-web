@@ -4,10 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "seed": "tsx src/seed-database.ts",
     "fetch": "tsx src/fetch-cards.ts",
     "import": "tsx src/index.ts",
     "import:cards": "tsx src/import-cards.ts",
-    "import:translations": "tsx src/import-translations.ts"
+    "import:translations": "tsx src/import-translations.ts",
+    "migrate-effects": "tsx src/migrate-effects.ts",
+    "audit": "tsx src/audit-effects.ts",
+    "audit:summary": "tsx src/audit-effects.ts --summary",
+    "audit:cards": "tsx src/audit-effects.ts --cards",
+    "validate": "tsx src/validate-effects.ts",
+    "validate:verbose": "tsx src/validate-effects.ts --verbose",
+    "cleanup": "tsx src/cleanup-effects.ts",
+    "cleanup:execute": "tsx src/cleanup-effects.ts --execute"
   },
   "dependencies": {
     "@optcgsim/shared": "*",

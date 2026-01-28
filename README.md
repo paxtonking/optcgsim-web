@@ -126,24 +126,18 @@ cp packages/server/.env.example packages/server/.env
 
 5. Run database migrations:
 ```bash
-npm run db:migrate
+npm run db:push
 ```
 
-6. Fetch card data:
-```bash
-cd tools/card-importer
-npm run fetch
-```
-
-7. Start development servers:
+6. Start development servers:
 ```bash
 # From root directory
 npm run dev
 ```
 
 ### Access Points
-- **Frontend**: http://localhost:5173
-- **Backend API**: http://localhost:3001
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:4000
 - **Database**: PostgreSQL on port 5432
 
 ## Environment Variables
@@ -159,11 +153,31 @@ JWT_SECRET="your-jwt-secret"
 JWT_REFRESH_SECRET="your-refresh-secret"
 
 # Server
-PORT=3001
+PORT=4000
 NODE_ENV=development
 
 # Client URL (for CORS)
-CLIENT_URL="http://localhost:5173"
+CLIENT_URL="http://localhost:3000"
+```
+
+## Managing Dev Servers
+
+**IMPORTANT**: Before starting dev servers, always check if they're already running to avoid duplicate processes.
+
+### Check for running processes
+```bash
+# Check if ports are in use
+netstat -ano | findstr ":3000 :4000"
+```
+
+### Stop all project processes
+```bash
+npm run stop
+```
+
+### Stop Docker (PostgreSQL)
+```bash
+docker stop optcgsim-postgres
 ```
 
 ## Development Phases - All Complete

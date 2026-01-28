@@ -4,11 +4,12 @@ import { useDeckStore } from '../stores/deckStore';
 import { CardDisplay } from '../components/CardDisplay';
 import { CardFilters } from '../components/CardFilters';
 import { DeckPanel } from '../components/DeckPanel';
+import { parseLeaderRestrictions, cardViolatesRestriction } from '@optcgsim/shared';
 
 const CARDS_PER_PAGE = 50;
 
 export default function DeckBuilderPage() {
-  const { cards, isLoading, error, loadCards, getFilteredCards, filters } = useCardStore();
+  const { cards, isLoading, error, loadCards, getFilteredCards, filters, setLeaderColors } = useCardStore();
   const { currentDeck, addCard, setLeader, getCardCount } = useDeckStore();
   const [page, setPage] = useState(0);
   const [showFilters, setShowFilters] = useState(true);
@@ -21,6 +22,15 @@ export default function DeckBuilderPage() {
   useEffect(() => {
     setPage(0);
   }, [filters]);
+
+  // Auto-set leader colors filter when leader changes
+  useEffect(() => {
+    if (currentDeck?.leader) {
+      setLeaderColors(currentDeck.leader.colors);
+    } else {
+      setLeaderColors([]);
+    }
+  }, [currentDeck?.leader, setLeaderColors]);
 
   const filteredCards = useMemo(() => getFilteredCards(), [cards, filters]);
 
@@ -51,6 +61,17 @@ export default function DeckBuilderPage() {
       if (totalCards >= 50) {
         alert('Deck is full (50 cards maximum)');
         return;
+      }
+
+      // Check leader deck building restrictions
+      if (currentDeck.leader?.effect) {
+        const { restrictions } = parseLeaderRestrictions(currentDeck.leader.effect);
+        for (const restriction of restrictions) {
+          if (cardViolatesRestriction({ type: card.type, cost: card.cost ?? null }, restriction)) {
+            alert(`Cannot add ${card.name}: ${restriction.description}`);
+            return;
+          }
+        }
       }
 
       addCard(card);

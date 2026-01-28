@@ -82,6 +82,7 @@ model Card {
   counter    Int?
   attribute  String?
   traits     String[]
+  life       Int?     // Life count for leaders (4 or 5, null for non-leaders)
   effects    Json     // Array of effect definitions
   effectText String   // Human-readable effect text
   imageUrl   String

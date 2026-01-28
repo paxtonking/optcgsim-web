@@ -31,8 +31,9 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-[calc(100vh-12rem)] flex items-center justify-center px-4">
-      <div className="card max-w-md w-full p-8">
-        <h1 className="text-2xl font-bold text-center mb-6">Login</h1>
+      <div className="panel max-w-md w-full p-8">
+        <p className="text-xs uppercase tracking-[0.3em] text-accent text-center">Crew Access</p>
+        <h1 className="text-3xl text-center mb-6">Login</h1>
 
         {error && (
           <div className="bg-red-500/10 border border-red-500 text-red-400 px-4 py-2 rounded mb-4">
@@ -78,7 +79,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="text-center mt-6 text-gray-400">
+        <p className="text-center mt-6 text-muted">
           Don't have an account?{' '}
           <Link to="/register" className="text-primary hover:underline">
             Sign up
@@ -87,10 +88,10 @@ export default function LoginPage() {
 
         <div className="relative my-6">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-600"></div>
+            <div className="w-full border-t border-border"></div>
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-gray-800 text-gray-400">or</span>
+            <span className="px-2 bg-surface text-muted">or</span>
           </div>
         </div>
 
@@ -118,7 +119,7 @@ export default function LoginPage() {
             >
               {isLoading ? 'Joining...' : 'Join as Guest'}
             </button>
-            <p className="text-xs text-gray-500 text-center">
+            <p className="text-xs text-muted-dark text-center">
               Guests can play casual matches with friends. Create an account to play AI or ranked modes.
             </p>
           </div>

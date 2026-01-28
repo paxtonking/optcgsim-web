@@ -46,9 +46,16 @@ packages/
 │
 └── shared/          # Shared types & game logic
     └── src/
-        ├── effects/      # EffectEngine.ts (1,143 lines), cardDefinitions.ts
+        ├── effects/      # EffectEngine.ts, effect types, effectTextParser
         ├── game/         # GameStateManager.ts (945 lines)
         └── types/        # GameState, CardZone, GamePhase interfaces
+
+tools/
+└── card-importer/   # Database seeding and migration tools
+    └── src/
+        ├── seed-database.ts     # Seed cards from JSON
+        ├── migrate-effects.ts   # Migrate effects to database
+        └── fetch-cards.ts       # Fetch card data from API
 ```
 
 ## Key Files
@@ -65,7 +72,7 @@ packages/
 | `client/src/hooks/useGameState.ts` | Game state management hook |
 | `shared/src/game/GameStateManager.ts` | Core game logic - turns, combat, zones, mulligan |
 | `shared/src/effects/EffectEngine.ts` | Effect resolution with 80+ triggers |
-| `shared/src/effects/cardDefinitions.ts` | Card effect definitions (85+ cards) |
+| `server/src/services/CardLoaderService.ts` | Loads cards from database, converts to CardDefinition |
 | `client/src/game/GameScene.ts` | Legacy Phaser.js rendering (kept for reference) |
 | `client/src/game/GameController.ts` | Legacy game controller (kept for reference) |
 | `server/src/services/AIService.ts` | AI decision making |
@@ -154,8 +161,37 @@ npm run db:migrate
 # Start dev servers
 npm run dev
 ```
-- Frontend: http://localhost:5173
-- Backend: http://localhost:3001
+- Frontend: http://localhost:3000
+- Backend: http://localhost:4000
+
+## Managing Dev Servers
+
+**IMPORTANT**: Before starting dev servers, always check if they're already running to avoid duplicate processes.
+
+### Check for running processes
+```bash
+# Check if ports are in use
+netstat -ano | findstr ":3000 :4000"
+
+# List all project-related Node processes
+powershell -Command "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -like '*optcgsim*' } | Select-Object ProcessId, CommandLine"
+```
+
+### Stop all project processes
+```bash
+npm run stop
+```
+
+### Stop Docker (PostgreSQL)
+```bash
+docker stop optcgsim-postgres
+```
+
+### Workflow
+1. `npm run dev` - Start frontend + backend
+2. Work on the project...
+3. `npm run stop` - Stop all Node processes when done
+4. `docker stop optcgsim-postgres` - Stop database if needed
 
 ## Important Documentation
 - `PLAN.md` - Original 7-phase implementation strategy and architecture
@@ -163,7 +199,8 @@ npm run dev
 
 ## Current Stats
 - 2,188 cards from 48 sets
-- 85+ card effect definitions (Starter Decks 01-04 + popular cards)
+- 62 cards with structured effect definitions stored in database
+- 1,500+ cards with effects parsed from effectText at runtime
 - 80+ effect triggers, 200+ effect types
 - ELO rating system with rank tiers (Bronze → Master)
 - Friends system with direct challenges
@@ -179,7 +216,90 @@ npm run dev
 - HTML/CSS game board with CSS animations
 - Dual-domain image proxy for card images
 - ~18,000+ lines of TypeScript
-- 0% test coverage (needs implementation)
+- 49 unit tests for EffectEngine and registry (Vitest)
+- Effect audit script for tracking implementation gaps
+- 16 effect types implemented, 13 trigger types implemented
+- Server startup validation for effect implementations
+
+## Card Effects Architecture
+
+Card effects are stored as structured JSON in the database `Card.effects` field (single source of truth).
+
+### How Effects Are Loaded
+1. **CardLoaderService** loads all cards from database at server startup
+2. For each card:
+   - If `Card.effects` is a non-empty array → use structured effects
+   - Otherwise, fallback to `effectTextParser.parse(effectText)` at runtime
+3. Keywords (Rush, Blocker, etc.) are detected from effectText patterns
+
+### Effect Definition Structure
+```typescript
+interface CardEffectDefinition {
+  id: string;                    // e.g., "ST01-007-effect-1"
+  trigger: EffectTrigger;        // ON_PLAY, ACTIVATE_MAIN, COUNTER, etc.
+  effects: Effect[];             // Array of effect actions
+  conditions?: Condition[];      // Optional activation conditions
+  costs?: Cost[];                // Optional costs (REST_DON, LIFE, etc.)
+  oncePerTurn?: boolean;         // For ACTIVATE_MAIN abilities
+  description?: string;          // Human-readable text
+}
+```
+
+### Adding/Editing Card Effects
+1. **Admin API** (preferred): Use the admin endpoints to update card effects
+2. **Migration script**: `npm run migrate-effects` in `tools/card-importer/`
+3. **Reference file**: `cardDefinitions.reference.ts` contains historical definitions
+
+### Admin API Endpoints (requires admin auth)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/admin/cards` | GET | List cards with pagination, search, filter by type/hasEffects |
+| `/api/admin/cards/:id` | GET | Get single card with full details |
+| `/api/admin/cards/:id/effects` | PATCH | Update card effects JSON |
+| `/api/admin/cards/:id/effects/validate` | POST | Validate effect JSON before saving |
+| `/api/admin/cards/effects/templates` | GET | Get effect templates for common patterns |
+
+### Key Files
+| File | Purpose |
+|------|---------|
+| `server/src/services/CardLoaderService.ts` | Loads cards from DB → CardDefinition |
+| `server/src/api/admin.ts` | Admin API including card effect endpoints |
+| `shared/src/effects/EffectEngine.ts` | Resolves effects during gameplay |
+| `shared/src/effects/parser/` | effectTextParser for fallback parsing |
+| `tools/card-importer/src/migrate-effects.ts` | Migration script for effects |
+| `shared/src/effects/cardDefinitions.reference.ts` | Historical reference (deprecated) |
+| `shared/src/effects/registry.ts` | Tracks implemented vs stub effect types |
+| `tools/card-importer/src/audit-effects.ts` | Audit script for implementation gaps |
+
+## Testing
+
+### Running Tests
+```bash
+# Run all tests in shared package
+cd packages/shared && npm test
+
+# Watch mode
+npm run test:watch
+
+# Coverage report
+npm run test:coverage
+```
+
+### Audit Effect Implementation
+```bash
+# Run effect audit (from tools/card-importer)
+npm run audit
+
+# Include affected cards list
+npm run audit:cards
+```
+
+### Test Utilities
+Located in `packages/shared/src/test-utils/`:
+- `mockGameState.ts` - Create mock game states
+- `mockCards.ts` - Create mock cards and definitions
+- `mockPlayers.ts` - Create mock player states
+- `assertions.ts` - Custom test assertions
 
 ## Coding Patterns
 - All code is TypeScript with strict mode

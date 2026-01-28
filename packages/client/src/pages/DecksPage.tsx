@@ -1,6 +1,11 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
+import { useAuthStore } from '../stores/authStore';
+import { useDeckStore } from '../stores/deckStore';
+import { useCardStore } from '../stores/cardStore';
+import { CardDisplay } from '../components/CardDisplay';
+import type { Card } from '../types/card';
 
 interface PublicDeck {
   id: string;
@@ -17,22 +22,23 @@ interface PublicDeck {
   };
 }
 
-interface CardData {
-  id: string;
-  name: string;
-  setCode: string;
-  colors: string[];
-  type: string;
-  imageUrl: string;
-}
-
 export default function DecksPage() {
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuthStore();
+  const { copyPublicDeck } = useDeckStore();
+
+  // Use shared card store for caching
+  const { cards: cardArray, loadCards } = useCardStore();
+
   const [decks, setDecks] = useState<PublicDeck[]>([]);
-  const [cards, setCards] = useState<Map<string, CardData>>(new Map());
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDeck, setSelectedDeck] = useState<PublicDeck | null>(null);
+
+  // Copy deck state
+  const [isCopying, setIsCopying] = useState(false);
+  const [copyMessage, setCopyMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -45,26 +51,21 @@ export default function DecksPage() {
   const [page, setPage] = useState(1);
   const [decksPerPage] = useState(24);
 
-  // Load cards for leader images
+  // Convert card array to map for quick lookups
+  const cards = useMemo(() => {
+    const cardMap = new Map<string, Card>();
+    cardArray.forEach((card) => cardMap.set(card.id, card));
+    return cardMap;
+  }, [cardArray]);
+
+  // Load cards from shared store
   useEffect(() => {
-    const loadCards = async () => {
-      try {
-        const response = await fetch('/data/cards.json');
-        if (!response.ok) throw new Error('Failed to load cards');
-        const data: CardData[] = await response.json();
-        const cardMap = new Map<string, CardData>();
-        data.forEach((card) => cardMap.set(card.id, card));
-        setCards(cardMap);
-      } catch (err) {
-        console.error('Failed to load cards:', err);
-      }
-    };
     loadCards();
-  }, []);
+  }, [loadCards]);
 
   // Get available leaders
   const leaders = useMemo(() => {
-    const leaderCards: CardData[] = [];
+    const leaderCards: Card[] = [];
     cards.forEach((card) => {
       if (card.type === 'LEADER') {
         leaderCards.push(card);
@@ -133,9 +134,44 @@ export default function DecksPage() {
     return colorMap[color] || 'bg-gray-600';
   };
 
+  // Split combined colors like "GREEN RED" into separate colors
+  const splitColors = (colors: string[]): string[] => {
+    const result: string[] = [];
+    for (const color of colors) {
+      if (color.includes(' ')) {
+        result.push(...color.split(' ').filter(c => c.trim()));
+      } else {
+        result.push(color);
+      }
+    }
+    return result;
+  };
+
   const getLeaderCard = (leaderId: string | null) => {
     if (!leaderId) return null;
     return cards.get(leaderId);
+  };
+
+  const handleCopyDeck = async () => {
+    if (!selectedDeck || !isAuthenticated) return;
+
+    setIsCopying(true);
+    setCopyMessage(null);
+
+    const result = await copyPublicDeck(selectedDeck.id);
+
+    setIsCopying(false);
+
+    if (result.success) {
+      setCopyMessage({ type: 'success', text: 'Deck copied to your collection!' });
+      // Optionally navigate to deck builder after a short delay
+      setTimeout(() => {
+        setSelectedDeck(null);
+        navigate('/decks');
+      }, 1500);
+    } else {
+      setCopyMessage({ type: 'error', text: result.error || 'Failed to copy deck' });
+    }
   };
 
   return (
@@ -283,10 +319,10 @@ export default function DecksPage() {
                       {/* Color indicator */}
                       {leaderCard && (
                         <div className="absolute bottom-2 left-2 flex gap-1">
-                          {leaderCard.colors.map((color, i) => (
+                          {splitColors(leaderCard.colors).map((color, i) => (
                             <div
                               key={i}
-                              className={`w-4 h-4 rounded-full ${getColorClass(color.split(' ')[0])} border border-white/30`}
+                              className={`w-4 h-4 rounded-full ${getColorClass(color)} border border-white/30`}
                               title={color}
                             />
                           ))}
@@ -419,10 +455,10 @@ export default function DecksPage() {
                             {selectedDeck.leaderId}
                           </p>
                           <div className="flex gap-1 mt-2">
-                            {cards.get(selectedDeck.leaderId)!.colors.map((color, i) => (
+                            {splitColors(cards.get(selectedDeck.leaderId)!.colors).map((color, i) => (
                               <div
                                 key={i}
-                                className={`w-5 h-5 rounded-full ${getColorClass(color.split(' ')[0])}`}
+                                className={`w-5 h-5 rounded-full ${getColorClass(color)}`}
                                 title={color}
                               />
                             ))}
@@ -435,40 +471,68 @@ export default function DecksPage() {
               )}
 
               {/* Deck List */}
+              {/* Deck List */}
               <div>
                 <h3 className="text-lg font-semibold mb-3">
                   Deck ({selectedDeck.cardCount} cards)
                 </h3>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2">
                   {selectedDeck.cards.map((deckCard, index) => {
                     const card = cards.get(deckCard.cardId);
-                    return (
-                      <div
-                        key={index}
-                        className="bg-gray-700 rounded p-2 flex items-center gap-2"
-                      >
-                        {card && (
-                          <img
-                            src={card.imageUrl}
-                            alt={card.name}
-                            className="w-10 h-14 object-cover rounded"
-                          />
-                        )}
-                        <div className="flex-1 min-w-0">
+                    if (!card) {
+                      return (
+                        <div
+                          key={index}
+                          className="bg-gray-700 rounded p-2 text-center"
+                        >
                           <p className="text-xs text-gray-400">{deckCard.cardId}</p>
-                          <p className="text-sm truncate">
-                            {card?.name || 'Unknown'}
-                          </p>
-                          <p className="text-sm text-gray-400">x{deckCard.count}</p>
+                          <p className="text-xs text-gray-500">x{deckCard.count}</p>
                         </div>
-                      </div>
+                      );
+                    }
+                    return (
+                      <CardDisplay
+                        key={index}
+                        card={card}
+                        size="sm"
+                        showCount={deckCard.count}
+                      />
                     );
                   })}
                 </div>
               </div>
 
+              {/* Copy Message */}
+              {copyMessage && (
+                <div
+                  className={`mt-4 p-3 rounded ${
+                    copyMessage.type === 'success'
+                      ? 'bg-green-600/20 text-green-400 border border-green-600/30'
+                      : 'bg-red-600/20 text-red-400 border border-red-600/30'
+                  }`}
+                >
+                  {copyMessage.text}
+                </div>
+              )}
+
               {/* Actions */}
               <div className="flex gap-2 mt-6 pt-4 border-t border-gray-700">
+                {isAuthenticated && (
+                  <button
+                    onClick={handleCopyDeck}
+                    disabled={isCopying}
+                    className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:cursor-not-allowed text-white py-2 rounded flex items-center justify-center gap-2"
+                  >
+                    {isCopying ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Copying...
+                      </>
+                    ) : (
+                      'Copy to My Decks'
+                    )}
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     const deckString = JSON.stringify({

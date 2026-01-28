@@ -25,6 +25,7 @@ usersRouter.get('/me', authenticate, async (req, res, next) => {
         gamesWon: true,
         avatarId: true,
         badges: true,
+        isAdmin: true,
         createdAt: true,
       },
     });

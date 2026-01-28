@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Card } from '../types/card';
 import { COLOR_HEX, type CardColor } from '../types/card';
+import { FormattedEffect } from './common/FormattedEffect';
 
 interface CardDisplayProps {
   card: Card;
@@ -68,8 +69,12 @@ export function CardDisplay({
     return { x, y };
   };
 
-  const colorBorder = card.colors.length > 0
-    ? COLOR_HEX[card.colors[0] as CardColor] || '#6B7280'
+  // Get first color (split if combined like "GREEN RED")
+  const firstColor = card.colors.length > 0
+    ? card.colors[0].split(' ')[0]
+    : '';
+  const colorBorder = firstColor
+    ? COLOR_HEX[firstColor as CardColor] || '#6B7280'
     : '#6B7280';
 
   const previewPos = getPreviewPosition();
@@ -171,7 +176,9 @@ export function CardPreview({ card }: CardPreviewProps) {
           <p className="text-gray-400 text-sm">{card.setName}</p>
 
           <div className="mt-4 flex flex-wrap gap-1.5">
-            {card.colors.map(color => (
+            {card.colors.flatMap(color =>
+              color.includes(' ') ? color.split(' ').filter(c => c.trim()) : [color]
+            ).map(color => (
               <span
                 key={color}
                 className="px-2.5 py-1 rounded text-sm font-medium text-white"
@@ -185,26 +192,29 @@ export function CardPreview({ card }: CardPreviewProps) {
             </span>
           </div>
 
+          {card.traits && card.traits.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-gray-700 text-center">
+              <p className="text-white font-bold text-sm">{card.traits.join(' / ')}</p>
+              <p className="text-gray-500 text-xs uppercase mt-1">Traits</p>
+            </div>
+          )}
+
           <div className="mt-4 text-base text-gray-300 space-y-1">
             {card.cost !== null && <p>Cost: {card.cost}</p>}
             {card.power !== null && <p>Power: {card.power}</p>}
             {card.counter !== null && <p>Counter: +{card.counter}</p>}
+            {card.life != null && <p>Life: {card.life}</p>}
             {card.attribute && <p>Attribute: {card.attribute}</p>}
           </div>
         </div>
       </div>
 
-      {card.effect && (
+      {(card.effect || card.trigger) && (
         <div className="mt-4 pt-4 border-t border-gray-700">
-          <p className="text-base text-gray-300 whitespace-pre-wrap leading-relaxed">{card.effect}</p>
-        </div>
-      )}
-
-      {card.trigger && (
-        <div className="mt-3">
-          <p className="text-base text-purple-400">
-            <span className="font-bold">Trigger:</span> {card.trigger}
-          </p>
+          <FormattedEffect
+            effect={card.effect}
+            trigger={card.trigger}
+          />
         </div>
       )}
     </div>

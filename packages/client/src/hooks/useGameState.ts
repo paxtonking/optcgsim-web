@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { GameState, GameCard, PlayerState, GamePhase } from '@optcgsim/shared';
+import { useCardStore } from '../stores/cardStore';
 
 interface CardDefinition {
   id: string;
@@ -19,6 +20,28 @@ interface CardDefinition {
     small?: string;
     large?: string;
   };
+  keywords?: string[];
+  traits?: string[];
+}
+
+// Keyword detection patterns (same as server-side)
+const KEYWORD_PATTERNS: { pattern: RegExp; keyword: string }[] = [
+  { pattern: /\[Rush\]/i, keyword: 'Rush' },
+  { pattern: /\[Blocker\]/i, keyword: 'Blocker' },
+  { pattern: /\[Banish\]/i, keyword: 'Banish' },
+  { pattern: /\[Double Attack\]/i, keyword: 'Double Attack' },
+];
+
+// Detect keywords from effect text
+function detectKeywords(effectText: string | null | undefined): string[] {
+  if (!effectText) return [];
+  const keywords: string[] = [];
+  for (const { pattern, keyword } of KEYWORD_PATTERNS) {
+    if (pattern.test(effectText)) {
+      keywords.push(keyword);
+    }
+  }
+  return keywords;
 }
 
 export interface UseGameStateReturn {
@@ -39,25 +62,32 @@ export interface UseGameStateReturn {
   getCardImageUrl: (cardId: string) => string;
   canPlayCard: (card: GameCard) => boolean;
   isValidAttackTarget: (card: GameCard) => boolean;
+  getTargetZone: (cardId: string) => string;
 }
 
 export function useGameState(playerId: string | null): UseGameStateReturn {
   const [gameState, setGameStateInternal] = useState<GameState | null>(null);
   const [selectedCard, setSelectedCard] = useState<GameCard | null>(null);
   const [hoveredCard, setHoveredCard] = useState<GameCard | null>(null);
-  const [cardDefinitions, setCardDefinitions] = useState<Map<string, CardDefinition>>(new Map());
 
-  // Load card definitions on mount
+  // Use shared card store for caching
+  const { cards: cardArray, loadCards } = useCardStore();
+
+  // Load cards from shared store
   useEffect(() => {
-    fetch('/data/cards.json')
-      .then(res => res.json())
-      .then((cards: CardDefinition[]) => {
-        const defMap = new Map<string, CardDefinition>();
-        cards.forEach(card => defMap.set(card.id, card));
-        setCardDefinitions(defMap);
-      })
-      .catch(err => console.error('Failed to load card definitions:', err));
-  }, []);
+    loadCards();
+  }, [loadCards]);
+
+  // Convert card array to map with keyword detection
+  const cardDefinitions = useMemo(() => {
+    const defMap = new Map<string, CardDefinition>();
+    cardArray.forEach(card => {
+      // Detect keywords from effect text (same as server-side CardLoaderService)
+      const keywords = detectKeywords(card.effect);
+      defMap.set(card.id, { ...card, keywords });
+    });
+    return defMap;
+  }, [cardArray]);
 
   const setGameState = useCallback((state: GameState) => {
     setGameStateInternal(state);
@@ -105,11 +135,23 @@ export function useGameState(playerId: string | null): UseGameStateReturn {
     if (phase !== GamePhase.MAIN_PHASE) return false;
 
     const def = cardDefinitions.get(card.cardId);
-    if (!def || !def.cost) return false;
+    if (!def) return false;
 
-    // Check if player has enough DON
-    return myPlayer.donField.length >= def.cost;
+    // Cards with null/undefined cost (like some leaders) can't be played from hand
+    if (def.cost === null || def.cost === undefined) return false;
+
+    // Check if player has enough active DON to pay the cost
+    const activeDonCount = myPlayer.donField.filter(don => don.state === 'ACTIVE').length;
+    return activeDonCount >= def.cost;
   }, [gameState, myPlayer, isMyTurn, phase, cardDefinitions]);
+
+  // Determine the target zone based on card type
+  const getTargetZone = useCallback((cardId: string): string => {
+    const def = cardDefinitions.get(cardId);
+    if (def?.type === 'STAGE') return 'STAGE';
+    if (def?.type === 'EVENT') return 'EVENT'; // Events go to trash after effect resolution
+    return 'FIELD';
+  }, [cardDefinitions]);
 
   const isValidAttackTarget = useCallback((card: GameCard): boolean => {
     if (!gameState || !opponent || !isMyTurn) return false;
@@ -142,6 +184,7 @@ export function useGameState(playerId: string | null): UseGameStateReturn {
     getCardDefinition,
     getCardImageUrl,
     canPlayCard,
-    isValidAttackTarget
+    isValidAttackTarget,
+    getTargetZone
   };
 }

@@ -128,6 +128,13 @@ export const WS_EVENTS = {
   GAME_RECONNECT: 'game:reconnect',
   GAME_END: 'game:end',
 
+  // Rock-Paper-Scissors (first player determination)
+  RPS_CHOOSE: 'rps:choose',              // Player sends their RPS choice
+  RPS_RESULT: 'rps:result',              // Server broadcasts RPS outcome
+  RPS_TIMEOUT: 'rps:timeout',            // Player didn't choose in time
+  FIRST_CHOICE: 'first:choice',          // Winner sends first/second preference
+  FIRST_DECIDED: 'first:decided',        // Server broadcasts who goes first
+
   // Spectator
   SPECTATE_JOIN: 'spectate:join',
   SPECTATE_LEAVE: 'spectate:leave',

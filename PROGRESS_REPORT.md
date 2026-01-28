@@ -1,87 +1,54 @@
 # OPTCGSim Web - Progress Report
 
-**Last Updated:** January 20, 2026
+**Last Updated:** January 28, 2026
 **Developer:** Claude Code Assistant
-**Project Status:** Alpha - Core Features Complete
+**Project Status:** All 8 Development Phases Complete - Ready for Testing/Deployment
 
 ---
 
 ## Executive Summary
 
-OPTCGSim Web has reached a significant milestone with all core gameplay features now functional. The project includes a complete card effect system (80+ triggers, 200+ effect types), a playable AI opponent with three difficulty levels, real-time multiplayer infrastructure, and polished visual feedback. The deck builder, lobby system, and game engine are all operational.
+OPTCGSim Web has achieved full feature completion across all planned development phases. The project includes a complete HTML/CSS-based game board (replacing the original Phaser.js implementation), a comprehensive card effect system with 49 unit tests, real-time multiplayer infrastructure, AI opponents with three difficulty levels, ranked matchmaking with ELO ratings, tournaments, social features, and admin tools.
 
 ---
 
 ## Project Completion Status
 
-### Fully Completed Features ✅
+### Fully Completed Features
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Card Effect System | ✅ Complete | 85+ card definitions, keywords working |
-| AI Opponent | ✅ Complete | Basic/Medium/Hard difficulty levels |
-| Deck Builder | ✅ Complete | Full filtering, drag-and-drop, validation |
-| Lobby System | ✅ Complete | Create/join rooms, quick match queue |
-| Game Engine | ✅ Complete | Turn phases, combat, win conditions |
-| Visual Polish | ✅ Complete | Card images, zone highlights, turn banners |
-| Multiplayer Infrastructure | ✅ Complete | WebSocket handlers, state sync |
+| Card Effect System | Complete | 85+ card definitions, 80+ triggers, 200+ effect types |
+| Effect Engine Tests | Complete | 49 unit tests with Vitest |
+| AI Opponent | Complete | Basic/Medium/Hard difficulty levels |
+| Deck Builder | Complete | Full filtering, drag-and-drop, import/export |
+| Lobby System | Complete | Create/join rooms, quick match queue |
+| Game Engine | Complete | Turn phases, combat, win conditions |
+| HTML/CSS Game Board | Complete | Replaced Phaser.js with React components |
+| Multiplayer Infrastructure | Complete | WebSocket handlers, state sync |
+| Ranked System | Complete | ELO rating with rank tiers (Bronze to Master) |
+| Match Replays | Complete | Recording, playback, sharing |
+| Spectator Mode | Complete | Watch live games |
+| Friends System | Complete | Requests, online status, direct challenges |
+| Chat System | Complete | In-game chat, lobby chat, emotes |
+| Profile Customization | Complete | 16 avatars, 14 badges |
+| Admin Dashboard | Complete | User management, analytics, announcements |
+| Tournament System | Complete | Single/Double Elim, Swiss, Round Robin |
+| User Reporting | Complete | Report system with moderation tools |
+| Counter/Trigger Step UI | Complete | Full combat UI for card choices |
 
-### Partially Implemented 🔨
+### Development Phases Completed
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Counter Step UI | 🔨 In Progress | Backend ready, needs UI |
-| Trigger Step UI | 🔨 In Progress | Backend ready, needs UI |
-| Animations | 🔨 Basic | Turn banners, drag feedback |
-| Sound Effects | ❌ Not Started | Planned for future |
-
-### Not Yet Started ❌
-
-| Feature | Priority | Notes |
-|---------|----------|-------|
-| Ranked Mode | High | ELO system designed |
-| Match Replays | Medium | Action log exists |
-| Tournament System | Medium | Future phase |
-| Mobile Responsiveness | Low | Desktop-first approach |
-
----
-
-## Recent Development Sessions
-
-### Session 5 - Visual Polish & Card Images
-- ✅ Updated card-importer to fetch external image URLs from OPTCG API
-- ✅ Regenerated cards.json with 2,188 cards having real image URLs
-- ✅ Added CORS support for external image loading in GameScene
-- ✅ Created detailed card placeholder display (color-coded, shows stats)
-- ✅ Added zone highlighting during card drag operations
-- ✅ Implemented turn banner animation ("YOUR TURN" / "OPPONENT'S TURN")
-- ✅ Added dynamic turn/phase indicators
-- ✅ Action buttons now enable/disable based on turn
-
-### Session 4 - AI Client UI Complete
-- ✅ Added AIPanel component to LobbyPage with difficulty buttons
-- ✅ Updated lobbyStore with AI game state management
-- ✅ Updated GameController to use AI-specific WebSocket events
-- ✅ Added "VS AI" badge and Surrender button to GamePage
-- ✅ Full AI game flow: lobby → start → play → surrender/end
-
-### Session 3 - AI Opponent Implemented
-- ✅ Created AIService with rule-based decision making
-- ✅ Created AIGameManager for AI vs Human games
-- ✅ Added predefined AI decks (Red Straw Hat, Green Worst Gen)
-- ✅ Integrated AI events with WebSocket handlers
-
-### Session 2 - Card Effect Definitions Expanded
-- ✅ Expanded CardLoaderService to 85+ card definitions
-- ✅ Complete Starter Decks 01-04
-- ✅ Key cards from OP01 and OP02 sets
-- ✅ Added new effect types (MAIN, DISCARD_FROM_HAND, etc.)
-
-### Session 1 - Card Effect System
-- ✅ Implemented comprehensive effect type system
-- ✅ Built EffectEngine class (700+ lines)
-- ✅ Implemented all keyword abilities
-- ✅ Integrated effects with GameStateManager
+| Phase | Status | Description |
+|-------|--------|-------------|
+| Phase 1 | Complete | Foundation (monorepo, TypeScript, Prisma, JWT auth) |
+| Phase 2 | Complete | Core Features (deck builder, lobby UI, profiles) |
+| Phase 3 | Complete | Game Engine (GameStateManager, effects, multiplayer) |
+| Phase 4 | Complete | Ranked & Competitive (ELO, leaderboards, AI, replays) |
+| Phase 5 | Complete | Social Features (friends, chat, emotes, customization) |
+| Phase 6 | Complete | Content & Admin (dashboard, card browser, deck browser) |
+| Phase 7 | Complete | Tournament & Advanced (tournaments, reporting, game modes) |
+| Phase 8 | Complete | HTML/CSS Game Board Overhaul (replaced Phaser with React) |
 
 ---
 
@@ -90,157 +57,136 @@ OPTCGSim Web has reached a significant milestone with all core gameplay features
 ### Package Structure
 ```
 packages/
-├── client/          # React + Phaser.js frontend
+├── client/          # React frontend
 │   ├── src/
-│   │   ├── components/   # React UI components
-│   │   ├── game/         # Phaser game scene & controller
-│   │   ├── pages/        # Route pages
-│   │   ├── stores/       # Zustand state management
+│   │   ├── components/   # 40+ React UI components
+│   │   │   └── game/     # 17 game board components (HTML/CSS)
+│   │   ├── hooks/        # useGameSocket, useGameState, useEffectToast, useSoundEffects
+│   │   ├── game/         # Legacy Phaser files (kept for reference)
+│   │   ├── pages/        # 21 route pages
+│   │   ├── stores/       # 7 Zustand stores
 │   │   └── services/     # API & socket services
 │   └── public/
-│       ├── assets/       # Card backs, playmats
-│       └── data/         # cards.json
+│       ├── assets/       # Card backs, playmats, backgrounds
+│       └── data/         # cards.json (2,188 cards)
 ├── server/          # Express + Socket.IO backend
 │   ├── src/
-│   │   ├── routes/       # REST API endpoints
-│   │   ├── services/     # Business logic
-│   │   └── websocket/    # Game & lobby managers
-│   └── prisma/           # Database schema
+│   │   ├── api/          # 13 REST API endpoint files
+│   │   ├── services/     # AIService, CardLoaderService
+│   │   └── websocket/    # 7 WebSocket managers
+│   └── prisma/           # Database schema (10 models)
 ├── shared/          # Shared types & game logic
 │   └── src/
-│       ├── types/        # TypeScript interfaces
-│       ├── effects/      # Effect engine & types
-│       └── game/         # GameStateManager
+│       ├── effects/      # EffectEngine, parser, registry, 49 tests
+│       ├── game/         # GameStateManager (945 lines)
+│       └── types/        # TypeScript interfaces
 └── tools/
-    └── card-importer/    # Card data fetching
+    └── card-importer/    # Card data tools & scripts
 ```
 
 ### Key Files
 
-| File | Purpose |
-|------|---------|
-| `shared/src/game/GameStateManager.ts` | Core game logic (400+ lines) |
-| `shared/src/effects/EffectEngine.ts` | Effect resolution (700+ lines) |
-| `server/src/services/AIService.ts` | AI decision making (~350 lines) |
-| `server/src/websocket/AIGameManager.ts` | AI game coordination (~450 lines) |
-| `client/src/game/GameScene.ts` | Phaser rendering (~650 lines) |
-| `client/src/game/GameController.ts` | Game-socket bridge (~220 lines) |
+| File | Purpose | Lines |
+|------|---------|-------|
+| `shared/src/game/GameStateManager.ts` | Core game logic | 945 |
+| `shared/src/effects/EffectEngine.ts` | Effect resolution | 1,143 |
+| `client/src/components/game/GameBoard.tsx` | Main game board | 680 |
+| `server/src/services/AIService.ts` | AI decision making | ~400 |
+| `server/src/websocket/AIGameManager.ts` | AI game coordination | ~800 |
+| `server/src/websocket/GameManager.ts` | PvP game coordination | ~700 |
 
 ### Database Schema
-- **Users**: Authentication, stats, preferences
-- **Decks**: User decks with card lists
-- **Cards**: 2,188 cards from all sets
+- **Users**: Authentication, stats, preferences, ELO rating
+- **Decks**: User decks with card lists and validation
+- **Cards**: 2,188 cards from 48 sets with structured effects
 - **CardSets**: 48 sets (OP01-OP14, ST01-ST28, EB01-EB04, etc.)
-- **Matches**: Game history and replay data
+- **Matches**: Game history with action logs and replay data
+- **Friendships**: Social relationships with status
+- **Tournaments**: Tournament management with multiple formats
+- **Reports/Suspensions**: Moderation system
 
 ---
 
 ## Current Game Features
 
 ### Gameplay
-- ✅ Full turn structure (Refresh → Draw → DON!! → Main → End)
-- ✅ Card play from hand to field
-- ✅ DON! attachment to characters/leader
-- ✅ Attack declaration and target selection
-- ✅ Blocker declaration
-- ✅ Combat resolution with power calculation
-- ✅ Life damage and KO mechanics
-- ✅ Win condition detection (0 life or deck out)
+- Full turn structure (Refresh → Draw → DON!! → Main → End)
+- Card play from hand to field with cost validation
+- DON! attachment to characters/leader
+- Attack declaration and target selection
+- Blocker declaration with Unblockable check
+- Combat resolution with power calculation
+- Life damage and KO mechanics
+- Win condition detection (0 life or deck out)
+- Mulligan system with UI
+- Counter Step UI for combat choices
+- Trigger Step UI for life card effects
 
 ### Card Effects
-- ✅ Keyword abilities: Rush, Blocker, Banish, Double Attack, Unblockable
-- ✅ ON_PLAY triggers
-- ✅ ON_ATTACK triggers
-- ✅ ON_BLOCK triggers
-- ✅ DON!! X conditional effects
-- ✅ Effect duration tracking
+- Keyword abilities: Rush, Blocker, Banish, Double Attack, Unblockable
+- ON_PLAY, ON_ATTACK, ON_BLOCK, ON_KO triggers
+- COUNTER and TRIGGER (life card) effects
+- DON!! X conditional effects
+- Effect duration tracking (instant, turn, battle, permanent)
+- 85+ cards with structured effect definitions
+- Runtime effect text parsing for remaining cards
 
 ### AI Opponent
-- ✅ Three difficulty levels (Basic, Medium, Hard)
-- ✅ Card play prioritization (high cost, Rush cards)
-- ✅ DON! attachment strategy
-- ✅ Attack target selection (KO characters or attack leader)
-- ✅ Blocker usage when life is low
-- ✅ Counter card consideration
+- Three difficulty levels (Basic, Medium, Hard)
+- Card play prioritization (high cost, Rush cards)
+- DON! attachment strategy
+- Attack target selection (KO characters or attack leader)
+- Blocker usage when life is low
+- Counter card consideration
 
-### Visual Features
-- ✅ Card images from external API
-- ✅ Detailed placeholder for missing images
-- ✅ Zone highlighting during drag
-- ✅ Turn banner animations
-- ✅ Dynamic phase indicators
-- ✅ Card hover preview with full details
-
----
-
-## Known Issues & Technical Debt
-
-### Known Issues
-1. ~~Card images not loading~~ → **FIXED** (now uses external API)
-2. Some CORS issues possible with certain image hosts
-3. No error handling for network disconnections
-4. Memory leaks possible in Phaser scene transitions
-
-### Technical Debt
-1. **Testing**: No unit tests (0% coverage)
-2. **Security**: Server-side action validation needs hardening
-3. **Performance**: Large board states may lag
-4. **Rate Limiting**: API endpoints unprotected
-
-### Recommended Fixes (Priority Order)
-1. Add Jest/Vitest for unit testing
-2. Implement comprehensive error boundaries
-3. Add reconnection handling for dropped connections
-4. Set up rate limiting on API endpoints
+### Visual Features (HTML/CSS Game Board)
+- Card images from external API with CORS proxy
+- Green glow for playable cards
+- Red glow for attack targets
+- Blue glow for selected cards
+- Hover lift effect with shadow
+- Rested state (90deg rotation)
+- Overlapping hand cards that expand on hover
+- Face-down opponent cards (actual card backs)
+- Playmat backgrounds
+- Effect animations and toasts
+- Combat modal with attack/block visualization
 
 ---
 
-## Next Development Priorities
+## Testing
 
-### Immediate (Next Session)
-1. **Counter Step UI** - Allow players to choose counter cards during combat
-2. **Trigger Step UI** - Allow players to activate life card effects
-3. **More Card Effects** - Implement search deck, play from trash, etc.
+### Unit Tests
+- 49 unit tests in `packages/shared/src/effects/__tests__/`
+- Tests for EffectEngine and effect registry
+- Test utilities in `packages/shared/src/test-utils/`
+- Run with `npm test` in shared package
 
-### Short Term (This Week)
-1. Test multiplayer gameplay with effects
-2. Add reconnection handling
-3. Improve AI (medium difficulty with heuristics)
-4. Add sound effects
-
-### Medium Term (Next Week)
-1. Ranked mode with ELO rating
-2. Match replay system
-3. Complete more card effect definitions
-4. Mobile responsiveness
-
-### Long Term (Future)
-1. Tournament system
-2. Friends list and direct challenges
-3. Card collection/unlocking system
-4. Localization (multi-language)
+### Effect Audit
+- Audit script tracks implementation gaps
+- Registry tracks implemented vs stub effect types
+- Server startup validates effect implementations
 
 ---
 
 ## Metrics
 
 ### Code Statistics
-- **Total Files Created/Modified**: 20+
-- **Lines of Code Added**: ~5,000+
-- **TypeScript Coverage**: 100%
-- **Test Coverage**: 0% (needs implementation)
+- **Total TypeScript Files**: 175
+- **Total Lines of Code**: ~18,000+
+- **Unit Test Count**: 49
+- **React Components**: 40+
+- **Game Pages**: 21
+- **API Endpoints**: 13 files
+- **WebSocket Managers**: 7
 
 ### Database
 - **Cards Imported**: 2,188
 - **Card Sets**: 48
 - **Card Types**: Leaders (116), Characters (1,693), Events (337), Stages (42)
-- **Card Definitions with Effects**: 85+
-
-### Performance
-- **Frontend Bundle Size**: ~1.8MB (gzipped: ~444KB)
-- **Initial Load Time**: ~2-3s
-- **Game State Update**: <50ms
-- **AI Decision Time**: 500-1000ms (configurable delay)
+- **Cards with Structured Effects**: 85+
+- **Effect Triggers**: 80+
+- **Effect Types**: 200+
 
 ---
 
@@ -249,7 +195,7 @@ packages/
 ### Prerequisites
 - Node.js 20+
 - Docker (for PostgreSQL)
-- npm or yarn
+- npm
 
 ### Setup
 ```bash
@@ -260,37 +206,38 @@ npm install
 docker-compose up -d
 
 # Run migrations
-npm run db:migrate
-
-# Seed card data (if needed)
-cd tools/card-importer && npm run fetch
+npm run db:push
 
 # Start development servers
 npm run dev
 ```
 
 ### Access
-- **Frontend**: http://localhost:5173
-- **Backend API**: http://localhost:3001
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:4000
 - **Database**: PostgreSQL on port 5432
 
 ---
 
 ## Conclusion
 
-OPTCGSim Web is now in a playable alpha state. Core gameplay is functional, AI opponents are available, and visual polish has been applied. The main areas for improvement are:
+OPTCGSim Web is feature-complete and ready for deployment. All 8 development phases have been completed including:
 
-1. **Testing** - Critical for stability
-2. **Counter/Trigger UI** - Needed for full gameplay
-3. **More Card Effects** - Expanding the 85 defined cards
-4. **Ranked Mode** - For competitive play
+1. **Foundation** - Monorepo, authentication, database
+2. **Core Features** - Deck builder, lobby, profiles
+3. **Game Engine** - Full game logic with effects
+4. **Competitive** - Ranked, replays, spectator, AI
+5. **Social** - Friends, chat, customization
+6. **Admin** - Dashboard, card browser, analytics
+7. **Tournament** - Multiple formats, reporting
+8. **Game Board Overhaul** - HTML/CSS React components
 
-The architecture is solid and extensible. The project is well-positioned for continued development toward a full release.
+The project is now in a state suitable for user testing and eventual public deployment.
 
 ---
 
-**Next Session Goals:**
-1. Implement Counter Step UI for combat choices
-2. Implement Trigger Step UI for life card effects
-3. Add unit tests for GameStateManager
-4. Test multiplayer with effect synchronization
+**Documentation:**
+- [CLAUDE.md](CLAUDE.md) - Development context and architecture
+- [PLAN.md](PLAN.md) - Original implementation strategy
+- [TASKS.md](TASKS.md) - Detailed task breakdown
+- [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution guidelines

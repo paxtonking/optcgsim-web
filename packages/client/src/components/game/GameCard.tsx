@@ -21,8 +21,23 @@ interface GameCardProps {
   faceUp: boolean;
   isPlayable?: boolean;
   isTarget?: boolean;
+  isDonTarget?: boolean;    // Valid target for DON attachment (yellow glow)
   isSelected?: boolean;
   isAttacking?: boolean;
+  isAttackEffectTarget?: boolean;    // Valid target for ON_ATTACK effect (purple glow)
+  isAttackEffectSelected?: boolean;  // Currently selected for ON_ATTACK effect (gold glow)
+  isPlayEffectTarget?: boolean;      // Valid target for ON_PLAY effect (blue glow)
+  isPlayEffectSelected?: boolean;    // Currently selected for ON_PLAY effect (gold glow)
+  isEventEffectTarget?: boolean;     // Valid target for event [Main] effect (orange glow)
+  isEventEffectSelected?: boolean;   // Currently selected for event effect (gold glow)
+  isCounterEffectTarget?: boolean;   // Valid target for counter effect (cyan glow)
+  isCounterEffectSelected?: boolean; // Currently selected for counter effect (gold glow)
+  hasCostModified?: boolean;         // Has modified cost from stage effects (gold glow)
+  hasActiveEffect?: boolean;         // Stage providing active continuous effect (purple pulse)
+  isDon?: boolean;          // This is a DON card (smaller size, different styling)
+  attachedDonCount?: number; // Number of DON cards attached to this card
+  effectivePower?: number;  // Calculated power including buffs and DON
+  buffTotal?: number;       // Total buff amount (positive or negative)
   size?: 'small' | 'normal' | 'large';
   onHover?: (card: GameCardType | null) => void;
   onClick?: (card: GameCardType) => void;
@@ -36,8 +51,23 @@ export const GameCard: React.FC<GameCardProps> = ({
   faceUp,
   isPlayable = false,
   isTarget = false,
+  isDonTarget = false,
   isSelected = false,
   isAttacking = false,
+  isAttackEffectTarget = false,
+  isAttackEffectSelected = false,
+  isPlayEffectTarget = false,
+  isPlayEffectSelected = false,
+  isEventEffectTarget = false,
+  isEventEffectSelected = false,
+  isCounterEffectTarget = false,
+  isCounterEffectSelected = false,
+  hasCostModified = false,
+  hasActiveEffect = false,
+  isDon = false,
+  attachedDonCount = 0,
+  effectivePower,
+  buffTotal = 0,
   size = 'normal',
   onHover,
   onClick,
@@ -57,6 +87,10 @@ export const GameCard: React.FC<GameCardProps> = ({
 
   // Get image URL - use cardDef.imageUrl if available, proxy through our API
   const getImageUrl = () => {
+    // DON cards use local image
+    if (isDon || card.cardId === 'DON') {
+      return '/assets/cardbacks/CardFrontDon.png';
+    }
     if (cardDef?.imageUrl) {
       const filename = cardDef.imageUrl.split('/').pop();
       // Use different proxy based on the source domain
@@ -77,8 +111,13 @@ export const GameCard: React.FC<GameCardProps> = ({
     onHover?.(null);
   }, [onHover]);
 
-  const handleClick = useCallback(() => {
-    onClick?.(card);
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    // Only stop propagation if we have an onClick handler
+    // Otherwise let the click bubble up to parent (e.g., combat modal wrapper)
+    if (onClick) {
+      e.stopPropagation();
+      onClick(card);
+    }
   }, [card, onClick]);
 
   const handleDragStart = useCallback((e: React.DragEvent) => {
@@ -97,12 +136,24 @@ export const GameCard: React.FC<GameCardProps> = ({
   // Build class names
   const classes = [
     'game-card',
-    `game-card--${size}`,
+    isDon ? 'game-card--don' : `game-card--${size}`,
     isRested && 'game-card--rested',
+    card.state === 'ATTACHED' && 'game-card--attached',
     isPlayable && 'game-card--playable',
     isTarget && 'game-card--target',
+    isDonTarget && 'game-card--don-target',
     isSelected && 'game-card--selected',
     isAttacking && 'game-card--attacking',
+    isAttackEffectTarget && 'game-card--attack-effect-target',
+    isAttackEffectSelected && 'game-card--attack-effect-selected',
+    isPlayEffectTarget && 'game-card--play-effect-target',
+    isPlayEffectSelected && 'game-card--play-effect-selected',
+    isEventEffectTarget && 'game-card--event-effect-target',
+    isEventEffectSelected && 'game-card--event-effect-selected',
+    isCounterEffectTarget && 'game-card--counter-effect-target',
+    isCounterEffectSelected && 'game-card--counter-effect-selected',
+    hasCostModified && 'game-card--cost-modified',
+    hasActiveEffect && 'game-card--active-effect',
     !faceUp && 'game-card--face-down',
     className
   ].filter(Boolean).join(' ');
@@ -182,26 +233,36 @@ export const GameCard: React.FC<GameCardProps> = ({
           )}
 
           {/* Power overlay for characters on field */}
-          {card.power && faceUp && (
-            <div className="game-card__power-badge">
-              {card.power}
+          {(card.power || effectivePower) && faceUp && (
+            <div
+              className={`game-card__power-badge ${
+                buffTotal > 0 ? 'game-card__power-badge--buffed' :
+                buffTotal < 0 ? 'game-card__power-badge--debuffed' : ''
+              }`}
+              title={buffTotal !== 0 ? `Base: ${card.basePower ?? card.power ?? 0}\nBuff: ${buffTotal > 0 ? '+' : ''}${buffTotal}\nDON: +${attachedDonCount * 1000}` : undefined}
+            >
+              {effectivePower ?? card.power}
             </div>
           )}
 
-          {/* DON count badge for attached DON */}
-          {card.attachedTo && (
-            <div className="game-card__attached-badge">+1</div>
+          {/* DON count badge for attached DON on this card */}
+          {attachedDonCount > 0 && (
+            <div className="game-card__don-badge">+{attachedDonCount}</div>
           )}
         </>
       ) : (
         // Card back
         <div className="game-card__back">
-          <div className="game-card__back-design" />
+          <img
+            src={isDon ? "/assets/cardbacks/CardBackDon.png" : "/assets/cardbacks/CardBackRegular.png"}
+            alt={isDon ? "DON card back" : "Card back"}
+            className="game-card__back-image"
+          />
         </div>
       )}
 
       {/* Selection/target ring */}
-      {(isPlayable || isTarget || isSelected) && (
+      {(isPlayable || isTarget || isSelected || isDonTarget) && (
         <div className="game-card__ring" />
       )}
     </div>
@@ -214,8 +275,11 @@ interface CardPileProps {
   label: string;
   showCount?: boolean;
   faceUp?: boolean;
+  showLastCard?: boolean; // Show last card in array instead of first (for trash pile)
   onClick?: () => void;
   onCardHover?: (card: GameCardType | null) => void;
+  cardDefinitions?: Map<string, CardDefinition>; // For showing proper card images when faceUp
+  size?: 'small' | 'normal' | 'large';
 }
 
 export const CardPile: React.FC<CardPileProps> = ({
@@ -223,13 +287,20 @@ export const CardPile: React.FC<CardPileProps> = ({
   label,
   showCount = true,
   faceUp = false,
+  showLastCard = false,
   onClick,
-  onCardHover
+  onCardHover,
+  cardDefinitions,
+  size = 'normal'
 }) => {
   const count = cards.length;
+  const topCard = showLastCard ? cards[count - 1] : cards[0];
+  const topCardDef = topCard && cardDefinitions ? cardDefinitions.get(topCard.cardId) : undefined;
+
+  const pileClasses = ['card-pile', `card-pile--${size}`].join(' ');
 
   return (
-    <div className="card-pile" onClick={onClick}>
+    <div className={pileClasses} onClick={onClick}>
       <div className="card-pile__stack">
         {/* Show stacked effect */}
         {count > 0 && (
@@ -237,17 +308,22 @@ export const CardPile: React.FC<CardPileProps> = ({
             {count > 2 && <div className="card-pile__layer card-pile__layer--3" />}
             {count > 1 && <div className="card-pile__layer card-pile__layer--2" />}
             <div className="card-pile__top">
-              {faceUp && cards[0] ? (
+              {faceUp && topCard ? (
                 <GameCard
-                  card={cards[0]}
+                  card={{ ...topCard, state: CardState.ACTIVE }}
+                  cardDef={topCardDef}
                   faceUp={true}
-                  size="small"
+                  size={size}
                   onHover={onCardHover}
                 />
               ) : (
-                <div className="game-card game-card--small game-card--face-down">
+                <div className={`game-card game-card--${size} game-card--face-down`}>
                   <div className="game-card__back">
-                    <div className="game-card__back-design" />
+                    <img
+                      src="/assets/cardbacks/CardBackRegular.png"
+                      alt="Card back"
+                      className="game-card__back-image"
+                    />
                   </div>
                 </div>
               )}
@@ -255,7 +331,7 @@ export const CardPile: React.FC<CardPileProps> = ({
           </>
         )}
         {count === 0 && (
-          <div className="card-pile__empty" />
+          <div className={`card-pile__empty card-pile__empty--${size}`} />
         )}
       </div>
       {showCount && (

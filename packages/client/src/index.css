@@ -7,26 +7,117 @@
     @apply scroll-smooth;
   }
 
+  :root {
+    color-scheme: dark;
+
+    /* Effect Animation Colors */
+    --effect-buff: #27ae60;
+    --effect-buff-glow: rgba(39, 174, 96, 0.6);
+    --effect-debuff: #e74c3c;
+    --effect-debuff-glow: rgba(231, 76, 60, 0.6);
+    --effect-draw: #3498db;
+    --effect-draw-glow: rgba(52, 152, 219, 0.6);
+    --effect-ko: #9b59b6;
+    --effect-ko-glow: rgba(155, 89, 182, 0.6);
+    --effect-don: #f1c40f;
+    --effect-don-glow: rgba(241, 196, 15, 0.6);
+    --effect-trigger: #e67e22;
+    --effect-trigger-glow: rgba(230, 126, 34, 0.6);
+    --effect-counter: #1abc9c;
+    --effect-counter-glow: rgba(26, 188, 156, 0.6);
+    --effect-search: #16a085;
+    --effect-search-glow: rgba(22, 160, 133, 0.6);
+    --effect-play: #2ecc71;
+    --effect-play-glow: rgba(46, 204, 113, 0.6);
+    --effect-neutral: #7f8c8d;
+    --effect-neutral-glow: rgba(127, 140, 141, 0.4);
+
+    /* Effect Animation Durations */
+    --effect-duration-fast: 300ms;
+    --effect-duration-normal: 500ms;
+    --effect-duration-slow: 800ms;
+  }
+
   body {
-    @apply bg-background text-gray-100;
+    @apply bg-background text-sand font-sans antialiased;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3, h4 {
+    @apply font-sans font-bold tracking-tight;
+  }
+
+  a {
+    @apply text-sand;
   }
 }
 
 @layer components {
+  .site-shell {
+    @apply relative min-h-screen bg-background text-sand;
+    background-image:
+      radial-gradient(1200px 500px at 20% -10%, rgba(42, 90, 165, 0.32), transparent 60%),
+      radial-gradient(900px 420px at 85% -15%, rgba(193, 70, 55, 0.22), transparent 55%),
+      linear-gradient(180deg, rgba(17, 26, 42, 0.92), rgba(14, 21, 34, 1));
+  }
+
+  .site-shell::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: url('/assets/backgrounds/background.jpg') center/cover no-repeat;
+    opacity: 0.08;
+    filter: saturate(0.6);
+    pointer-events: none;
+  }
+
+  .site-shell::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      135deg,
+      rgba(227, 183, 100, 0.06),
+      rgba(227, 183, 100, 0.06) 2px,
+      transparent 2px,
+      transparent 10px
+    );
+    opacity: 0.25;
+    pointer-events: none;
+  }
+
+  .site-shell > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .nav-link {
+    @apply text-muted hover:text-sand transition-colors text-sm font-medium px-3 py-2 rounded-md hover:bg-white/5;
+  }
+
+  .panel {
+    @apply border border-border rounded-xl shadow-[0_14px_32px_rgba(6,10,18,0.28)];
+    background-color: rgba(41, 55, 80, 0.92);
+  }
+
   .btn {
-    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply px-4 py-2 rounded-lg font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-primary {
-    @apply btn bg-primary hover:bg-primary/90 text-white;
+    @apply btn text-ink shadow-[0_10px_25px_rgba(232,195,116,0.3)] hover:brightness-110;
+    background-image: linear-gradient(90deg, #E8C374, #D2A04B);
   }
 
   .btn-secondary {
-    @apply btn bg-surface hover:bg-surface-light text-white border border-gray-600;
+    @apply btn text-sand border border-border;
+    background-color: rgba(41, 55, 80, 0.85);
   }
 
   .btn-accent {
-    @apply btn bg-accent hover:bg-accent/90 text-black;
+    @apply btn bg-secondary hover:bg-secondary/90 text-white;
   }
 
   .btn-danger {
@@ -34,15 +125,17 @@
   }
 
   .input {
-    @apply w-full px-4 py-2 bg-surface border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent;
+    @apply w-full px-4 py-2 border border-border rounded-lg text-sand placeholder:text-muted-dark focus:outline-none focus:ring-2 focus:ring-accent/60 focus:border-transparent;
+    background-color: rgba(41, 55, 80, 0.85);
   }
 
   .card {
-    @apply bg-surface rounded-xl border border-gray-700 overflow-hidden;
+    @apply rounded-xl border border-border overflow-hidden shadow-[0_10px_24px_rgba(6,10,18,0.25)];
+    background-color: rgba(30, 42, 62, 0.92);
   }
 
   .card-hover {
-    @apply card hover:border-primary/50 hover:shadow-lg hover:shadow-primary/10 transition-all duration-200;
+    @apply card hover:border-accent/50 hover:shadow-lg hover:shadow-accent/10 transition-all duration-200;
   }
 }
 
@@ -69,10 +162,7 @@
   z-index: 10;
 }
 
-/* Zone styling */
-.zone {
-  @apply border-2 border-dashed border-gray-600 rounded-lg p-2 min-h-[120px];
-}
+/* Zone styling - base styles now in GameBoard.css */
 
 .zone.active {
   @apply border-accent bg-accent/10;
@@ -109,4 +199,98 @@
 
 .animate-slide-up {
   animation: slide-up 0.3s ease-out;
+}
+
+@layer utilities {
+  .bg-gray-900 {
+    background-color: #111A2A;
+  }
+
+  .bg-gray-800 {
+    background-color: #1E2A3E;
+  }
+
+  .bg-gray-700 {
+    background-color: #293750;
+  }
+
+  .bg-gray-600 {
+    background-color: #344665;
+  }
+
+  .text-gray-300 {
+    color: #D7DEE9;
+  }
+
+  .text-gray-400 {
+    color: #C4D0E3;
+  }
+
+  .text-gray-500 {
+    color: #A8B6CC;
+  }
+
+  .border-gray-600 {
+    border-color: #3D5576;
+  }
+
+  .border-gray-700 {
+    border-color: #344965;
+  }
+
+  .border-gray-800 {
+    border-color: #2A3A52;
+  }
+
+  .text-sand {
+    color: #F6EFE3;
+  }
+
+  .text-muted {
+    color: #C4D0E3;
+  }
+
+  .text-muted-dark {
+    color: #A8B6CC;
+  }
+
+  .text-ink {
+    color: #0B1119;
+  }
+
+  .bg-background {
+    background-color: #111A2A;
+  }
+
+  .bg-surface {
+    background-color: #1E2A3E;
+  }
+
+  .bg-surface-light {
+    background-color: #293750;
+  }
+
+  .bg-surface-strong {
+    background-color: #344665;
+  }
+
+  .bg-primary {
+    background-color: #2A5AA5;
+  }
+
+  .bg-secondary {
+    background-color: #C14637;
+  }
+
+  .bg-accent {
+    background-color: #E8C374;
+  }
+
+  .bg-accent-strong {
+    background-color: #D2A04B;
+  }
+
+  .border-border {
+    border-color: #3D5576;
+  }
 }

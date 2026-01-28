@@ -3,6 +3,9 @@
 export enum GamePhase {
   // Start phases
   START_WAITING = 'START_WAITING',
+  RPS_PHASE = 'RPS_PHASE',           // Rock-Paper-Scissors to determine who chooses first
+  FIRST_CHOICE = 'FIRST_CHOICE',     // Winner chooses to go first or second
+  PRE_GAME_SETUP = 'PRE_GAME_SETUP', // Pre-game abilities (e.g., Imu's start-of-game stage play)
   START_MULLIGAN = 'START_MULLIGAN',
   START_SETUP = 'START_SETUP',
   
@@ -15,10 +18,16 @@ export enum GamePhase {
   END_PHASE = 'END_PHASE',
   
   // Special phases
+  ATTACK_EFFECT_STEP = 'ATTACK_EFFECT_STEP',  // Player selects targets for ON_ATTACK abilities
+  PLAY_EFFECT_STEP = 'PLAY_EFFECT_STEP',      // Player selects targets for ON_PLAY abilities
+  EVENT_EFFECT_STEP = 'EVENT_EFFECT_STEP',    // Player resolves event [Main] effects with target selection
+  COUNTER_EFFECT_STEP = 'COUNTER_EFFECT_STEP', // Player selects targets for event counter effects
+  ADDITIONAL_COST_STEP = 'ADDITIONAL_COST_STEP', // Player chooses whether to pay optional costs
+  DECK_REVEAL_STEP = 'DECK_REVEAL_STEP',      // Player selects from revealed deck cards
   COUNTER_STEP = 'COUNTER_STEP',
   BLOCKER_STEP = 'BLOCKER_STEP',
   TRIGGER_STEP = 'TRIGGER_STEP',
-  
+
   // Game end
   GAME_OVER = 'GAME_OVER'
 }
@@ -27,17 +36,31 @@ export enum CardZone {
   DECK = 'DECK',
   HAND = 'HAND',
   FIELD = 'FIELD',
+  STAGE = 'STAGE',
   TRASH = 'TRASH',
   LIFE = 'LIFE',
   DON_DECK = 'DON_DECK',
   DON_FIELD = 'DON_FIELD',
-  LEADER = 'LEADER'
+  LEADER = 'LEADER',
+  EVENT = 'EVENT'  // Temporary zone for event cards being resolved
 }
 
 export enum CardState {
   ACTIVE = 'ACTIVE',
   RESTED = 'RESTED',
   ATTACHED = 'ATTACHED'
+}
+
+// Power buff tracking for temporary effects
+export type BuffDuration = 'PERMANENT' | 'THIS_TURN' | 'THIS_BATTLE' | 'STAGE_CONTINUOUS';
+
+export interface PowerBuff {
+  id: string;              // Unique buff ID
+  sourceCardId: string;    // Card that applied the buff
+  value: number;           // +/- power amount
+  duration: BuffDuration;
+  appliedTurn?: number;    // Turn when applied (for THIS_TURN)
+  appliedCombatId?: string; // Combat ID (for THIS_BATTLE)
 }
 
 export interface GameCard {
@@ -47,13 +70,36 @@ export interface GameCard {
   state: CardState;
   owner: string;       // Player ID
   attachedTo?: string; // ID of card this is attached to (for DON!)
-  power?: number;      // Current power (can be modified by effects)
+  basePower?: number;  // Original power from card definition (never changes)
+  power?: number;      // Current display power (for backwards compatibility)
+  powerBuffs?: PowerBuff[]; // Active power modifications with duration tracking
   cost?: number;       // Current cost (can be modified by effects)
+  modifiedCost?: number; // Cost after stage/continuous effects (undefined = no modification)
   keywords?: string[]; // Active keywords (Rush, Blocker, etc.)
+  temporaryKeywords?: string[]; // Keywords granted by effects (cleared after battle)
   turnPlayed?: number; // Turn this was played
   hasAttacked?: boolean;
   position?: number;   // Position in zone (for ordering)
   faceUp?: boolean;    // For life cards
+  activatedThisTurn?: boolean; // Track once-per-turn ability usage
+  hasActiveEffect?: boolean; // For stages: true if providing continuous effects
+  hasRushVsCharacters?: boolean; // Can attack characters on the turn played (Corrida Coliseum)
+  restrictions?: CardRestriction[]; // Attack/ability restrictions
+  immunities?: CardImmunity[]; // Protection from effects
+}
+
+// Card restriction (e.g., CANT_ATTACK)
+export interface CardRestriction {
+  type: 'CANT_ATTACK' | 'CANT_BLOCK' | 'CANT_BE_TARGETED';
+  until: 'END_OF_TURN' | 'END_OF_OPPONENT_TURN' | 'PERMANENT';
+  turnApplied: number;
+}
+
+// Card immunity (e.g., IMMUNE_KO)
+export interface CardImmunity {
+  type: 'KO' | 'EFFECTS' | 'COMBAT';
+  source?: string; // e.g., 'OPPONENT_CHARACTERS', 'ALL'
+  condition?: any; // Additional condition for immunity
 }
 
 export interface PlayerState {
@@ -62,6 +108,7 @@ export interface PlayerState {
   leaderId: string;
   leaderCard?: GameCard;
   life: number;
+  maxLife: number;  // Initial/maximum life count from leader
   lifeCards: GameCard[];
   hand: GameCard[];
   field: GameCard[];
@@ -69,6 +116,7 @@ export interface PlayerState {
   deck: GameCard[];
   donDeck: number;     // Remaining DON! in deck
   donField: GameCard[]; // DON! on field
+  stage: GameCard | null; // Stage card on field (only 1 per player)
   isActive: boolean;   // Is it this player's turn?
 }
 
@@ -78,9 +126,122 @@ export interface CombatInfo {
   targetType: 'leader' | 'character';
   attackPower: number;
   counterPower?: number;
+  effectBuffPower?: number;  // Power from BUFF_COMBAT effects (e.g., Guard Point +3000)
   blockers?: string[];
   isBlocked?: boolean;
   damage?: number;
+}
+
+// Rock-Paper-Scissors types
+export type RPSChoice = 'rock' | 'paper' | 'scissors';
+
+export interface RPSState {
+  player1Choice?: RPSChoice;
+  player2Choice?: RPSChoice;
+  player1Id: string;
+  player2Id: string;
+  winnerId?: string;        // null if tie
+  isTie?: boolean;
+  roundNumber: number;      // Track number of rounds (for ties)
+}
+
+// Simplified pending effect for client display (without full CardEffectDefinition)
+export interface PendingAttackEffect {
+  id: string;
+  sourceCardId: string;
+  playerId: string;
+  description: string;         // Human-readable effect description
+  validTargets?: string[];     // IDs of cards that can be selected as targets
+  requiresChoice: boolean;
+}
+
+// Pending effect for ON_PLAY abilities that require target selection
+export interface PendingPlayEffect {
+  id: string;
+  sourceCardId: string;
+  playerId: string;
+  description: string;         // Human-readable effect description
+  validTargets?: string[];     // IDs of cards that can be selected as targets
+  requiresChoice: boolean;
+  effectType: string;          // e.g., 'ATTACH_DON', 'BUFF_POWER'
+  maxTargets?: number;         // Maximum number of targets to select
+  minTargets?: number;         // Minimum number of targets (0 = optional)
+}
+
+// Pending effect for start-of-game abilities (e.g., Imu's stage play)
+export interface PendingPreGameEffect {
+  playerId: string;
+  trait: string;              // Required trait (e.g., "Mary Geoise")
+  cardType: 'STAGE' | 'CHARACTER' | 'EVENT';
+  count: number;              // Number of cards to select (e.g., "up to 1")
+  optional: boolean;          // Whether the effect can be skipped
+  description: string;        // Human-readable description
+  validCardIds: string[];     // IDs of valid cards in deck to select
+}
+
+// Pending effect for ACTIVATE_MAIN abilities that require hand selection (e.g., Empty Throne)
+export interface PendingActivateEffect {
+  id: string;
+  sourceCardId: string;
+  playerId: string;
+  description: string;         // Human-readable effect description
+  validHandCardIds: string[];  // IDs of valid cards in hand to select
+  optional: boolean;           // Whether selection can be skipped ("up to X")
+  maxTargets: number;          // Maximum number of targets to select
+}
+
+// Pending effect for event card [Main] effects requiring target selection
+export interface PendingEventEffect {
+  id: string;
+  sourceCardId: string;        // The event card being resolved
+  playerId: string;
+  description: string;         // Human-readable effect description
+  validTargets: string[];      // IDs of valid targets to select
+  effectType: string;          // e.g., 'KO', 'BUFF_POWER'
+  maxTargets: number;
+  minTargets: number;          // 0 = optional ("up to X")
+  conditionsMet: boolean;      // Whether leader/other conditions are satisfied
+  additionalCost?: PendingAdditionalCost; // Optional additional cost to prompt
+}
+
+// Pending additional cost (e.g., "You may rest 1 DON")
+export interface PendingAdditionalCost {
+  id: string;
+  sourceCardId: string;
+  playerId: string;
+  costType: 'REST_DON' | 'TRASH_CARD' | 'LIFE';
+  amount: number;
+  optional: boolean;           // "You may" = optional
+  description: string;         // Human-readable cost description
+}
+
+// Pending effect for event counter effects requiring target selection
+export interface PendingCounterEffect {
+  id: string;
+  sourceCardId: string;        // The event counter card
+  playerId: string;
+  description: string;         // Human-readable effect description
+  validTargets: string[];      // IDs of valid targets (your Leader/Characters)
+  effectType: string;          // e.g., 'BUFF_POWER'
+  powerBoost: number;          // Amount of power to add
+  maxTargets: number;
+  conditionsMet: boolean;      // Whether leader/other conditions are satisfied
+}
+
+// Pending effect for deck reveal effects ("Look at X cards from deck")
+export interface PendingDeckRevealEffect {
+  id: string;
+  sourceCardId: string;        // The card that triggered this effect
+  playerId: string;
+  description: string;         // Human-readable description
+  revealedCardIds: string[];   // All cards revealed from deck (instance IDs)
+  selectableCardIds: string[]; // Cards matching the filter (can be selected)
+  maxSelections: number;       // e.g., 1 for "up to 1"
+  minSelections: number;       // 0 for "up to", >0 for required
+  traitFilter?: string;        // e.g., "Celestial Dragons"
+  excludeNames?: string[];     // e.g., ["The Five Elders Are at Your Service!!!"]
+  selectAction: 'ADD_TO_HAND' | 'PLAY_TO_FIELD' | 'ADD_TO_LIFE';
+  remainderAction: 'TRASH' | 'DECK_BOTTOM' | 'SHUFFLE_INTO_DECK';
 }
 
 export interface GameState {
@@ -92,10 +253,20 @@ export interface GameState {
     [playerId: string]: PlayerState;
   };
   currentCombat?: CombatInfo;
+  rpsState?: RPSState;           // Rock-Paper-Scissors state for first player determination
+  firstChoiceWinner?: string;    // Player who won RPS and gets to choose first/second
   stack: GameAction[];  // Action stack for resolving effects
   winner?: string;
   lastAction?: GameAction;
   turnHistory: TurnAction[];
+  pendingAttackEffects?: PendingAttackEffect[];  // Attack effects requiring target selection
+  pendingPlayEffects?: PendingPlayEffect[];      // ON_PLAY effects requiring target selection
+  pendingPreGameEffects?: PendingPreGameEffect[]; // Pre-game abilities requiring card selection
+  pendingActivateEffects?: PendingActivateEffect[]; // ACTIVATE_MAIN effects requiring hand selection
+  pendingEventEffects?: PendingEventEffect[];    // Event [Main] effects requiring target selection
+  pendingCounterEffects?: PendingCounterEffect[]; // Event counter effects requiring target selection
+  pendingAdditionalCost?: PendingAdditionalCost; // Optional additional cost waiting for player decision
+  pendingDeckRevealEffect?: PendingDeckRevealEffect; // Deck reveal effect waiting for card selection
 }
 
 export interface GameAction {
@@ -109,6 +280,10 @@ export interface GameAction {
 export enum ActionType {
   // Game setup
   GAME_START = 'GAME_START',
+  RPS_CHOICE = 'RPS_CHOICE',         // Player's rock/paper/scissors choice
+  FIRST_CHOICE = 'FIRST_CHOICE',     // Winner's choice to go first or second
+  PRE_GAME_SELECT = 'PRE_GAME_SELECT', // Select a card for pre-game effect (e.g., Imu's stage play)
+  SKIP_PRE_GAME = 'SKIP_PRE_GAME',     // Skip pre-game effect (optional ability)
   MULLIGAN = 'MULLIGAN',
   KEEP_HAND = 'KEEP_HAND',
   
@@ -126,6 +301,12 @@ export enum ActionType {
   
   // Combat actions
   DECLARE_ATTACK = 'DECLARE_ATTACK',
+  RESOLVE_ATTACK_EFFECT = 'RESOLVE_ATTACK_EFFECT',  // Resolve ON_ATTACK effect with targets
+  SKIP_ATTACK_EFFECT = 'SKIP_ATTACK_EFFECT',        // Skip ON_ATTACK effect
+  RESOLVE_PLAY_EFFECT = 'RESOLVE_PLAY_EFFECT',      // Resolve ON_PLAY effect with targets
+  SKIP_PLAY_EFFECT = 'SKIP_PLAY_EFFECT',            // Skip ON_PLAY effect
+  RESOLVE_ACTIVATE_EFFECT = 'RESOLVE_ACTIVATE_EFFECT', // Resolve ACTIVATE_MAIN effect with hand selection
+  SKIP_ACTIVATE_EFFECT = 'SKIP_ACTIVATE_EFFECT',       // Skip ACTIVATE_MAIN effect (optional)
   SELECT_BLOCKER = 'SELECT_BLOCKER',
   USE_COUNTER = 'USE_COUNTER',
   PASS_COUNTER = 'PASS_COUNTER',
@@ -146,7 +327,18 @@ export enum ActionType {
   // Effect actions
   SELECT_TARGET = 'SELECT_TARGET',
   RESOLVE_EFFECT = 'RESOLVE_EFFECT',
-  PASS_PRIORITY = 'PASS_PRIORITY'
+  PASS_PRIORITY = 'PASS_PRIORITY',
+
+  // Event card actions
+  RESOLVE_EVENT_EFFECT = 'RESOLVE_EVENT_EFFECT',   // Resolve event [Main] effect with targets
+  SKIP_EVENT_EFFECT = 'SKIP_EVENT_EFFECT',         // Skip event effect (if optional)
+  PAY_ADDITIONAL_COST = 'PAY_ADDITIONAL_COST',     // Pay optional additional cost
+  SKIP_ADDITIONAL_COST = 'SKIP_ADDITIONAL_COST',   // Skip optional additional cost
+  RESOLVE_COUNTER_EFFECT = 'RESOLVE_COUNTER_EFFECT', // Resolve counter effect with targets
+
+  // Deck reveal actions (Look at X cards effects)
+  RESOLVE_DECK_REVEAL = 'RESOLVE_DECK_REVEAL',     // Player confirms card selection from revealed cards
+  SKIP_DECK_REVEAL = 'SKIP_DECK_REVEAL'            // Player skips selection (for "up to" effects)
 }
 
 export interface TurnAction {

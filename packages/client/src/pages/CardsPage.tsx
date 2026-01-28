@@ -1,32 +1,16 @@
 import { useEffect, useState, useMemo } from 'react';
-
-interface CardData {
-  id: string;
-  name: string;
-  setCode: string;
-  setName: string;
-  cardNumber: string;
-  rarity: string;
-  colors: string[];
-  type: string;
-  cost: number | null;
-  power: number | null;
-  counter: number | null;
-  attribute: string | null;
-  effect: string | null;
-  trigger: string | null;
-  imageUrl: string;
-}
+import { FormattedEffect } from '../components/common/FormattedEffect';
+import { useCardStore } from '../stores/cardStore';
+import type { Card } from '../types/card';
 
 const COLORS = ['RED', 'GREEN', 'BLUE', 'PURPLE', 'BLACK', 'YELLOW'];
 const TYPES = ['LEADER', 'CHARACTER', 'EVENT', 'STAGE'];
 const RARITIES = ['L', 'SR', 'R', 'UC', 'C', 'SEC', 'SP', 'P'];
 
 export default function CardsPage() {
-  const [cards, setCards] = useState<CardData[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
+  // Use shared card store for caching
+  const { cards, isLoading, error, loadCards } = useCardStore();
+  const [selectedCard, setSelectedCard] = useState<Card | null>(null);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -47,21 +31,8 @@ export default function CardsPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   useEffect(() => {
-    const loadCards = async () => {
-      try {
-        const response = await fetch('/data/cards.json');
-        if (!response.ok) throw new Error('Failed to load cards');
-        const data = await response.json();
-        setCards(data);
-      } catch (err) {
-        setError('Failed to load card database');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     loadCards();
-  }, []);
+  }, [loadCards]);
 
   // Get unique sets
   const sets = useMemo(() => {
@@ -173,6 +144,19 @@ export default function CardsPage() {
       P: 'text-orange-400',
     };
     return rarityMap[rarity] || 'text-gray-400';
+  };
+
+  // Split combined colors like "GREEN RED" into separate colors
+  const splitColors = (colors: string[]): string[] => {
+    const result: string[] = [];
+    for (const color of colors) {
+      if (color.includes(' ')) {
+        result.push(...color.split(' ').filter(c => c.trim()));
+      } else {
+        result.push(color);
+      }
+    }
+    return result;
   };
 
   if (isLoading) {
@@ -385,10 +369,10 @@ export default function CardsPage() {
                 <p className="text-xs text-gray-400 truncate">{card.id}</p>
                 <p className="text-sm font-medium truncate">{card.name}</p>
                 <div className="flex items-center gap-1 mt-1">
-                  {card.colors.map((color, i) => (
+                  {splitColors(card.colors).map((color, i) => (
                     <div
                       key={i}
-                      className={`w-3 h-3 rounded-full ${getColorClass(color.split(' ')[0])}`}
+                      className={`w-3 h-3 rounded-full ${getColorClass(color)}`}
                       title={color}
                     />
                   ))}
@@ -426,10 +410,10 @@ export default function CardsPage() {
                   <td className="p-3 text-gray-400">{card.type}</td>
                   <td className="p-3">
                     <div className="flex gap-1">
-                      {card.colors.map((color, i) => (
+                      {splitColors(card.colors).map((color, i) => (
                         <div
                           key={i}
-                          className={`w-4 h-4 rounded-full ${getColorClass(color.split(' ')[0])}`}
+                          className={`w-4 h-4 rounded-full ${getColorClass(color)}`}
                           title={color}
                         />
                       ))}
@@ -534,9 +518,9 @@ export default function CardsPage() {
                   <div className="flex justify-between items-center">
                     <span className="text-gray-400">Color:</span>
                     <div className="flex gap-1">
-                      {selectedCard.colors.map((color, i) => (
+                      {splitColors(selectedCard.colors).map((color, i) => (
                         <span key={i} className="flex items-center gap-1">
-                          <div className={`w-4 h-4 rounded-full ${getColorClass(color.split(' ')[0])}`} />
+                          <div className={`w-4 h-4 rounded-full ${getColorClass(color)}`} />
                           <span className="text-sm">{color}</span>
                         </span>
                       ))}
@@ -564,27 +548,33 @@ export default function CardsPage() {
                       <span>+{selectedCard.counter}</span>
                     </div>
                   )}
+                  {selectedCard.life != null && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Life:</span>
+                      <span>{selectedCard.life}</span>
+                    </div>
+                  )}
                   {selectedCard.attribute && (
                     <div className="flex justify-between">
                       <span className="text-gray-400">Attribute:</span>
                       <span>{selectedCard.attribute}</span>
                     </div>
                   )}
+                  {selectedCard.traits && selectedCard.traits.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-gray-700 text-center">
+                      <p className="text-white font-bold">{selectedCard.traits.join(' / ')}</p>
+                      <p className="text-gray-500 text-xs uppercase mt-1">Traits</p>
+                    </div>
+                  )}
                 </div>
 
-                {/* Effect */}
-                {selectedCard.effect && (
+                {/* Effect & Trigger - Formatted Display */}
+                {(selectedCard.effect || selectedCard.trigger) && (
                   <div className="mt-4 pt-4 border-t border-gray-700">
-                    <p className="text-gray-400 text-sm mb-2">Effect:</p>
-                    <p className="text-sm leading-relaxed">{selectedCard.effect}</p>
-                  </div>
-                )}
-
-                {/* Trigger */}
-                {selectedCard.trigger && (
-                  <div className="mt-4 pt-4 border-t border-gray-700">
-                    <p className="text-gray-400 text-sm mb-2">Trigger:</p>
-                    <p className="text-sm leading-relaxed">{selectedCard.trigger}</p>
+                    <FormattedEffect
+                      effect={selectedCard.effect}
+                      trigger={selectedCard.trigger}
+                    />
                   </div>
                 )}
               </div>

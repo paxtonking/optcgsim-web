@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../services/api';
+import { ComingSoonOverlay } from '../components/ComingSoonOverlay';
 
 interface DraftLobby {
   id: string;
@@ -107,26 +108,12 @@ export default function GameModesPage() {
     }
   };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-16 text-center">
-        <h1 className="text-3xl font-bold mb-4">Login Required</h1>
-        <p className="text-gray-400 mb-8">You need to be logged in to access custom game modes.</p>
-        <button
-          onClick={() => navigate('/login')}
-          className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium"
-        >
-          Login
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-6">Custom Game Modes</h1>
+    <ComingSoonOverlay featureName="Game Modes">
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold mb-6">Custom Game Modes</h1>
 
-      {/* Tabs */}
+        {/* Tabs */}
       <div className="flex gap-2 mb-6">
         <button
           onClick={() => setActiveTab('series')}
@@ -451,6 +438,7 @@ export default function GameModesPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </ComingSoonOverlay>
   );
 }

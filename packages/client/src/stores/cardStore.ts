@@ -10,6 +10,7 @@ interface CardFilters {
   maxCost: number | null;
   minPower: number | null;
   maxPower: number | null;
+  leaderColors: string[];  // Auto-set when leader is selected in deck builder
 }
 
 interface CardStore {
@@ -21,6 +22,7 @@ interface CardStore {
   loadCards: () => Promise<void>;
   setFilter: <K extends keyof CardFilters>(key: K, value: CardFilters[K]) => void;
   resetFilters: () => void;
+  setLeaderColors: (colors: string[]) => void;
   getFilteredCards: () => Card[];
   getCardById: (id: string) => Card | undefined;
   getLeaders: () => Card[];
@@ -36,6 +38,7 @@ const defaultFilters: CardFilters = {
   maxCost: null,
   minPower: null,
   maxPower: null,
+  leaderColors: [],
 };
 
 export const useCardStore = create<CardStore>((set, get) => ({
@@ -73,6 +76,15 @@ export const useCardStore = create<CardStore>((set, get) => ({
     set({ filters: { ...defaultFilters } });
   },
 
+  setLeaderColors: (colors: string[]) => {
+    // Handle dual-color leaders where colors are stored as "GREEN RED" instead of ["GREEN", "RED"]
+    // Split any combined color strings into individual colors
+    const expandedColors = colors.flatMap(c => c.split(' '));
+    set((state) => ({
+      filters: { ...state.filters, leaderColors: expandedColors }
+    }));
+  },
+
   getFilteredCards: () => {
     const { cards, filters } = get();
 
@@ -86,10 +98,20 @@ export const useCardStore = create<CardStore>((set, get) => ({
         if (!nameMatch && !idMatch && !effectMatch) return false;
       }
 
-      // Color filter
+      // Color filter (handle dual-color cards stored as "GREEN RED")
       if (filters.colors.length > 0) {
-        const hasColor = card.colors.some(c => filters.colors.includes(c));
+        const cardColors = card.colors.flatMap(c => c.split(' '));
+        const hasColor = cardColors.some(c => filters.colors.includes(c));
         if (!hasColor) return false;
+      }
+
+      // Leader colors filter (auto-set when leader is selected)
+      // Only filter non-leader cards - leaders can still be viewed to change selection
+      if (filters.leaderColors.length > 0 && card.type !== 'LEADER') {
+        // Handle dual-color cards where colors may be stored as "GREEN RED"
+        const cardColors = card.colors.flatMap(c => c.split(' '));
+        const hasLeaderColor = cardColors.some(c => filters.leaderColors.includes(c));
+        if (!hasLeaderColor) return false;
       }
 
       // Type filter

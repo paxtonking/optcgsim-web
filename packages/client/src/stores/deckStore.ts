@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { Card, Deck, DeckCard } from '../types/card';
 import { api } from '../services/api';
 import { useCardStore } from './cardStore';
+import { parseLeaderRestrictions, cardViolatesRestriction } from '@optcgsim/shared';
 
 const DECK_SIZE = 50;
 const MAX_CARD_COPIES = 4;
@@ -88,6 +89,9 @@ interface DeckStore {
   saveDeckToServer: (localDeckId: string) => Promise<string | null>;
   syncDecksWithServer: () => Promise<void>;
   getServerDeckId: (localDeckId: string) => string | null;
+
+  // Copy public deck
+  copyPublicDeck: (deckId: string) => Promise<{ success: boolean; localDeckId?: string; error?: string }>;
 }
 
 function generateId(): string {
@@ -350,6 +354,18 @@ export const useDeckStore = create<DeckStore>()(
               errors.push(`${dc.card.name} (${cardColors.join('/')}) doesn't match leader colors (${leaderColors.join('/')})`);
             }
           }
+
+          // Check leader deck building restrictions (e.g., Imu: no cost 2+ events, Shanks: no cost 5+ cards)
+          if (deck.leader.effect) {
+            const { restrictions } = parseLeaderRestrictions(deck.leader.effect);
+            for (const restriction of restrictions) {
+              for (const dc of deck.cards) {
+                if (cardViolatesRestriction({ type: dc.card.type, cost: dc.card.cost ?? null }, restriction)) {
+                  errors.push(`${dc.card.name} violates leader restriction: ${restriction.description}`);
+                }
+              }
+            }
+          }
         }
 
         return { valid: errors.length === 0, errors };
@@ -370,6 +386,16 @@ export const useDeckStore = create<DeckStore>()(
         const existingCard = deck.cards.find(dc => dc.card.id === card.id);
         if (existingCard && existingCard.count >= MAX_CARD_COPIES) return false;
 
+        // Check leader deck building restrictions
+        if (deck.leader?.effect) {
+          const { restrictions } = parseLeaderRestrictions(deck.leader.effect);
+          for (const restriction of restrictions) {
+            if (cardViolatesRestriction({ type: card.type, cost: card.cost ?? null }, restriction)) {
+              return false;
+            }
+          }
+        }
+
         return true;
       },
 
@@ -387,7 +413,7 @@ export const useDeckStore = create<DeckStore>()(
         // Create a human-readable format
         const lines: string[] = [];
         lines.push(`// ${deck.name}`);
-        lines.push(`// Exported from OPTCGSim Web`);
+        lines.push(`// Exported from Davy Back Duels`);
         lines.push('');
 
         if (deck.leader) {
@@ -444,8 +470,10 @@ export const useDeckStore = create<DeckStore>()(
             if (json.leaderId) leaderId = json.leaderId;
             if (Array.isArray(json.cards)) {
               for (const entry of json.cards) {
-                if (entry.id && typeof entry.count === 'number') {
-                  cardEntries.push({ id: entry.id, count: entry.count });
+                // Support both 'id' (export format) and 'cardId' (server format)
+                const cardId = entry.id || entry.cardId;
+                if (cardId && typeof entry.count === 'number') {
+                  cardEntries.push({ id: cardId, count: entry.count });
                 }
               }
             }
@@ -761,6 +789,73 @@ export const useDeckStore = create<DeckStore>()(
       getServerDeckId: (localDeckId: string): string | null => {
         const deck = get().decks.find(d => d.id === localDeckId);
         return deck?.serverId || null;
+      },
+
+      // Copy a public deck to user's collection
+      copyPublicDeck: async (deckId: string): Promise<{ success: boolean; localDeckId?: string; error?: string }> => {
+        try {
+          // Call the copy endpoint
+          const response = await api.post<{
+            id: string;
+            name: string;
+            leaderId: string;
+            cards: Array<{ cardId: string; count: number }>;
+            isPublic: boolean;
+            createdAt: string;
+            updatedAt: string;
+          }>(`/decks/${deckId}/copy`);
+
+          const serverDeck = response.data;
+
+          // Get cards from cardStore to resolve card objects
+          const cards = useCardStore.getState().cards;
+          if (cards.length === 0) {
+            await useCardStore.getState().loadCards();
+          }
+
+          const currentCards = useCardStore.getState().cards;
+          const cardMap = new Map(currentCards.map(c => [c.id, c]));
+
+          // Resolve leader
+          const leader = cardMap.get(serverDeck.leaderId);
+          if (!leader) {
+            return { success: false, error: 'Leader card not found in local database' };
+          }
+
+          // Resolve deck cards
+          const deckCards: DeckCard[] = [];
+          for (const { cardId, count } of serverDeck.cards) {
+            const card = cardMap.get(cardId);
+            if (card) {
+              deckCards.push({ card, count });
+            }
+          }
+
+          // Create local deck
+          const localDeckId = generateId();
+          const newDeck: Deck = {
+            id: localDeckId,
+            serverId: serverDeck.id,
+            name: serverDeck.name,
+            leader,
+            cards: deckCards,
+            isPublic: serverDeck.isPublic,
+            createdAt: serverDeck.createdAt,
+            updatedAt: serverDeck.updatedAt,
+          };
+
+          // Add to store
+          set((state) => ({
+            decks: [...state.decks, newDeck],
+          }));
+
+          console.log('[DeckStore] Public deck copied successfully:', serverDeck.name);
+          return { success: true, localDeckId };
+        } catch (error: any) {
+          console.error('[DeckStore] Failed to copy public deck:', error);
+          const errorMessage = error?.response?.data?.error || error?.message || 'Failed to copy deck';
+          return { success: false, error: errorMessage };
+        }
       },
     }),
     {

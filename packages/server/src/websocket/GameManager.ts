@@ -5,7 +5,9 @@ import {
   GameState,
   GameAction,
   GameStateManager,
-  GamePhase
+  GamePhase,
+  RPSChoice,
+  RPSState
 } from '@optcgsim/shared';
 import { prisma } from '../services/prisma.js';
 import { cardLoaderService } from '../services/CardLoaderService.js';
@@ -14,6 +16,48 @@ import { calculateEloChange, getCurrentSeason, getPlayerRankInfo } from '../serv
 interface AuthenticatedSocket extends Socket {
   userId?: string;
   username?: string;
+}
+
+// RPS timeout constants (in ms)
+const RPS_TIMEOUT = 10000;          // 10 seconds to choose RPS
+const RPS_RESULT_DISPLAY = 3500;    // 3.5 seconds to display result
+const FIRST_CHOICE_TIMEOUT = 10000; // 10 seconds to choose first/second
+
+interface RPSPendingGame {
+  gameId: string;
+  player1Id: string;
+  player2Id: string;
+  player1SocketId: string;
+  player2SocketId: string;
+  player1Choice?: RPSChoice;
+  player2Choice?: RPSChoice;
+  roundNumber: number;
+  rpsTimeoutId?: NodeJS.Timeout;
+  firstChoiceTimeoutId?: NodeJS.Timeout;
+  rpsWinnerId?: string;
+  // Store lobby/deck info for later game creation
+  lobbyId?: string;
+  player1DeckId: string;
+  player2DeckId: string;
+  player1EloRating: number;
+  player2EloRating: number;
+  player1GamesPlayed: number;
+  player2GamesPlayed: number;
+  player1Username: string;
+  player2Username: string;
+  ranked: boolean;
+}
+
+// HTML escape function for chat message sanitization
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  };
+  return text.replace(/[&<>"']/g, char => map[char]);
 }
 
 interface GameRoom {
@@ -31,16 +75,16 @@ interface GameRoom {
   player2GamesPlayed: number;
   stateManager: GameStateManager;
   actionLog: GameAction[];
-  initialState?: GameState;  // For replay
+  initialState?: GameState;  // For replay (no longer exposed to clients)
   ranked: boolean;
   startedAt: Date;
-  spectators: Set<string>;
 }
 
 export class GameManager {
   private io: SocketServer;
   private games: Map<string, GameRoom> = new Map();
   private playerToGame: Map<string, string> = new Map();
+  private rpsPendingGames: Map<string, RPSPendingGame> = new Map();
   private cardsLoaded = false;
 
   constructor(io: SocketServer) {
@@ -73,18 +117,8 @@ export class GameManager {
     const player1 = lobby.players[0];
     const player2 = lobby.players[1];
 
-    // Initialize game state manager
-    const stateManager = new GameStateManager(gameId, player1.id, player2.id);
-
-    // Load card definitions into the effect engine
-    const cardDefinitions = cardLoaderService.getAllCards();
-    stateManager.loadCardDefinitions(cardDefinitions);
-    console.log(`[GameManager] Loaded ${cardDefinitions.length} card definitions for game ${gameId}`);
-
-    // Load player decks and ELO ratings from database
-    const [deck1, deck2, user1, user2] = await Promise.all([
-      this.loadPlayerDeck(player1.id, player1.deckId),
-      this.loadPlayerDeck(player2.id, player2.deckId),
+    // Load ELO ratings from database
+    const [user1, user2] = await Promise.all([
       prisma.user.findUnique({
         where: { id: player1.id },
         select: { eloRating: true, gamesPlayed: true },
@@ -95,39 +129,27 @@ export class GameManager {
       }),
     ]);
 
-    // Setup players with their decks
-    stateManager.setupPlayer(player1.id, player1.username, deck1);
-    stateManager.setupPlayer(player2.id, player2.username, deck2);
-
-    // Randomly determine first player
-    const firstPlayerId = Math.random() < 0.5 ? player1.id : player2.id;
-    stateManager.startGame(firstPlayerId);
-
-    // Capture initial state for replay
-    const initialState = JSON.parse(JSON.stringify(stateManager.getState()));
-
-    const game: GameRoom = {
-      id: gameId,
-      lobbyId: lobby.id,
+    // Create RPS pending game instead of starting immediately
+    const rpsPending: RPSPendingGame = {
+      gameId,
       player1Id: player1.id,
       player2Id: player2.id,
       player1SocketId: player1.socketId,
       player2SocketId: player2.socketId,
+      roundNumber: 1,
+      lobbyId: lobby.id,
       player1DeckId: player1.deckId,
       player2DeckId: player2.deckId,
       player1EloRating: user1?.eloRating ?? 1000,
       player2EloRating: user2?.eloRating ?? 1000,
       player1GamesPlayed: user1?.gamesPlayed ?? 0,
       player2GamesPlayed: user2?.gamesPlayed ?? 0,
-      stateManager,
-      actionLog: [],
-      initialState,
+      player1Username: player1.username,
+      player2Username: player2.username,
       ranked: lobby.settings.isRanked ?? false,
-      startedAt: new Date(),
-      spectators: new Set(),
     };
 
-    this.games.set(gameId, game);
+    this.rpsPendingGames.set(gameId, rpsPending);
     this.playerToGame.set(player1.id, gameId);
     this.playerToGame.set(player2.id, gameId);
 
@@ -138,11 +160,321 @@ export class GameManager {
     player1Socket?.join(`game:${gameId}`);
     player2Socket?.join(`game:${gameId}`);
 
-    // Send game start to both players
+    console.log(`[GameManager] Starting RPS phase for game ${gameId}`);
+
+    // Send RPS phase start to both players
+    const rpsState: RPSState = {
+      player1Id: player1.id,
+      player2Id: player2.id,
+      roundNumber: 1,
+    };
+
     this.io.to(`game:${gameId}`).emit(WS_EVENTS.LOBBY_START, {
       gameId,
-      state: stateManager.getState(),
+      phase: GamePhase.RPS_PHASE,
+      rpsState,
     });
+
+    // Start RPS timeout
+    rpsPending.rpsTimeoutId = setTimeout(() => {
+      this.handleRPSTimeout(gameId);
+    }, RPS_TIMEOUT);
+  }
+
+  /**
+   * Handle RPS choice from a player
+   */
+  handleRPSChoice(socket: AuthenticatedSocket, gameId: string, choice: RPSChoice) {
+    const pending = this.rpsPendingGames.get(gameId);
+    if (!pending) {
+      console.log(`[GameManager] RPS choice received but no pending game found: ${gameId}`);
+      return;
+    }
+
+    const playerId = socket.userId;
+    if (!playerId) return;
+
+    // Record the choice
+    if (playerId === pending.player1Id) {
+      pending.player1Choice = choice;
+      console.log(`[GameManager] Player 1 (${playerId}) chose ${choice}`);
+    } else if (playerId === pending.player2Id) {
+      pending.player2Choice = choice;
+      console.log(`[GameManager] Player 2 (${playerId}) chose ${choice}`);
+    } else {
+      console.log(`[GameManager] Unknown player ${playerId} tried to make RPS choice`);
+      return;
+    }
+
+    // Check if both players have chosen
+    if (pending.player1Choice && pending.player2Choice) {
+      // Clear the timeout since both players chose
+      if (pending.rpsTimeoutId) {
+        clearTimeout(pending.rpsTimeoutId);
+        pending.rpsTimeoutId = undefined;
+      }
+
+      this.resolveRPS(gameId);
+    }
+  }
+
+  /**
+   * Handle RPS timeout - assign random choice to players who didn't choose
+   */
+  private handleRPSTimeout(gameId: string) {
+    const pending = this.rpsPendingGames.get(gameId);
+    if (!pending) return;
+
+    console.log(`[GameManager] RPS timeout for game ${gameId}`);
+
+    const choices: RPSChoice[] = ['rock', 'paper', 'scissors'];
+
+    // Assign random choices to players who didn't choose
+    if (!pending.player1Choice) {
+      pending.player1Choice = choices[Math.floor(Math.random() * 3)];
+      console.log(`[GameManager] Player 1 timed out, assigned random: ${pending.player1Choice}`);
+    }
+    if (!pending.player2Choice) {
+      pending.player2Choice = choices[Math.floor(Math.random() * 3)];
+      console.log(`[GameManager] Player 2 timed out, assigned random: ${pending.player2Choice}`);
+    }
+
+    this.resolveRPS(gameId);
+  }
+
+  /**
+   * Resolve RPS round and determine winner
+   */
+  private resolveRPS(gameId: string) {
+    const pending = this.rpsPendingGames.get(gameId);
+    if (!pending || !pending.player1Choice || !pending.player2Choice) return;
+
+    const p1 = pending.player1Choice;
+    const p2 = pending.player2Choice;
+
+    // Determine winner
+    let winnerId: string | undefined;
+    let isTie = false;
+
+    if (p1 === p2) {
+      isTie = true;
+      console.log(`[GameManager] RPS tie: both chose ${p1}`);
+    } else if (
+      (p1 === 'rock' && p2 === 'scissors') ||
+      (p1 === 'paper' && p2 === 'rock') ||
+      (p1 === 'scissors' && p2 === 'paper')
+    ) {
+      winnerId = pending.player1Id;
+      console.log(`[GameManager] Player 1 wins RPS: ${p1} beats ${p2}`);
+    } else {
+      winnerId = pending.player2Id;
+      console.log(`[GameManager] Player 2 wins RPS: ${p2} beats ${p1}`);
+    }
+
+    // Broadcast RPS result
+    const rpsState: RPSState = {
+      player1Id: pending.player1Id,
+      player2Id: pending.player2Id,
+      player1Choice: pending.player1Choice,
+      player2Choice: pending.player2Choice,
+      winnerId,
+      isTie,
+      roundNumber: pending.roundNumber,
+    };
+
+    this.io.to(`game:${gameId}`).emit(WS_EVENTS.RPS_RESULT, {
+      gameId,
+      rpsState,
+    });
+
+    if (isTie) {
+      // Reset for next round after display delay
+      setTimeout(() => {
+        pending.player1Choice = undefined;
+        pending.player2Choice = undefined;
+        pending.roundNumber++;
+
+        // Notify players of new round
+        const newRpsState: RPSState = {
+          player1Id: pending.player1Id,
+          player2Id: pending.player2Id,
+          roundNumber: pending.roundNumber,
+        };
+
+        this.io.to(`game:${gameId}`).emit(WS_EVENTS.RPS_CHOOSE, {
+          gameId,
+          rpsState: newRpsState,
+          message: "It's a tie! Choose again.",
+        });
+
+        // Start new timeout
+        pending.rpsTimeoutId = setTimeout(() => {
+          this.handleRPSTimeout(gameId);
+        }, RPS_TIMEOUT);
+      }, RPS_RESULT_DISPLAY);
+    } else {
+      // Winner determined - move to first choice phase after display delay
+      pending.rpsWinnerId = winnerId;
+
+      setTimeout(() => {
+        this.startFirstChoicePhase(gameId);
+      }, RPS_RESULT_DISPLAY);
+    }
+  }
+
+  /**
+   * Start the first/second choice phase for RPS winner
+   */
+  private startFirstChoicePhase(gameId: string) {
+    const pending = this.rpsPendingGames.get(gameId);
+    if (!pending || !pending.rpsWinnerId) return;
+
+    console.log(`[GameManager] Starting first choice phase, winner: ${pending.rpsWinnerId}`);
+
+    this.io.to(`game:${gameId}`).emit(WS_EVENTS.FIRST_CHOICE, {
+      gameId,
+      winnerId: pending.rpsWinnerId,
+      phase: GamePhase.FIRST_CHOICE,
+    });
+
+    // Start first choice timeout
+    pending.firstChoiceTimeoutId = setTimeout(() => {
+      this.handleFirstChoiceTimeout(gameId);
+    }, FIRST_CHOICE_TIMEOUT);
+  }
+
+  /**
+   * Handle first/second choice from RPS winner
+   */
+  handleFirstChoice(socket: AuthenticatedSocket, gameId: string, goFirst: boolean) {
+    const pending = this.rpsPendingGames.get(gameId);
+    if (!pending) {
+      console.log(`[GameManager] First choice received but no pending game found: ${gameId}`);
+      return;
+    }
+
+    // Only the winner can make this choice
+    if (socket.userId !== pending.rpsWinnerId) {
+      console.log(`[GameManager] Non-winner tried to make first choice: ${socket.userId}`);
+      return;
+    }
+
+    // Clear timeout
+    if (pending.firstChoiceTimeoutId) {
+      clearTimeout(pending.firstChoiceTimeoutId);
+      pending.firstChoiceTimeoutId = undefined;
+    }
+
+    console.log(`[GameManager] Winner chose to go ${goFirst ? 'first' : 'second'}`);
+
+    // Determine who goes first (rpsWinnerId is guaranteed to exist from check above)
+    const winnerId = pending.rpsWinnerId!;
+    const firstPlayerId = goFirst ? winnerId :
+      (winnerId === pending.player1Id ? pending.player2Id : pending.player1Id);
+
+    this.finalizeGameStart(gameId, firstPlayerId);
+  }
+
+  /**
+   * Handle first choice timeout - random selection
+   */
+  private handleFirstChoiceTimeout(gameId: string) {
+    const pending = this.rpsPendingGames.get(gameId);
+    if (!pending || !pending.rpsWinnerId) return;
+
+    console.log(`[GameManager] First choice timeout for game ${gameId}, selecting randomly`);
+
+    // Random choice
+    const goFirst = Math.random() < 0.5;
+    const firstPlayerId = goFirst ? pending.rpsWinnerId :
+      (pending.rpsWinnerId === pending.player1Id ? pending.player2Id : pending.player1Id);
+
+    this.finalizeGameStart(gameId, firstPlayerId);
+  }
+
+  /**
+   * Finalize game start after RPS and first choice are complete
+   */
+  private async finalizeGameStart(gameId: string, firstPlayerId: string) {
+    const pending = this.rpsPendingGames.get(gameId);
+    if (!pending) return;
+
+    console.log(`[GameManager] Finalizing game start, first player: ${firstPlayerId}`);
+
+    // Initialize game state manager
+    const stateManager = new GameStateManager(gameId, pending.player1Id, pending.player2Id);
+
+    // Load card definitions into the effect engine
+    const cardDefinitions = cardLoaderService.getAllCards();
+    stateManager.loadCardDefinitions(cardDefinitions);
+    console.log(`[GameManager] Loaded ${cardDefinitions.length} card definitions for game ${gameId}`);
+
+    // Load player decks
+    const [deck1, deck2] = await Promise.all([
+      this.loadPlayerDeck(pending.player1Id, pending.player1DeckId),
+      this.loadPlayerDeck(pending.player2Id, pending.player2DeckId),
+    ]);
+
+    // Setup players with their decks
+    stateManager.setupPlayer(pending.player1Id, pending.player1Username, deck1);
+    stateManager.setupPlayer(pending.player2Id, pending.player2Username, deck2);
+
+    // Start the game with determined first player
+    stateManager.startGame(firstPlayerId);
+
+    // Capture initial state for replay
+    const initialState = JSON.parse(JSON.stringify(stateManager.getState()));
+
+    const game: GameRoom = {
+      id: gameId,
+      lobbyId: pending.lobbyId,
+      player1Id: pending.player1Id,
+      player2Id: pending.player2Id,
+      player1SocketId: pending.player1SocketId,
+      player2SocketId: pending.player2SocketId,
+      player1DeckId: pending.player1DeckId,
+      player2DeckId: pending.player2DeckId,
+      player1EloRating: pending.player1EloRating,
+      player2EloRating: pending.player2EloRating,
+      player1GamesPlayed: pending.player1GamesPlayed,
+      player2GamesPlayed: pending.player2GamesPlayed,
+      stateManager,
+      actionLog: [],
+      initialState,
+      ranked: pending.ranked,
+      startedAt: new Date(),
+    };
+
+    // Move from pending to active games
+    this.rpsPendingGames.delete(gameId);
+    this.games.set(gameId, game);
+
+    // Determine loser for banner notification
+    const loserId = pending.rpsWinnerId === pending.player1Id ? pending.player2Id : pending.player1Id;
+    const loserGoesFirst = firstPlayerId === loserId;
+
+    // Broadcast final game start with first player info
+    this.io.to(`game:${gameId}`).emit(WS_EVENTS.FIRST_DECIDED, {
+      gameId,
+      firstPlayerId,
+      loserId,
+      loserGoesFirst,
+    });
+
+    // Send sanitized game state to each player individually (anti-cheat)
+    const player1Socket = this.io.sockets.sockets.get(game.player1SocketId);
+    const player2Socket = this.io.sockets.sockets.get(game.player2SocketId);
+
+    if (player1Socket) {
+      player1Socket.emit('game:state', {
+        gameState: stateManager.sanitizeStateForPlayer(game.player1Id),
+      });
+    }
+    if (player2Socket) {
+      player2Socket.emit('game:state', {
+        gameState: stateManager.sanitizeStateForPlayer(game.player2Id),
+      });
+    }
   }
 
   private async loadPlayerDeck(playerId: string, deckId: string) {
@@ -226,10 +558,20 @@ export class GameManager {
       return callback({ success: true });
     }
 
-    // Broadcast updated state
-    this.io.to(`game:${gameId}`).emit('game:state', {
-      gameState: updatedState
-    });
+    // Send sanitized state to each player individually (anti-cheat)
+    const player1Socket = this.io.sockets.sockets.get(game.player1SocketId);
+    const player2Socket = this.io.sockets.sockets.get(game.player2SocketId);
+
+    if (player1Socket) {
+      player1Socket.emit('game:state', {
+        gameState: game.stateManager.sanitizeStateForPlayer(game.player1Id),
+      });
+    }
+    if (player2Socket) {
+      player2Socket.emit('game:state', {
+        gameState: game.stateManager.sanitizeStateForPlayer(game.player2Id),
+      });
+    }
 
     callback({ success: true });
   }
@@ -241,7 +583,7 @@ export class GameManager {
     this.io.to(`game:${gameId}`).emit(WS_EVENTS.GAME_CHAT, {
       senderId: socket.userId,
       senderUsername: socket.username,
-      message: message.slice(0, 200), // Limit message length
+      message: escapeHtml(message.slice(0, 200)), // XSS sanitization + length limit
       timestamp: Date.now(),
     });
   }
@@ -285,95 +627,26 @@ export class GameManager {
     this.playerToGame.set(socket.userId!, gameId);
     socket.join(`game:${gameId}`);
 
-    callback({ success: true, state: game.stateManager.getState() });
+    callback({ success: true, state: game.stateManager.sanitizeStateForPlayer(socket.userId!) });
   }
 
-  addSpectator(
-    socket: AuthenticatedSocket,
-    gameId: string,
-    callback: (response: { success: boolean; state?: GameState; error?: string }) => void
-  ) {
-    const game = this.games.get(gameId);
-    if (!game) {
-      return callback({ success: false, error: 'Game not found' });
-    }
-
-    game.spectators.add(socket.id);
-    socket.join(`game:${gameId}`);
-
-    callback({ success: true, state: game.stateManager.getState() });
-  }
-
-  removeSpectator(socket: AuthenticatedSocket, gameId: string) {
-    const game = this.games.get(gameId);
-    if (game) {
-      game.spectators.delete(socket.id);
-      socket.leave(`game:${gameId}`);
-    }
-  }
+  // Spectator functionality removed for security (prevents information leakage)
 
   /**
-   * Get list of live games available for spectating
+   * Get game state for a player (used for reconnection/state refresh)
+   * Only allows players in the game to get state, returns sanitized version
    */
-  getLiveGames(): Array<{
-    gameId: string;
-    player1: { id: string; username: string };
-    player2: { id: string; username: string };
-    ranked: boolean;
-    spectatorCount: number;
-    startedAt: Date;
-    turnCount: number;
-  }> {
-    const liveGames: Array<{
-      gameId: string;
-      player1: { id: string; username: string };
-      player2: { id: string; username: string };
-      ranked: boolean;
-      spectatorCount: number;
-      startedAt: Date;
-      turnCount: number;
-    }> = [];
-
-    for (const [gameId, game] of this.games) {
-      const state = game.stateManager.getState();
-      liveGames.push({
-        gameId,
-        player1: {
-          id: game.player1Id,
-          username: state.players[game.player1Id]?.username || 'Player 1',
-        },
-        player2: {
-          id: game.player2Id,
-          username: state.players[game.player2Id]?.username || 'Player 2',
-        },
-        ranked: game.ranked,
-        spectatorCount: game.spectators.size,
-        startedAt: game.startedAt,
-        turnCount: state.turn || 0,
-      });
-    }
-
-    // Sort by spectator count (most popular first), then by start time
-    return liveGames.sort((a, b) => {
-      if (b.spectatorCount !== a.spectatorCount) {
-        return b.spectatorCount - a.spectatorCount;
-      }
-      return b.startedAt.getTime() - a.startedAt.getTime();
-    });
-  }
-
   getGameState(socket: AuthenticatedSocket, gameId: string): GameState | null {
     const game = this.games.get(gameId);
     if (!game) return null;
 
-    // Check if the socket is a player or spectator in this game
-    if (socket.userId !== game.player1Id && 
-        socket.userId !== game.player2Id && 
-        !game.spectators.has(socket.id)) {
+    // Only players can get game state (no spectators)
+    if (socket.userId !== game.player1Id && socket.userId !== game.player2Id) {
       return null;
     }
 
-    return game.stateManager.getState();
+    // Return sanitized state to prevent cheating
+    return game.stateManager.sanitizeStateForPlayer(socket.userId!);
   }
 
   handleDisconnect(_socket: AuthenticatedSocket) {
@@ -402,26 +675,41 @@ export class GameManager {
       );
     }
 
-    // Notify players
-    this.io.to(`game:${gameId}`).emit('game:ended', {
-      winner: winnerId,
-      reason,
-      gameState: state,
-      eloChanges: game.ranked && eloResult ? {
-        [game.player1Id]: {
-          oldRating: game.player1EloRating,
-          newRating: eloResult.player1NewRating,
-          change: eloResult.player1Change,
-          rankInfo: getPlayerRankInfo(eloResult.player1NewRating, game.player1GamesPlayed + 1),
-        },
-        [game.player2Id]: {
-          oldRating: game.player2EloRating,
-          newRating: eloResult.player2NewRating,
-          change: eloResult.player2Change,
-          rankInfo: getPlayerRankInfo(eloResult.player2NewRating, game.player2GamesPlayed + 1),
-        },
-      } : undefined,
-    });
+    // Send sanitized final state to each player individually (anti-cheat)
+    const player1Socket = this.io.sockets.sockets.get(game.player1SocketId);
+    const player2Socket = this.io.sockets.sockets.get(game.player2SocketId);
+
+    const eloChanges = game.ranked && eloResult ? {
+      [game.player1Id]: {
+        oldRating: game.player1EloRating,
+        newRating: eloResult.player1NewRating,
+        change: eloResult.player1Change,
+        rankInfo: getPlayerRankInfo(eloResult.player1NewRating, game.player1GamesPlayed + 1),
+      },
+      [game.player2Id]: {
+        oldRating: game.player2EloRating,
+        newRating: eloResult.player2NewRating,
+        change: eloResult.player2Change,
+        rankInfo: getPlayerRankInfo(eloResult.player2NewRating, game.player2GamesPlayed + 1),
+      },
+    } : undefined;
+
+    if (player1Socket) {
+      player1Socket.emit('game:ended', {
+        winner: winnerId,
+        reason,
+        gameState: game.stateManager.sanitizeStateForPlayer(game.player1Id),
+        eloChanges,
+      });
+    }
+    if (player2Socket) {
+      player2Socket.emit('game:ended', {
+        winner: winnerId,
+        reason,
+        gameState: game.stateManager.sanitizeStateForPlayer(game.player2Id),
+        eloChanges,
+      });
+    }
 
     // Save match to database
     const duration = Math.floor(
@@ -434,8 +722,8 @@ export class GameManager {
         player1Id: game.player1Id,
         player2Id: game.player2Id,
         winnerId,
-        gameLog: game.actionLog as any,
-        initialState: game.initialState as any,
+        gameLog: [],  // Empty array for security (prevents replay cheating)
+        // initialState omitted (null) for security
         player1DeckId: game.player1DeckId,
         player2DeckId: game.player2DeckId,
         ranked: game.ranked,

@@ -42,6 +42,7 @@ interface TransformedCard {
   attribute: string | null;
   effect: string | null;
   trigger: string | null;
+  life?: number;  // Life count for leaders (4 or 5)
   imageUrl: string;
 }
 

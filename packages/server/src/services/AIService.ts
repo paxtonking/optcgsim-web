@@ -37,6 +37,37 @@ export class AIService {
     const player = gameState.players[this.playerId];
     if (!player) return null;
 
+    // Pre-game setup phase - handle start-of-game abilities (e.g., Imu's stage play)
+    // Check this BEFORE the active player check as both players may need to act
+    if (gameState.phase === GamePhase.PRE_GAME_SETUP) {
+      return this.decidePreGameSetup(gameState, player);
+    }
+
+    // Mulligan phase is special - both players must decide regardless of who is "active"
+    // Check this BEFORE the active player check
+    if (gameState.phase === GamePhase.START_MULLIGAN) {
+      return this.decideMulligan(player);
+    }
+
+    // During defensive phases (BLOCKER_STEP, COUNTER_STEP), only the DEFENDER should act
+    // The defender is the player who does NOT own the attacking card
+    if (gameState.phase === GamePhase.BLOCKER_STEP || gameState.phase === GamePhase.COUNTER_STEP) {
+      if (gameState.currentCombat) {
+        // Find who owns the attacker
+        const attackerId = gameState.currentCombat.attackerId;
+        const aiOwnsAttacker = player.field.some(c => c.id === attackerId) ||
+                               player.leaderCard?.id === attackerId;
+
+        if (aiOwnsAttacker) {
+          // AI is the attacker - wait for human defender to respond
+          return null;
+        } else {
+          // AI is the defender - take defensive action
+          return this.getDefensiveAction(gameState);
+        }
+      }
+    }
+
     // Check if it's AI's turn
     if (gameState.activePlayerId !== this.playerId) {
       // Handle defensive actions (blocking, countering)
@@ -45,24 +76,48 @@ export class AIService {
 
     // Handle different phases
     switch (gameState.phase) {
-      case GamePhase.START_MULLIGAN:
-        return this.decideMulligan(player);
-
       case GamePhase.MAIN_PHASE:
         return this.getMainPhaseAction(gameState, player);
 
       case GamePhase.COMBAT_PHASE:
         return this.getCombatAction(gameState, player);
 
-      case GamePhase.COUNTER_STEP:
-        return this.getCounterAction(gameState, player);
+      case GamePhase.PLAY_EFFECT_STEP:
+        return this.getPlayEffectAction(gameState, player);
 
-      case GamePhase.BLOCKER_STEP:
-        return this.getBlockerAction(gameState, player);
+      case GamePhase.ATTACK_EFFECT_STEP:
+        return this.getAttackEffectAction(gameState, player);
 
       default:
         return null;
     }
+  }
+
+  /**
+   * Decide pre-game setup action (e.g., Imu's start-of-game stage play)
+   */
+  private decidePreGameSetup(gameState: GameState, _player: PlayerState): AIDecision | null {
+    const pendingEffects = gameState.pendingPreGameEffects || [];
+    const myEffect = pendingEffects.find(e => e.playerId === this.playerId);
+
+    // No effect for this player - nothing to do
+    if (!myEffect) {
+      return null;
+    }
+
+    // If there are valid cards, select the first one
+    if (myEffect.validCardIds && myEffect.validCardIds.length > 0) {
+      return {
+        action: ActionType.PRE_GAME_SELECT,
+        data: { cardId: myEffect.validCardIds[0] }
+      };
+    }
+
+    // No valid cards - skip if optional, otherwise skip anyway
+    return {
+      action: ActionType.SKIP_PRE_GAME,
+      data: {}
+    };
   }
 
   /**
@@ -323,14 +378,15 @@ export class AIService {
   }
 
   /**
-   * Get blocker step action
+   * Get blocker step action (Block step comes BEFORE counter step)
    */
   private getBlockerAction(gameState: GameState, player: PlayerState): AIDecision | null {
     if (!gameState.currentCombat) return null;
 
     // Only consider blocking if leader is being attacked
     if (gameState.currentCombat.targetType !== 'leader') {
-      return { action: ActionType.PASS_COUNTER, data: {} };
+      // Pass blocker step - use PASS_PRIORITY which triggers passBlocker()
+      return { action: ActionType.PASS_PRIORITY, data: {} };
     }
 
     const attackPower = gameState.currentCombat.attackPower;
@@ -343,7 +399,8 @@ export class AIService {
     });
 
     if (blockers.length === 0) {
-      return { action: ActionType.PASS_COUNTER, data: {} };
+      // No blockers available - pass to counter step
+      return { action: ActionType.PASS_PRIORITY, data: {} };
     }
 
     // Strategy: Block with a character that can survive
@@ -372,8 +429,139 @@ export class AIService {
       };
     }
 
-    // Otherwise, don't block - save blockers
-    return { action: ActionType.PASS_COUNTER, data: {} };
+    // Otherwise, don't block - save blockers, pass to counter step
+    return { action: ActionType.PASS_PRIORITY, data: {} };
+  }
+
+  /**
+   * Handle PLAY_EFFECT_STEP - resolve ON_PLAY effects that require target selection
+   */
+  private getPlayEffectAction(gameState: GameState, player: PlayerState): AIDecision | null {
+    const pendingEffect = gameState.pendingPlayEffects?.[0];
+    if (!pendingEffect) {
+      console.log('[AIService] No pending play effects found');
+      return null;
+    }
+
+    // Only handle effects that belong to the AI
+    if (pendingEffect.playerId !== this.playerId) {
+      console.log('[AIService] Pending effect belongs to other player:', pendingEffect.playerId);
+      return null;
+    }
+
+    console.log('[AIService] Handling play effect:', pendingEffect.effectType, 'validTargets:', pendingEffect.validTargets?.length);
+
+    const validTargets = pendingEffect.validTargets || [];
+
+    // Handle ATTACH_DON effects - need to select DON card + target
+    if (pendingEffect.effectType === 'ATTACH_DON') {
+      // Find rested DON cards
+      const restedDon = player.donField.filter(d => d.state === CardState.RESTED && !d.attachedTo);
+
+      if (restedDon.length === 0) {
+        console.log('[AIService] No rested DON available, skipping effect');
+        return {
+          action: ActionType.SKIP_PLAY_EFFECT,
+          data: { effectId: pendingEffect.id }
+        };
+      }
+
+      // Select first rested DON
+      const donId = restedDon[0].id;
+
+      // Select best target - prefer leader for power boost
+      let targetId = player.leaderCard?.id;
+      if (!targetId && player.field.length > 0) {
+        // If no leader, pick a character
+        targetId = player.field[0].id;
+      }
+
+      if (!targetId) {
+        console.log('[AIService] No valid target for DON attachment, skipping');
+        return {
+          action: ActionType.SKIP_PLAY_EFFECT,
+          data: { effectId: pendingEffect.id }
+        };
+      }
+
+      console.log('[AIService] Resolving ATTACH_DON with DON:', donId, 'target:', targetId);
+      return {
+        action: ActionType.RESOLVE_PLAY_EFFECT,
+        data: { effectId: pendingEffect.id, selectedTargets: [donId, targetId] }
+      };
+    }
+
+    // For other effect types with valid targets
+    if (validTargets.length > 0) {
+      // Select first valid target
+      console.log('[AIService] Resolving effect with target:', validTargets[0]);
+      return {
+        action: ActionType.RESOLVE_PLAY_EFFECT,
+        data: { effectId: pendingEffect.id, selectedTargets: [validTargets[0]] }
+      };
+    }
+
+    // If optional effect has no valid targets, skip it
+    if (pendingEffect.minTargets === 0) {
+      console.log('[AIService] No valid targets, skipping optional effect');
+      return {
+        action: ActionType.SKIP_PLAY_EFFECT,
+        data: { effectId: pendingEffect.id }
+      };
+    }
+
+    // Required effect with no targets - try to resolve with empty targets
+    console.log('[AIService] Resolving effect with no targets');
+    return {
+      action: ActionType.RESOLVE_PLAY_EFFECT,
+      data: { effectId: pendingEffect.id, selectedTargets: [] }
+    };
+  }
+
+  /**
+   * Handle ATTACK_EFFECT_STEP - resolve ON_ATTACK effects that require target selection
+   */
+  private getAttackEffectAction(gameState: GameState, _player: PlayerState): AIDecision | null {
+    const pendingEffect = gameState.pendingAttackEffects?.[0];
+    if (!pendingEffect) {
+      console.log('[AIService] No pending attack effects found');
+      return null;
+    }
+
+    // Only handle effects that belong to the AI
+    if (pendingEffect.playerId !== this.playerId) {
+      console.log('[AIService] Pending attack effect belongs to other player:', pendingEffect.playerId);
+      return null;
+    }
+
+    console.log('[AIService] Handling attack effect:', pendingEffect.description, 'validTargets:', pendingEffect.validTargets?.length);
+
+    const validTargets = pendingEffect.validTargets || [];
+
+    // For effects with valid targets, select first valid target
+    if (validTargets.length > 0) {
+      console.log('[AIService] Resolving attack effect with target:', validTargets[0]);
+      return {
+        action: ActionType.RESOLVE_ATTACK_EFFECT,
+        data: { effectId: pendingEffect.id, selectedTargets: [validTargets[0]] }
+      };
+    }
+
+    // If effect doesn't require choice or has no valid targets, skip it
+    if (!pendingEffect.requiresChoice) {
+      console.log('[AIService] Effect does not require choice, skipping');
+      return {
+        action: ActionType.SKIP_ATTACK_EFFECT,
+        data: { effectId: pendingEffect.id }
+      };
+    }
+
+    // No valid targets but requires choice - try to resolve with empty targets
+    console.log('[AIService] No valid targets, resolving with empty selection');
+    return {
+      action: ActionType.RESOLVE_ATTACK_EFFECT,
+      data: { effectId: pendingEffect.id, selectedTargets: [] }
+    };
   }
 
   /**

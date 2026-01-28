@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
+import { ComingSoonOverlay } from '../components/ComingSoonOverlay';
 
 interface LeaderboardEntry {
   id: string;
@@ -277,9 +278,10 @@ export default function LeaderboardPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Leaderboard</h1>
+    <ComingSoonOverlay featureName="Leaderboard">
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold">Leaderboard</h1>
         {leaderboard && (
           <span className="text-gray-400 text-sm">
             Season: {leaderboard.season}
@@ -400,6 +402,7 @@ export default function LeaderboardPage() {
           </p>
         </div>
       )}
-    </div>
+      </div>
+    </ComingSoonOverlay>
   );
 }

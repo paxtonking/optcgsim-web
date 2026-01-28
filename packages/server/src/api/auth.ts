@@ -51,12 +51,8 @@ authRouter.post('/register', async (req, res, next) => {
     });
 
     if (existingUser) {
-      throw new AppError(
-        existingUser.email === email
-          ? 'Email already registered'
-          : 'Username already taken',
-        400
-      );
+      // Generic error message to prevent user enumeration
+      throw new AppError('Email or username already in use', 400);
     }
 
     // Hash password
@@ -141,6 +137,7 @@ authRouter.post('/login', async (req, res, next) => {
         email: user.email,
         username: user.username,
         eloRating: user.eloRating,
+        isAdmin: user.isAdmin,
       },
       accessToken,
       refreshToken,
@@ -200,13 +197,10 @@ authRouter.post('/refresh', async (req, res, next) => {
 
 authRouter.post('/logout', authenticate, async (req, res, next) => {
   try {
-    const { refreshToken } = req.body;
-
-    if (refreshToken) {
-      await prisma.session.deleteMany({
-        where: { refreshToken },
-      });
-    }
+    // Delete all sessions for this user (logs out from all devices)
+    await prisma.session.deleteMany({
+      where: { userId: req.user!.id },
+    });
 
     res.json({ message: 'Logged out successfully' });
   } catch (error) {

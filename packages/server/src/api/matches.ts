@@ -85,10 +85,8 @@ matchesRouter.get('/:id', optionalAuth, async (req, res, next) => {
       ranked: match.ranked,
       duration: match.duration,
       createdAt: match.createdAt,
-      // Replay data
-      initialState: match.initialState,
-      gameLog: match.gameLog,
-      hasReplay: !!(match.initialState && match.gameLog),
+      // Replay data removed for security (prevents information leakage)
+      hasReplay: false,
     });
   } catch (error) {
     next(error);

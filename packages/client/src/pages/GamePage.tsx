@@ -13,7 +13,6 @@ export default function GamePage() {
   const { user } = useAuthStore();
 
   const isAIGame = searchParams.get('ai') === 'true';
-  const isSpectator = searchParams.get('spectate') === 'true';
 
   useEffect(() => {
     if (!id || !user) {
@@ -23,7 +22,7 @@ export default function GamePage() {
   }, [id, user, navigate]);
 
   const handleLeave = () => {
-    if (isAIGame && !isSpectator) {
+    if (isAIGame) {
       socketService.emit('ai:surrender', {});
     }
     // Reset lobby state to prevent navigation loop
@@ -37,30 +36,6 @@ export default function GamePage() {
 
   return (
     <div className="h-screen bg-background flex flex-col">
-      {/* Game header */}
-      <div className="bg-gray-900 border-b border-gray-800 px-4 py-2 flex justify-between items-center">
-        <div className="flex items-center space-x-4">
-          <h1 className="text-xl font-bold">Game Room</h1>
-          {isSpectator && (
-            <span className="px-2 py-1 bg-blue-600 text-xs rounded">Spectating</span>
-          )}
-          {isAIGame && (
-            <span className="px-2 py-1 bg-purple-600 text-xs rounded">VS AI</span>
-          )}
-          <span className="text-sm text-gray-400">ID: {id?.slice(0, 8)}...</span>
-        </div>
-        <button
-          onClick={handleLeave}
-          className={`px-4 py-2 rounded transition ${
-            isSpectator
-              ? 'bg-gray-600 hover:bg-gray-700'
-              : 'bg-red-600 hover:bg-red-700'
-          }`}
-        >
-          {isSpectator ? 'Leave' : isAIGame ? 'Surrender' : 'Leave Game'}
-        </button>
-      </div>
-
       {/* Main content: game board + chat sidebar */}
       <div className="flex-1 flex overflow-hidden">
         {/* Game container */}
@@ -69,7 +44,6 @@ export default function GamePage() {
             gameId={id}
             playerId={user.id}
             isAIGame={isAIGame}
-            isSpectator={isSpectator}
             onLeave={handleLeave}
           />
         </div>

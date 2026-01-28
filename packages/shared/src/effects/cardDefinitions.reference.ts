@@ -1,5 +1,17 @@
-// Example Card Effect Definitions
-// These show how to define card effects using the effect system
+// Card Effect Definitions
+// These define card effects using the effect system.
+//
+// IMPORTANT: Each card ID must be unique across ALL arrays in this file!
+// Arrays are combined in allExampleCards and loaded into EffectEngine.
+//
+// Organization:
+// - exampleCards: Basic example characters
+// - exampleLeaders: Example leader cards
+// - starterDeck01Cards: Starter Deck 1 (Straw Hat Crew - RED)
+// - starterDeck02Cards: Starter Deck 2 (Worst Generation - GREEN)
+// - popularCards: Popular/meta cards and additional definitions
+//
+// When adding a new card, search for the ID first to avoid duplicates!
 
 import {
   EffectTrigger,
@@ -524,19 +536,7 @@ export const starterDeck01Cards: CardDefinition[] = [
     effects: [],
   },
 
-  // ST01-007 Jinbe
-  {
-    id: 'ST01-007',
-    name: 'Jinbe',
-    type: 'CHARACTER',
-    colors: ['RED'],
-    cost: 4,
-    power: 6000,
-    counter: 1000,
-    traits: ['Fish-Man', 'Straw Hat Crew'],
-    keywords: [],
-    effects: [],
-  },
+  // Note: ST01-007 (Nami) is defined later in this file with ATTACH_DON effect
 
   // ST01-008 Tony Tony Chopper
   {
@@ -648,9 +648,58 @@ export const starterDeck01Cards: CardDefinition[] = [
     effects: [],
   },
 
-  // ST01-014 Gum-Gum Jet Pistol (Event)
+  // ST01-014 Guard Point (Event with Counter)
   {
     id: 'ST01-014',
+    name: 'Guard Point',
+    type: 'EVENT',
+    colors: ['RED'],
+    cost: 1,
+    power: null,
+    counter: null,
+    traits: ['Straw Hat Crew'],
+    keywords: [],
+    effects: [
+      {
+        id: 'ST01-014-effect-1',
+        trigger: EffectTrigger.COUNTER,
+        effects: [
+          {
+            type: EffectType.BUFF_COMBAT,
+            target: {
+              type: TargetType.YOUR_LEADER_OR_CHARACTER,
+              count: 1,
+            },
+            value: 3000,
+            duration: EffectDuration.UNTIL_END_OF_BATTLE,
+          },
+        ],
+        description: '[Counter] Up to 1 of your Leader or Character cards gains +3000 power during this battle.',
+      },
+      {
+        id: 'ST01-014-effect-2',
+        trigger: EffectTrigger.TRIGGER,
+        effects: [
+          {
+            type: EffectType.BUFF_POWER,
+            target: {
+              type: TargetType.YOUR_LEADER_OR_CHARACTER,
+              count: 1,
+            },
+            value: 1000,
+            duration: EffectDuration.UNTIL_END_OF_TURN,
+          },
+        ],
+        description: '[Trigger] Up to 1 of your Leader or Character cards gains +1000 power during this turn.',
+      },
+    ],
+  },
+
+  // ST01-015 Gum-Gum Jet Pistol (Event)
+  // [Main] K.O. up to 1 of your opponent's Characters with a cost of 4 or less.
+  // [Trigger] Activate this card's [Main] effect.
+  {
+    id: 'ST01-015',
     name: 'Gum-Gum Jet Pistol',
     type: 'EVENT',
     colors: ['RED'],
@@ -661,7 +710,7 @@ export const starterDeck01Cards: CardDefinition[] = [
     keywords: [],
     effects: [
       {
-        id: 'ST01-014-effect-1',
+        id: 'ST01-015-effect-1',
         trigger: EffectTrigger.ACTIVATE_MAIN,
         effects: [
           {
@@ -681,43 +730,35 @@ export const starterDeck01Cards: CardDefinition[] = [
             duration: EffectDuration.INSTANT,
           },
         ],
-        description: 'Main: K.O. up to 1 of your opponent\'s Characters with a cost of 4 or less.',
+        description: '[Main] K.O. up to 1 of your opponent\'s Characters with a cost of 4 or less.',
       },
-    ],
-  },
-
-  // ST01-015 Gum-Gum Pistol (Event)
-  {
-    id: 'ST01-015',
-    name: 'Gum-Gum Pistol',
-    type: 'EVENT',
-    colors: ['RED'],
-    cost: 1,
-    power: null,
-    counter: 2000,
-    traits: ['Straw Hat Crew'],
-    keywords: [],
-    effects: [
       {
-        id: 'ST01-015-effect-1',
-        trigger: EffectTrigger.COUNTER,
+        id: 'ST01-015-effect-2',
+        trigger: EffectTrigger.TRIGGER,
         effects: [
           {
-            type: EffectType.BUFF_ANY,
+            type: EffectType.KO_COST_OR_LESS,
             target: {
-              type: TargetType.YOUR_LEADER,
+              type: TargetType.OPPONENT_CHARACTER,
               count: 1,
+              filters: [
+                {
+                  property: 'COST',
+                  operator: 'OR_LESS',
+                  value: 4,
+                },
+              ],
             },
-            value: 2000,
-            duration: EffectDuration.UNTIL_END_OF_BATTLE,
+            value: 4,
+            duration: EffectDuration.INSTANT,
           },
         ],
-        description: 'Counter: Give your Leader +2000 power during this battle.',
+        description: '[Trigger] Activate this card\'s [Main] effect.',
       },
     ],
   },
 
-  // ST01-001 Monkey D. Luffy (Leader)
+  // ST01-001 Monkey D. Luffy (Leader) - Give DON ability
   {
     id: 'ST01-001',
     name: 'Monkey D. Luffy',
@@ -733,24 +774,42 @@ export const starterDeck01Cards: CardDefinition[] = [
         id: 'ST01-001-effect-1',
         trigger: EffectTrigger.ACTIVATE_MAIN,
         oncePerTurn: true,
-        costs: [
-          {
-            type: 'REST_DON',
-            count: 1,
-          },
-        ],
         effects: [
           {
-            type: EffectType.BUFF_ANY,
-            target: {
-              type: TargetType.YOUR_CHARACTER,
-              count: 1,
-            },
-            value: 1000,
-            duration: EffectDuration.UNTIL_END_OF_TURN,
+            type: EffectType.ATTACH_DON,
+            value: 1,
+            duration: EffectDuration.INSTANT,
           },
         ],
-        description: 'Activate: Main Once Per Turn: Rest 1 DON!! to give 1 of your Characters +1000 power during this turn.',
+        description: 'Activate: Main Once Per Turn: Give this Leader or 1 of your Characters up to 1 rested DON!! card.',
+      },
+    ],
+  },
+
+  // ST01-007 Nami - Give DON ability
+  {
+    id: 'ST01-007',
+    name: 'Nami',
+    type: 'CHARACTER',
+    colors: ['RED'],
+    cost: 1,
+    power: 1000,
+    counter: 1000,
+    traits: ['Straw Hat Crew'],
+    keywords: [],
+    effects: [
+      {
+        id: 'ST01-007-effect-1',
+        trigger: EffectTrigger.ACTIVATE_MAIN,
+        oncePerTurn: true,
+        effects: [
+          {
+            type: EffectType.ATTACH_DON,
+            value: 1,
+            duration: EffectDuration.INSTANT,
+          },
+        ],
+        description: 'Activate: Main Once Per Turn: Give up to 1 rested DON!! card to your Leader or 1 of your Characters.',
       },
     ],
   },
@@ -1286,6 +1345,122 @@ export const popularCards: CardDefinition[] = [
       },
     ],
   },
+
+  // ============================================
+  // GIVE DON ABILITY CARDS
+  // ============================================
+
+  // OP03-009 Haruta - Give DON
+  {
+    id: 'OP03-009',
+    name: 'Haruta',
+    type: 'CHARACTER',
+    colors: ['RED'],
+    cost: 2,
+    power: 3000,
+    counter: 1000,
+    traits: ['Whitebeard Pirates'],
+    keywords: [],
+    effects: [
+      {
+        id: 'OP03-009-effect-1',
+        trigger: EffectTrigger.ACTIVATE_MAIN,
+        oncePerTurn: true,
+        effects: [
+          {
+            type: EffectType.ATTACH_DON,
+            value: 1,
+            duration: EffectDuration.INSTANT,
+          },
+        ],
+        description: 'Activate: Main Once Per Turn: Give up to 1 rested DON!! card to your Leader or 1 of your Characters.',
+      },
+    ],
+  },
+
+  // EB01-007 Yamato - Give DON
+  {
+    id: 'EB01-007',
+    name: 'Yamato',
+    type: 'CHARACTER',
+    colors: ['RED'],
+    cost: 5,
+    power: 5000,
+    counter: 2000,
+    traits: ['Land of Wano'],
+    keywords: [],
+    effects: [
+      {
+        id: 'EB01-007-effect-1',
+        trigger: EffectTrigger.ACTIVATE_MAIN,
+        oncePerTurn: true,
+        effects: [
+          {
+            type: EffectType.ATTACH_DON,
+            value: 1,
+            duration: EffectDuration.INSTANT,
+          },
+        ],
+        description: 'Activate: Main Once Per Turn: Give up to 1 rested DON!! card to your Leader or 1 of your Characters.',
+      },
+    ],
+  },
+
+  // OP06-011 Otama - Give DON (common red card)
+  {
+    id: 'OP06-011',
+    name: 'Otama',
+    type: 'CHARACTER',
+    colors: ['RED'],
+    cost: 1,
+    power: 2000,
+    counter: 1000,
+    traits: ['Land of Wano'],
+    keywords: [],
+    effects: [
+      {
+        id: 'OP06-011-effect-1',
+        trigger: EffectTrigger.ACTIVATE_MAIN,
+        oncePerTurn: true,
+        effects: [
+          {
+            type: EffectType.ATTACH_DON,
+            value: 1,
+            duration: EffectDuration.INSTANT,
+          },
+        ],
+        description: 'Activate: Main Once Per Turn: Give up to 1 rested DON!! card to your Leader or 1 of your Characters.',
+      },
+    ],
+  },
+
+  // ST13-003 Koby - Give DON (Starter Deck)
+  {
+    id: 'ST13-003',
+    name: 'Koby',
+    type: 'CHARACTER',
+    colors: ['RED'],
+    cost: 2,
+    power: 3000,
+    counter: 1000,
+    traits: ['Navy'],
+    keywords: [],
+    effects: [
+      {
+        id: 'ST13-003-effect-1',
+        trigger: EffectTrigger.ACTIVATE_MAIN,
+        oncePerTurn: true,
+        effects: [
+          {
+            type: EffectType.ATTACH_DON,
+            value: 1,
+            duration: EffectDuration.INSTANT,
+          },
+        ],
+        description: 'Activate: Main Once Per Turn: Give up to 1 rested DON!! card to your Leader or 1 of your Characters.',
+      },
+    ],
+  },
 ];
 
 // All example cards combined
@@ -1296,3 +1471,27 @@ export const allExampleCards: CardDefinition[] = [
   ...starterDeck02Cards,
   ...popularCards,
 ];
+
+// Validation function to check for duplicate IDs (call during development)
+export function validateCardDefinitions(): { valid: boolean; duplicates: string[] } {
+  const seen = new Map<string, string>();
+  const duplicates: string[] = [];
+
+  allExampleCards.forEach(card => {
+    if (seen.has(card.id)) {
+      duplicates.push(`${card.id} (${seen.get(card.id)} vs ${card.name})`);
+    } else {
+      seen.set(card.id, card.name);
+    }
+  });
+
+  if (duplicates.length > 0) {
+    console.error('[cardDefinitions] DUPLICATE IDs FOUND:');
+    duplicates.forEach(d => console.error(`  - ${d}`));
+  }
+
+  return { valid: duplicates.length === 0, duplicates };
+}
+
+// Uncomment to validate on module load during development:
+// validateCardDefinitions();

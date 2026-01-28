@@ -24,6 +24,15 @@ import { requestLogger } from './middleware/requestLogger.js';
 
 dotenv.config();
 
+// Validate required environment variables on startup
+const requiredEnvVars = ['JWT_SECRET', 'JWT_REFRESH_SECRET'];
+for (const envVar of requiredEnvVars) {
+  if (!process.env[envVar]) {
+    console.error(`FATAL: Missing required environment variable: ${envVar}`);
+    process.exit(1);
+  }
+}
+
 const app = express();
 const httpServer = createServer(app);
 

@@ -5,13 +5,15 @@ import './GameBoard.css';
 interface ActionButtonsProps {
   phase: GamePhase | null;
   isMyTurn: boolean;
-  isSpectator: boolean;
+  isDefender: boolean;  // True if player is the defender in current combat
   onEndTurn: () => void;
   onPass: () => void;
   onKeepHand: () => void;
   onMulligan: () => void;
   onUseCounter?: () => void;
   onPassCounter?: () => void;
+  onSelectBlocker?: () => void;
+  onPassBlocker?: () => void;
   onActivateTrigger?: () => void;
   onPassTrigger?: () => void;
   mulliganAvailable?: boolean;
@@ -20,68 +22,59 @@ interface ActionButtonsProps {
 export const ActionButtons: React.FC<ActionButtonsProps> = ({
   phase,
   isMyTurn,
-  isSpectator,
+  isDefender,
   onEndTurn,
   onPass,
-  onKeepHand,
-  onMulligan,
-  onUseCounter,
-  onPassCounter,
+  onKeepHand: _onKeepHand,
+  onMulligan: _onMulligan,
+  onUseCounter: _onUseCounter,
+  onPassCounter: _onPassCounter,
+  onSelectBlocker: _onSelectBlocker,
+  onPassBlocker: _onPassBlocker,
   onActivateTrigger,
   onPassTrigger,
-  mulliganAvailable = true
+  mulliganAvailable: _mulliganAvailable = true
 }) => {
-  // Spectators can't take actions
-  if (isSpectator) {
+  // Note: These props are kept for interface compatibility but are handled elsewhere
+  // Combat actions are handled by CombatModal, mulligan actions by MulliganModal
+  void _onUseCounter;
+  void _onPassCounter;
+  void _onSelectBlocker;
+  void _onPassBlocker;
+  void _onKeepHand;
+  void _onMulligan;
+  void _mulliganAvailable;
+
+  // Pre-game phases (RPS, First Choice) - modal handles these
+  if (phase === GamePhase.RPS_PHASE || phase === GamePhase.FIRST_CHOICE) {
     return (
       <div className="action-buttons">
-        <div style={{ color: '#888', textAlign: 'center', fontSize: '12px' }}>
-          Spectating
+        <div style={{ color: '#a0aec0', textAlign: 'center', fontSize: '12px', padding: '8px' }}>
+          Waiting for game setup...
         </div>
       </div>
     );
   }
 
-  // Mulligan phase buttons
+  // Mulligan phase - buttons are in the main overlay, show helper text here
   if (phase === GamePhase.START_MULLIGAN) {
     return (
       <div className="action-buttons">
-        <button
-          className="action-btn action-btn--keep"
-          onClick={onKeepHand}
-        >
-          Keep Hand
-        </button>
-        {mulliganAvailable && (
-          <button
-            className="action-btn action-btn--mulligan"
-            onClick={onMulligan}
-          >
-            Mulligan
-          </button>
-        )}
+        <div style={{ color: '#a0aec0', textAlign: 'center', fontSize: '12px', padding: '8px' }}>
+          Review your starting hand above
+        </div>
       </div>
     );
   }
 
-  // Counter step buttons
-  if (phase === GamePhase.COUNTER_STEP) {
+  // Combat phases (BLOCKER_STEP and COUNTER_STEP) are handled by CombatModal
+  // Show waiting state during combat for sidebar
+  if (phase === GamePhase.COUNTER_STEP || phase === GamePhase.BLOCKER_STEP) {
     return (
       <div className="action-buttons">
-        <button
-          className="action-btn action-btn--attack"
-          onClick={onUseCounter}
-          disabled={!isMyTurn}
-        >
-          Use Counter
-        </button>
-        <button
-          className="action-btn action-btn--pass"
-          onClick={onPassCounter}
-          disabled={!isMyTurn}
-        >
-          Pass
-        </button>
+        <div style={{ color: '#888', textAlign: 'center', fontSize: '12px', padding: '8px' }}>
+          {isDefender ? 'Use the combat modal to respond' : 'Waiting for opponent...'}
+        </div>
       </div>
     );
   }

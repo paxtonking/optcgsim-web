@@ -2,8 +2,9 @@ import { useCardStore } from '../stores/cardStore';
 import { CARD_COLORS, CARD_TYPES, COLOR_HEX, type CardColor } from '../types/card';
 
 export function CardFilters() {
-  const { filters, setFilter, resetFilters, getSets } = useCardStore();
+  const { filters, setFilter, resetFilters, getSets, setLeaderColors } = useCardStore();
   const sets = getSets();
+  const hasLeaderColorFilter = filters.leaderColors.length > 0;
 
   const toggleArrayFilter = (
     key: 'colors' | 'types' | 'sets',
@@ -18,6 +19,33 @@ export function CardFilters() {
 
   return (
     <div className="bg-gray-800 rounded-lg p-4 space-y-4">
+      {/* Leader color filter indicator */}
+      {hasLeaderColorFilter && (
+        <div className="bg-blue-900/40 border border-blue-700 rounded p-2 flex items-center justify-between">
+          <div>
+            <p className="text-blue-300 text-xs font-medium">Filtered by leader colors:</p>
+            <div className="flex gap-1 mt-1">
+              {filters.leaderColors.map(color => (
+                <span
+                  key={color}
+                  className="px-1.5 py-0.5 rounded text-xs font-medium text-white"
+                  style={{ backgroundColor: COLOR_HEX[color as CardColor] || '#6B7280' }}
+                >
+                  {color}
+                </span>
+              ))}
+            </div>
+          </div>
+          <button
+            onClick={() => setLeaderColors([])}
+            className="text-blue-400 hover:text-blue-300 text-xs"
+            title="Clear leader color filter"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Search */}
       <div>
         <label className="block text-sm font-medium text-gray-300 mb-1">

@@ -1,0 +1,401 @@
+/* ===================================
+   COMBAT MODAL
+   =================================== */
+
+.combat-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 280px; /* Leave space for sidebar */
+  bottom: 120px; /* Leave space for hand zone */
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.combat-modal {
+  background: linear-gradient(135deg, #1a1a2e 0%, #252540 100%);
+  border-radius: 16px;
+  padding: 24px 32px;
+  min-width: 500px;
+  max-width: 700px;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.combat-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.combat-modal__title {
+  font-size: 24px;
+  font-weight: bold;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin: 0;
+}
+
+.combat-modal__blocked-badge {
+  background: #e74c3c;
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.combat-modal__content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  margin-bottom: 24px;
+}
+
+.combat-modal__side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.combat-modal__label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.combat-modal__owner {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.combat-modal__role {
+  font-size: 12px;
+  font-weight: 600;
+  color: #aaa;
+}
+
+.combat-modal__power {
+  font-size: 32px;
+  font-weight: bold;
+  padding: 8px 20px;
+  border-radius: 8px;
+  min-width: 100px;
+  text-align: center;
+}
+
+.combat-modal__power--attacker {
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  color: #fff;
+  box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4);
+}
+
+.combat-modal__power--defender {
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  color: #fff;
+  box-shadow: 0 4px 15px rgba(52, 152, 219, 0.4);
+}
+
+.combat-modal__counter-bonus {
+  color: #2ecc71;
+  font-size: 24px;
+}
+
+.combat-modal__effect-bonus {
+  color: #9b59b6;
+  font-size: 24px;
+}
+
+.combat-modal__total {
+  font-size: 20px;
+  opacity: 0.8;
+}
+
+.combat-modal__vs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.combat-modal__vs-text {
+  font-size: 36px;
+  font-weight: bold;
+  color: #f1c40f;
+  text-shadow: 0 2px 10px rgba(241, 196, 15, 0.5);
+}
+
+.combat-modal__result {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.combat-modal__result--attacker {
+  background: rgba(231, 76, 60, 0.2);
+  color: #e74c3c;
+  border: 1px solid #e74c3c;
+}
+
+.combat-modal__result--defender {
+  background: rgba(52, 152, 219, 0.2);
+  color: #3498db;
+  border: 1px solid #3498db;
+}
+
+/* Actions Section */
+.combat-modal__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.combat-modal__action-label {
+  font-size: 14px;
+  color: #aaa;
+  margin-bottom: 8px;
+}
+
+.combat-modal__instruction {
+  font-size: 14px;
+  color: #ccc;
+  text-align: center;
+  margin-bottom: 12px;
+  font-style: italic;
+}
+
+.combat-modal__blockers,
+.combat-modal__counters {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.combat-modal__blocker-list,
+.combat-modal__counter-list {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.combat-modal__blocker-option,
+.combat-modal__counter-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.combat-modal__blocker-option:hover,
+.combat-modal__counter-option:hover {
+  background: rgba(39, 174, 96, 0.2);
+  border-color: #27ae60;
+  transform: translateY(-2px);
+}
+
+/* Selected card styling */
+.combat-modal__blocker-option--selected,
+.combat-modal__counter-option--selected {
+  border-color: #3498db;
+  background: rgba(52, 152, 219, 0.3);
+  box-shadow: 0 0 12px rgba(52, 152, 219, 0.5);
+}
+
+.combat-modal__blocker-option--selected:hover,
+.combat-modal__counter-option--selected:hover {
+  border-color: #3498db;
+  background: rgba(52, 152, 219, 0.4);
+}
+
+.combat-modal__blocker-power {
+  font-size: 14px;
+  font-weight: bold;
+  color: #3498db;
+}
+
+.combat-modal__counter-value {
+  font-size: 14px;
+  font-weight: bold;
+  color: #2ecc71;
+}
+
+.combat-modal__btn {
+  padding: 12px 32px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* Action buttons container */
+.combat-modal__action-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.combat-modal__btn--pass {
+  background: #7f8c8d;
+  color: #fff;
+}
+
+.combat-modal__btn--pass:hover {
+  background: #6c7a7b;
+  transform: scale(1.02);
+}
+
+.combat-modal__btn--block {
+  background: #3498db;
+  color: #fff;
+}
+
+.combat-modal__btn--block:hover:not(:disabled) {
+  background: #2980b9;
+  transform: scale(1.02);
+}
+
+.combat-modal__btn--block:disabled {
+  background: #555;
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.combat-modal__btn--counter {
+  background: #27ae60;
+  color: #fff;
+}
+
+.combat-modal__btn--counter:hover:not(:disabled) {
+  background: #219a52;
+  transform: scale(1.02);
+}
+
+.combat-modal__btn--counter:disabled {
+  background: #555;
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.combat-modal__btn--skip {
+  background: #7f8c8d;
+  color: #fff;
+}
+
+.combat-modal__btn--skip:hover {
+  background: #6c7a7b;
+  transform: scale(1.02);
+}
+
+.combat-modal__waiting {
+  text-align: center;
+  color: #888;
+  font-size: 16px;
+  padding: 16px;
+  font-style: italic;
+}
+
+/* Card styling in modal */
+.combat-modal .game-card--large {
+  width: 100px;
+  height: 140px;
+}
+
+.combat-modal .game-card--small {
+  width: 50px;
+  height: 70px;
+}
+
+/* Ensure all cards in modal display upright (not rotated) */
+.combat-modal__card-upright .game-card {
+  transform: none !important;
+}
+
+.combat-modal__card-upright .game-card:hover {
+  transform: translateY(-4px) !important;
+}
+
+/* ===================================
+   DON AREA FOR COUNTER STEP
+   =================================== */
+
+.combat-modal__don-area {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 8px 12px;
+  background: rgba(255, 200, 50, 0.1);
+  border: 1px solid rgba(255, 200, 50, 0.3);
+  border-radius: 8px;
+}
+
+.combat-modal__don-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffc832;
+  white-space: nowrap;
+}
+
+.combat-modal__don-cards {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.combat-modal__don-card {
+  width: 20px;
+  height: 28px;
+  background: linear-gradient(135deg, #ffd700 0%, #ff8c00 100%);
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}

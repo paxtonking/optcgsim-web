@@ -945,3 +945,295 @@ adminRouter.patch('/suspensions/:id/revoke', async (req, res, next) => {
     next(error);
   }
 });
+
+// ============== CARD EFFECT MANAGEMENT ==============
+
+// Get all cards with pagination and search (for effect editing)
+adminRouter.get('/cards', async (req, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
+    const search = req.query.search as string | undefined;
+    const hasEffects = req.query.hasEffects as string | undefined;
+    const type = req.query.type as string | undefined;
+    const setCode = req.query.setCode as string | undefined;
+
+    const where: Record<string, unknown> = {};
+
+    if (search) {
+      where.OR = [
+        { id: { contains: search, mode: 'insensitive' } },
+        { name: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    if (type) {
+      where.type = type;
+    }
+
+    if (setCode) {
+      where.setCode = setCode;
+    }
+
+    // Filter by whether card has structured effects
+    if (hasEffects === 'true') {
+      where.NOT = { effects: { equals: [] } };
+    } else if (hasEffects === 'false') {
+      where.effects = { equals: [] };
+    }
+
+    const [cards, total] = await Promise.all([
+      prisma.card.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { id: 'asc' },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          colors: true,
+          cost: true,
+          power: true,
+          setCode: true,
+          effects: true,
+          effectText: true,
+        },
+      }),
+      prisma.card.count({ where }),
+    ]);
+
+    // Add hasStructuredEffects flag
+    const cardsWithFlag = cards.map(card => ({
+      ...card,
+      hasStructuredEffects: Array.isArray(card.effects) && (card.effects as unknown[]).length > 0,
+    }));
+
+    res.json({
+      cards: cardsWithFlag,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get a single card with full details
+adminRouter.get('/cards/:id', async (req, res, next) => {
+  try {
+    const card = await prisma.card.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!card) {
+      throw new AppError('Card not found', 404);
+    }
+
+    res.json({ card });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Update card effects
+adminRouter.patch('/cards/:id/effects', async (req, res, next) => {
+  try {
+    const { effects } = req.body;
+
+    if (!Array.isArray(effects)) {
+      throw new AppError('Effects must be an array', 400);
+    }
+
+    // Basic validation of effect structure
+    for (const effect of effects) {
+      if (!effect.id || typeof effect.id !== 'string') {
+        throw new AppError('Each effect must have a string id', 400);
+      }
+      if (!effect.trigger || typeof effect.trigger !== 'string') {
+        throw new AppError('Each effect must have a trigger', 400);
+      }
+      if (!Array.isArray(effect.effects)) {
+        throw new AppError('Each effect must have an effects array', 400);
+      }
+    }
+
+    const card = await prisma.card.update({
+      where: { id: req.params.id },
+      data: { effects },
+    });
+
+    res.json({
+      card,
+      message: 'Effects updated successfully',
+    });
+  } catch (error) {
+    if ((error as any).code === 'P2025') {
+      next(new AppError('Card not found', 404));
+    } else {
+      next(error);
+    }
+  }
+});
+
+// Validate effect JSON without saving
+adminRouter.post('/cards/:id/effects/validate', async (req, res, next) => {
+  try {
+    const { effects } = req.body;
+
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    if (!Array.isArray(effects)) {
+      errors.push('Effects must be an array');
+      return res.json({ valid: false, errors, warnings });
+    }
+
+    // Valid trigger types
+    const validTriggers = [
+      'PASSIVE', 'ACTIVATE_MAIN', 'MAIN', 'ONCE_PER_TURN',
+      'ON_PLAY', 'ON_PLAY_FROM_TRIGGER',
+      'ON_ATTACK', 'ON_BLOCK', 'COUNTER', 'AFTER_BATTLE',
+      'DON_X', 'DON_TAP', 'ATTACH_DON', 'DON_RETURNED',
+      'ON_KO', 'PRE_KO', 'AFTER_KO_CHARACTER', 'ANY_CHARACTER_KOD', 'OPPONENT_CHARACTER_KOD', 'KO_ALLY',
+      'TRIGGER', 'LIFE_ADDED_TO_HAND', 'LIFE_REACHES_ZERO', 'HIT_LEADER', 'ANY_HIT_LEADER',
+      'END_OF_TURN', 'START_OF_TURN', 'YOUR_TURN', 'OPPONENT_TURN',
+      'OPPONENT_ATTACK', 'OPPONENT_PLAYS_EVENT', 'OPPONENT_DEPLOYS', 'OPPONENT_ACTIVATES_BLOCKER',
+      'TRASH_X', 'TRASH_SELF', 'TRASH_ALLY',
+      'CARD_DRAWN', 'DEPLOYED_FROM_HAND',
+      'WHILE_RESTED', 'MANDATORY', 'HAND_EMPTY',
+    ];
+
+    // Valid effect types (common ones)
+    const validEffectTypes = [
+      'RUSH', 'BLOCKER', 'DOUBLE_ATTACK', 'BANISH',
+      'BUFF_SELF', 'BUFF_POWER', 'BUFF_ANY', 'BUFF_COMBAT',
+      'DEBUFF_POWER', 'SET_POWER_ZERO',
+      'DRAW_CARDS', 'MILL_DECK',
+      'GAIN_ACTIVE_DON', 'GAIN_RESTED_DON', 'ATTACH_DON',
+      'KO_CHARACTER', 'KO_COST_OR_LESS', 'KO_POWER_OR_LESS',
+      'RETURN_TO_HAND', 'SEND_TO_DECK_BOTTOM', 'SEND_TO_TRASH',
+      'REST_CHARACTER', 'ACTIVATE_CHARACTER', 'FREEZE',
+      'ADD_TO_LIFE', 'TAKE_LIFE',
+      'GRANT_KEYWORD', 'CANT_BE_BLOCKED',
+    ];
+
+    for (let i = 0; i < effects.length; i++) {
+      const effect = effects[i];
+      const prefix = `Effect ${i + 1}`;
+
+      // Check required fields
+      if (!effect.id || typeof effect.id !== 'string') {
+        errors.push(`${prefix}: Missing or invalid id`);
+      }
+
+      if (!effect.trigger) {
+        errors.push(`${prefix}: Missing trigger`);
+      } else if (!validTriggers.includes(effect.trigger)) {
+        warnings.push(`${prefix}: Unknown trigger '${effect.trigger}'`);
+      }
+
+      if (!Array.isArray(effect.effects)) {
+        errors.push(`${prefix}: effects must be an array`);
+      } else {
+        for (let j = 0; j < effect.effects.length; j++) {
+          const action = effect.effects[j];
+          const actionPrefix = `${prefix}, Action ${j + 1}`;
+
+          if (!action.type) {
+            errors.push(`${actionPrefix}: Missing type`);
+          } else if (!validEffectTypes.includes(action.type)) {
+            warnings.push(`${actionPrefix}: Unknown effect type '${action.type}'`);
+          }
+        }
+      }
+
+      // Optional field checks
+      if (effect.conditions && !Array.isArray(effect.conditions)) {
+        errors.push(`${prefix}: conditions must be an array`);
+      }
+
+      if (effect.costs && !Array.isArray(effect.costs)) {
+        errors.push(`${prefix}: costs must be an array`);
+      }
+    }
+
+    res.json({
+      valid: errors.length === 0,
+      errors,
+      warnings,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get effect templates for common patterns
+adminRouter.get('/cards/effects/templates', async (_req, res) => {
+  const templates = {
+    onPlay: {
+      id: '{CARD_ID}-effect-1',
+      trigger: 'ON_PLAY',
+      effects: [
+        { type: 'DRAW_CARDS', value: 1 },
+      ],
+      description: 'On Play: Draw 1 card',
+    },
+    activateMain: {
+      id: '{CARD_ID}-effect-1',
+      trigger: 'ACTIVATE_MAIN',
+      oncePerTurn: true,
+      costs: [{ type: 'REST_DON', count: 2 }],
+      effects: [
+        { type: 'BUFF_SELF', value: 2000, duration: 'END_OF_TURN' },
+      ],
+      description: 'Activate: Main Once Per Turn (2): This card gains +2000 power until end of turn.',
+    },
+    counter: {
+      id: '{CARD_ID}-effect-1',
+      trigger: 'COUNTER',
+      effects: [
+        { type: 'BUFF_COMBAT', value: 2000, target: 'SELF' },
+      ],
+      description: 'Counter: +2000 power',
+    },
+    trigger: {
+      id: '{CARD_ID}-effect-1',
+      trigger: 'TRIGGER',
+      effects: [
+        { type: 'KO_COST_OR_LESS', value: 4 },
+      ],
+      description: 'Trigger: K.O. 1 opponent Character with cost 4 or less',
+    },
+    onAttack: {
+      id: '{CARD_ID}-effect-1',
+      trigger: 'ON_ATTACK',
+      effects: [
+        { type: 'CANT_BE_BLOCKED' },
+      ],
+      description: 'When Attacking: This card cannot be blocked.',
+    },
+    rush: {
+      id: '{CARD_ID}-keyword-rush',
+      trigger: 'PASSIVE',
+      effects: [
+        { type: 'RUSH' },
+      ],
+      description: 'Rush',
+    },
+    blocker: {
+      id: '{CARD_ID}-keyword-blocker',
+      trigger: 'PASSIVE',
+      effects: [
+        { type: 'BLOCKER' },
+      ],
+      description: 'Blocker',
+    },
+  };
+
+  res.json({ templates });
+});

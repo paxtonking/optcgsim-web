@@ -1,0 +1,347 @@
+/* Effect Animation Layer - Positioned over the game board */
+.effect-animation-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 500;
+  overflow: hidden;
+}
+
+/* ===== Particle Effects ===== */
+
+.effect-particle {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+/* Particle flight animation - uses CSS custom properties for dynamic positioning */
+@keyframes particle-fly {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--dx), var(--dy)) scale(0.3);
+    opacity: 0;
+  }
+}
+
+.effect-particle--flying {
+  animation: particle-fly var(--particle-duration, 400ms) cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Particle Sizes */
+.effect-particle--small {
+  width: 6px;
+  height: 6px;
+}
+
+.effect-particle--medium {
+  width: 10px;
+  height: 10px;
+}
+
+.effect-particle--large {
+  width: 14px;
+  height: 14px;
+}
+
+/* ===== Particle Colors by Effect Type ===== */
+
+/* Buff - Green */
+.effect-particle--buff {
+  background: radial-gradient(circle, #4ade80 0%, #22c55e 50%, transparent 100%);
+  box-shadow: 0 0 8px #22c55e, 0 0 16px rgba(34, 197, 94, 0.5);
+}
+
+/* Debuff - Red */
+.effect-particle--debuff {
+  background: radial-gradient(circle, #f87171 0%, #ef4444 50%, transparent 100%);
+  box-shadow: 0 0 8px #ef4444, 0 0 16px rgba(239, 68, 68, 0.5);
+}
+
+/* Draw - Blue */
+.effect-particle--draw {
+  background: radial-gradient(circle, #60a5fa 0%, #3b82f6 50%, transparent 100%);
+  box-shadow: 0 0 8px #3b82f6, 0 0 16px rgba(59, 130, 246, 0.5);
+}
+
+/* KO - Purple */
+.effect-particle--ko {
+  background: radial-gradient(circle, #a78bfa 0%, #8b5cf6 50%, transparent 100%);
+  box-shadow: 0 0 8px #8b5cf6, 0 0 16px rgba(139, 92, 246, 0.5);
+}
+
+/* DON - Gold */
+.effect-particle--don {
+  background: radial-gradient(circle, #fcd34d 0%, #f59e0b 50%, transparent 100%);
+  box-shadow: 0 0 8px #f59e0b, 0 0 16px rgba(245, 158, 11, 0.5);
+}
+
+/* Trigger - Orange */
+.effect-particle--trigger {
+  background: radial-gradient(circle, #fb923c 0%, #ea580c 50%, transparent 100%);
+  box-shadow: 0 0 8px #ea580c, 0 0 16px rgba(234, 88, 12, 0.5);
+}
+
+/* Counter - Cyan */
+.effect-particle--counter {
+  background: radial-gradient(circle, #22d3ee 0%, #06b6d4 50%, transparent 100%);
+  box-shadow: 0 0 8px #06b6d4, 0 0 16px rgba(6, 182, 212, 0.5);
+}
+
+/* Search - Teal */
+.effect-particle--search {
+  background: radial-gradient(circle, #2dd4bf 0%, #14b8a6 50%, transparent 100%);
+  box-shadow: 0 0 8px #14b8a6, 0 0 16px rgba(20, 184, 166, 0.5);
+}
+
+/* Play - Bright Green */
+.effect-particle--play {
+  background: radial-gradient(circle, #34d399 0%, #10b981 50%, transparent 100%);
+  box-shadow: 0 0 8px #10b981, 0 0 16px rgba(16, 185, 129, 0.5);
+}
+
+/* Neutral - White/Gray */
+.effect-particle--neutral {
+  background: radial-gradient(circle, #e5e7eb 0%, #9ca3af 50%, transparent 100%);
+  box-shadow: 0 0 6px #9ca3af, 0 0 12px rgba(156, 163, 175, 0.4);
+}
+
+/* ===== Energy Trail Effect ===== */
+
+.effect-trail {
+  position: absolute;
+  height: 3px;
+  transform-origin: left center;
+  pointer-events: none;
+  border-radius: 2px;
+}
+
+@keyframes trail-extend {
+  0% {
+    width: 0;
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    width: var(--trail-length);
+    opacity: 0;
+  }
+}
+
+.effect-trail--active {
+  animation: trail-extend var(--trail-duration, 300ms) ease-out forwards;
+}
+
+/* Trail Colors */
+.effect-trail--buff { background: linear-gradient(90deg, transparent, #22c55e, #4ade80); box-shadow: 0 0 10px #22c55e; }
+.effect-trail--debuff { background: linear-gradient(90deg, transparent, #ef4444, #f87171); box-shadow: 0 0 10px #ef4444; }
+.effect-trail--draw { background: linear-gradient(90deg, transparent, #3b82f6, #60a5fa); box-shadow: 0 0 10px #3b82f6; }
+.effect-trail--ko { background: linear-gradient(90deg, transparent, #8b5cf6, #a78bfa); box-shadow: 0 0 10px #8b5cf6; }
+.effect-trail--don { background: linear-gradient(90deg, transparent, #f59e0b, #fcd34d); box-shadow: 0 0 10px #f59e0b; }
+.effect-trail--trigger { background: linear-gradient(90deg, transparent, #ea580c, #fb923c); box-shadow: 0 0 10px #ea580c; }
+.effect-trail--counter { background: linear-gradient(90deg, transparent, #06b6d4, #22d3ee); box-shadow: 0 0 10px #06b6d4; }
+.effect-trail--search { background: linear-gradient(90deg, transparent, #14b8a6, #2dd4bf); box-shadow: 0 0 10px #14b8a6; }
+.effect-trail--play { background: linear-gradient(90deg, transparent, #10b981, #34d399); box-shadow: 0 0 10px #10b981; }
+.effect-trail--neutral { background: linear-gradient(90deg, transparent, #6b7280, #9ca3af); box-shadow: 0 0 8px #6b7280; }
+
+/* ===== Radial Burst Effect (for self-buffs) ===== */
+
+.effect-burst {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+@keyframes burst-expand {
+  0% {
+    width: 0;
+    height: 0;
+    opacity: 0.8;
+  }
+  100% {
+    width: var(--burst-size, 150px);
+    height: var(--burst-size, 150px);
+    opacity: 0;
+  }
+}
+
+.effect-burst--active {
+  animation: burst-expand var(--burst-duration, 400ms) ease-out forwards;
+}
+
+/* Burst Colors */
+.effect-burst--buff { border: 3px solid #22c55e; box-shadow: 0 0 20px #22c55e, inset 0 0 20px rgba(34, 197, 94, 0.3); }
+.effect-burst--debuff { border: 3px solid #ef4444; box-shadow: 0 0 20px #ef4444, inset 0 0 20px rgba(239, 68, 68, 0.3); }
+.effect-burst--draw { border: 3px solid #3b82f6; box-shadow: 0 0 20px #3b82f6, inset 0 0 20px rgba(59, 130, 246, 0.3); }
+.effect-burst--ko { border: 3px solid #8b5cf6; box-shadow: 0 0 20px #8b5cf6, inset 0 0 20px rgba(139, 92, 246, 0.3); }
+.effect-burst--don { border: 3px solid #f59e0b; box-shadow: 0 0 20px #f59e0b, inset 0 0 20px rgba(245, 158, 11, 0.3); }
+.effect-burst--trigger { border: 3px solid #ea580c; box-shadow: 0 0 20px #ea580c, inset 0 0 20px rgba(234, 88, 12, 0.3); }
+.effect-burst--counter { border: 3px solid #06b6d4; box-shadow: 0 0 20px #06b6d4, inset 0 0 20px rgba(6, 182, 212, 0.3); }
+.effect-burst--search { border: 3px solid #14b8a6; box-shadow: 0 0 20px #14b8a6, inset 0 0 20px rgba(20, 184, 166, 0.3); }
+.effect-burst--play { border: 3px solid #10b981; box-shadow: 0 0 20px #10b981, inset 0 0 20px rgba(16, 185, 129, 0.3); }
+.effect-burst--neutral { border: 3px solid #6b7280; box-shadow: 0 0 15px #6b7280, inset 0 0 15px rgba(107, 114, 128, 0.3); }
+
+/* ===== Impact Flash (at target) ===== */
+
+.effect-impact {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+@keyframes impact-flash {
+  0% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.5);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2);
+    opacity: 0;
+  }
+}
+
+.effect-impact--active {
+  animation: impact-flash 300ms ease-out forwards;
+}
+
+/* Impact Colors */
+.effect-impact--buff { background: radial-gradient(circle, rgba(34, 197, 94, 0.8), transparent 70%); }
+.effect-impact--debuff { background: radial-gradient(circle, rgba(239, 68, 68, 0.8), transparent 70%); }
+.effect-impact--draw { background: radial-gradient(circle, rgba(59, 130, 246, 0.8), transparent 70%); }
+.effect-impact--ko { background: radial-gradient(circle, rgba(139, 92, 246, 0.8), transparent 70%); }
+.effect-impact--don { background: radial-gradient(circle, rgba(245, 158, 11, 0.8), transparent 70%); }
+.effect-impact--trigger { background: radial-gradient(circle, rgba(234, 88, 12, 0.8), transparent 70%); }
+.effect-impact--counter { background: radial-gradient(circle, rgba(6, 182, 212, 0.8), transparent 70%); }
+.effect-impact--search { background: radial-gradient(circle, rgba(20, 184, 166, 0.8), transparent 70%); }
+.effect-impact--play { background: radial-gradient(circle, rgba(16, 185, 129, 0.8), transparent 70%); }
+.effect-impact--neutral { background: radial-gradient(circle, rgba(156, 163, 175, 0.8), transparent 70%); }
+
+/* ===== KO Shatter Effect ===== */
+
+.effect-shatter {
+  position: absolute;
+  pointer-events: none;
+}
+
+.effect-shatter__fragment {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+  box-shadow: 0 0 8px #8b5cf6;
+}
+
+@keyframes fragment-fly {
+  0% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--fx), var(--fy)) rotate(var(--fr, 180deg)) scale(0);
+    opacity: 0;
+  }
+}
+
+.effect-shatter__fragment--flying {
+  animation: fragment-fly 500ms ease-out forwards;
+}
+
+/* ===== Card Highlight Pulse (on source/target cards) ===== */
+
+.effect-card-highlight {
+  position: absolute;
+  border-radius: 8px;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+@keyframes card-highlight-pulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--highlight-color);
+    opacity: 0.8;
+  }
+  50% {
+    box-shadow: 0 0 20px 10px var(--highlight-color);
+    opacity: 0.5;
+  }
+  100% {
+    box-shadow: 0 0 30px 20px var(--highlight-color);
+    opacity: 0;
+  }
+}
+
+.effect-card-highlight--active {
+  animation: card-highlight-pulse 400ms ease-out forwards;
+}
+
+/* Highlight Colors */
+.effect-card-highlight--buff { --highlight-color: rgba(34, 197, 94, 0.6); }
+.effect-card-highlight--debuff { --highlight-color: rgba(239, 68, 68, 0.6); }
+.effect-card-highlight--draw { --highlight-color: rgba(59, 130, 246, 0.6); }
+.effect-card-highlight--ko { --highlight-color: rgba(139, 92, 246, 0.6); }
+.effect-card-highlight--don { --highlight-color: rgba(245, 158, 11, 0.6); }
+.effect-card-highlight--trigger { --highlight-color: rgba(234, 88, 12, 0.6); }
+.effect-card-highlight--counter { --highlight-color: rgba(6, 182, 212, 0.6); }
+.effect-card-highlight--search { --highlight-color: rgba(20, 184, 166, 0.6); }
+.effect-card-highlight--play { --highlight-color: rgba(16, 185, 129, 0.6); }
+.effect-card-highlight--neutral { --highlight-color: rgba(156, 163, 175, 0.5); }
+
+/* ===== Floating Text (damage numbers, buff amounts) ===== */
+
+.effect-float-text {
+  position: absolute;
+  font-weight: bold;
+  font-size: 18px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5), 0 0 10px var(--text-glow);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+@keyframes float-up {
+  0% {
+    transform: translate(-50%, 0) scale(0.8);
+    opacity: 0;
+  }
+  20% {
+    transform: translate(-50%, -10px) scale(1.1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50px) scale(1);
+    opacity: 0;
+  }
+}
+
+.effect-float-text--active {
+  animation: float-up 800ms ease-out forwards;
+}
+
+/* Float Text Colors */
+.effect-float-text--buff { color: #4ade80; --text-glow: rgba(34, 197, 94, 0.8); }
+.effect-float-text--debuff { color: #f87171; --text-glow: rgba(239, 68, 68, 0.8); }
+.effect-float-text--draw { color: #60a5fa; --text-glow: rgba(59, 130, 246, 0.8); }
+.effect-float-text--ko { color: #a78bfa; --text-glow: rgba(139, 92, 246, 0.8); }
+.effect-float-text--don { color: #fcd34d; --text-glow: rgba(245, 158, 11, 0.8); }
+.effect-float-text--trigger { color: #fb923c; --text-glow: rgba(234, 88, 12, 0.8); }
+.effect-float-text--counter { color: #22d3ee; --text-glow: rgba(6, 182, 212, 0.8); }
+.effect-float-text--search { color: #2dd4bf; --text-glow: rgba(20, 184, 166, 0.8); }
+.effect-float-text--play { color: #34d399; --text-glow: rgba(16, 185, 129, 0.8); }
+.effect-float-text--neutral { color: #e5e7eb; --text-glow: rgba(156, 163, 175, 0.6); }

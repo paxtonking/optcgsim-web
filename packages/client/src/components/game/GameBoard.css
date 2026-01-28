@@ -4,7 +4,7 @@
 
 .game-board {
   display: grid;
-  grid-template-columns: 1fr 280px;
+  grid-template-columns: 1fr 360px;
   grid-template-rows: auto 1fr auto;
   width: 100%;
   height: 100%;
@@ -18,20 +18,60 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 16px;
-  background: linear-gradient(180deg, #252540 0%, #1a1a2e 100%);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 10px 20px;
+  background: linear-gradient(180deg, #1a1a2e 0%, #151525 100%);
+  border-bottom: 2px solid rgba(241, 196, 15, 0.5);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(241, 196, 15, 0.15);
 }
 
-.game-board__header-info {
+.game-board__header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.game-board__header-center {
   display: flex;
   align-items: center;
   gap: 16px;
+  flex: 2;
+  justify-content: center;
+}
+
+.game-board__header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.game-board__game-id {
+  font-size: 12px;
+  color: #888;
+  font-family: monospace;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.game-board__ai-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  padding: 4px 10px;
+  background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .game-board__turn {
   font-size: 14px;
-  color: #888;
+  color: rgba(241, 196, 15, 0.8);
+  font-weight: 500;
 }
 
 .game-board__phase {
@@ -39,23 +79,59 @@
   font-weight: 600;
   color: #fff;
   text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .game-board__turn-indicator {
-  padding: 4px 12px;
+  padding: 6px 16px;
   border-radius: 4px;
   font-size: 12px;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all 0.3s ease;
 }
 
 .game-board__turn-indicator--your-turn {
-  background: #27ae60;
+  background: linear-gradient(135deg, #27ae60 0%, #1e8449 100%);
   color: #fff;
+  box-shadow: 0 0 12px rgba(39, 174, 96, 0.5), 0 0 24px rgba(39, 174, 96, 0.3);
+  animation: turn-pulse 1.5s ease-in-out infinite;
 }
 
 .game-board__turn-indicator--waiting {
-  background: #7f8c8d;
+  background: rgba(127, 140, 141, 0.5);
+  color: #ccc;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+@keyframes turn-pulse {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(39, 174, 96, 0.5), 0 0 24px rgba(39, 174, 96, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(39, 174, 96, 0.7), 0 0 36px rgba(39, 174, 96, 0.5);
+  }
+}
+
+.game-board__surrender-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
   color: #fff;
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.game-board__surrender-btn:hover {
+  background: linear-gradient(135deg, #c0392b 0%, #a93226 100%);
+  box-shadow: 0 0 12px rgba(231, 76, 60, 0.5);
+  transform: translateY(-1px);
 }
 
 .game-board__main {
@@ -69,6 +145,8 @@
   flex-direction: column;
   background: #16162a;
   border-left: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+  z-index: 2001; /* Stay above combat modal overlay */
 }
 
 /* ===================================
@@ -80,42 +158,93 @@
   display: flex;
   flex-direction: row;
   justify-content: center;
-  align-items: center;
-  gap: 24px;
-  padding: 16px 32px;
-  min-height: 180px;
+  align-items: stretch;
+  gap: 16px;
+  padding: 8px 16px;
+  min-height: 280px;
   background-size: cover;
   background-position: center;
   flex: 1;
 }
 
+/* Left column: Life + DON Deck stacked */
 .player-area__left {
   display: flex;
-  flex-direction: row;
-  gap: 12px;
+  flex-direction: column;
+  justify-content: space-between;
   align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  order: 1;
 }
 
+/* Right column: Leader, Stage, Deck in a row */
+.player-area__second-col {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: stretch;
+  gap: 8px;
+  flex: 0 0 auto;
+  order: 3; /* Move to right side */
+  align-self: center;
+}
+
+/* Center area: Characters, Cost Area, Trash */
 .player-area__center {
   display: flex;
-  flex-direction: row;
-  gap: 16px;
-  align-items: center;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 0 auto;
+  justify-content: center;
+  align-items: stretch;
+  order: 2;
+  align-self: center;
 }
 
-.player-area__right {
+/* Bottom row: Cost Area | Trash */
+.player-area__bottom-row {
   display: flex;
   flex-direction: row;
   gap: 12px;
+  justify-content: flex-start;
+  align-items: stretch;
+}
+
+/* Stage Zone - same size as other zones */
+.zone--stage {
+  width: 120px;
+  min-height: 180px;
+  height: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
+  border-color: rgba(138, 43, 226, 0.4); /* Purple border for stage */
+  flex-shrink: 0;
+}
+
+/* Empty placeholder for zones without cards */
+.zone-empty-placeholder {
+  width: 100px;
+  height: 140px;
+  border: 2px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .player-area--opponent {
-  border-bottom: 2px solid rgba(255, 255, 255, 0.15);
+  border-bottom: 2px solid rgba(241, 196, 15, 0.6);
+  box-shadow: 0 4px 12px rgba(241, 196, 15, 0.3), 0 2px 6px rgba(241, 196, 15, 0.4);
+  transform: scaleY(-1);
 }
 
 .player-area--player {
-  border-top: 2px solid rgba(255, 255, 255, 0.15);
+  border-top: 2px solid rgba(241, 196, 15, 0.6);
+  box-shadow: 0 -4px 12px rgba(241, 196, 15, 0.3), 0 -2px 6px rgba(241, 196, 15, 0.4);
 }
 
 .player-area__playmat {
@@ -123,14 +252,15 @@
   top: 0;
   left: 0;
   right: 0;
-  bottom: 0;
-  background-size: cover;
+  bottom: -85px;
+  background-size: 1700px 100%;
   background-position: center;
-  opacity: 0.3;
+  background-repeat: no-repeat;
+  opacity: 0.25;
   z-index: 0;
 }
 
-.player-area > * {
+.player-area > *:not(.player-area__playmat) {
   position: relative;
   z-index: 1;
 }
@@ -141,19 +271,21 @@
 
 .zone {
   position: relative;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px dashed rgba(255, 255, 255, 0.15);
-  border-radius: 6px;
-  min-height: 160px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(241, 196, 15, 0.6);
+  border-radius: 4px;
+  min-height: 100px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s ease, border-color 0.2s ease;
+  box-shadow: 0 0 12px rgba(241, 196, 15, 0.4), 0 0 20px rgba(241, 196, 15, 0.2), inset 0 0 8px rgba(241, 196, 15, 0.15);
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .zone:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(241, 196, 15, 0.6);
+  box-shadow: 0 0 14px rgba(241, 196, 15, 0.4), inset 0 0 8px rgba(241, 196, 15, 0.15);
 }
 
 .zone--droppable {
@@ -166,56 +298,323 @@
   top: -18px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 9px;
-  color: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
+  font-weight: bold;
+  color: #f1c40f;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   white-space: nowrap;
 }
 
+/* Zone label positioned at bottom */
+.zone__label--bottom {
+  top: auto;
+  bottom: -20px;
+  font-size: 14px;
+}
+
+/* Zone label inside the zone, under the cards */
+.zone__label--inside {
+  top: auto;
+  bottom: 8px;
+  font-size: 64px;
+  letter-spacing: 8px;
+  color: rgba(241, 196, 15, 0.7);
+  z-index: 0;
+  pointer-events: none;
+}
+
 /* Life Zone */
 .zone--life {
-  width: 110px;
-  min-height: 160px;
+  width: 160px;
+  min-height: 240px;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px;
+  gap: 4px;
+  padding: 6px;
+  align-items: center;
+  justify-content: center;
 }
 
-/* DON Zone */
-.zone--don {
-  width: 110px;
-  min-height: 160px;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px;
+/* Life label uses default .zone__label positioning (above the zone) */
+
+/* Life bar positioning */
+.zone--life .life-bar {
+  margin-top: 0;
 }
 
-.zone--don .don-count {
-  font-size: 24px;
+/* Hide the life count number */
+.zone--life .life-bar__count {
+  display: none;
+}
+
+/* Life Stack - Vertical stack of horizontal (rotated) cards */
+.life-stack {
+  position: relative;
+  width: 140px;
+  height: 220px;
+}
+
+.life-stack .game-card {
+  position: absolute;
+  width: 100px;
+  height: 140px;
+  transform: rotate(90deg);
+  transform-origin: center center;
+  left: 20px;
+}
+
+.life-stack .game-card:nth-child(1) { top: -5px; z-index: 5; }
+.life-stack .game-card:nth-child(2) { top: 15px; z-index: 4; }
+.life-stack .game-card:nth-child(3) { top: 35px; z-index: 3; }
+.life-stack .game-card:nth-child(4) { top: 55px; z-index: 2; }
+.life-stack .game-card:nth-child(5) { top: 75px; z-index: 1; }
+
+/* Disable hover effects on life stack cards */
+.life-stack .game-card:hover {
+  transform: rotate(90deg) scale(1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* DON Deck Zone - stacked pile */
+.zone--don-deck {
+  width: 120px;
+  min-height: 160px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-color: rgba(241, 196, 15, 0.3);
+}
+
+/* Deck Zone */
+.zone--deck {
+  width: 120px;
+  min-height: 180px;
+  height: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Trash Zone */
+.zone--trash {
+  width: 120px;
+  min-height: 160px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.don-deck-pile {
+  position: relative;
+  width: 100px;
+  height: 140px;
+  margin-left: -4px; /* Compensate for stacked layer offsets */
+}
+
+.don-deck-layer {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #8b6914 0%, #5c4a0f 100%);
+  border-radius: 4px;
+  border: 1px solid rgba(241, 196, 15, 0.3);
+}
+
+.don-deck-layer--2 {
+  top: -3px;
+  left: 3px;
+}
+
+.don-deck-layer--3 {
+  top: -6px;
+  left: 6px;
+}
+
+.don-deck-top {
+  position: relative;
+  z-index: 2;
+}
+
+.don-deck-count {
+  position: absolute;
+  bottom: -8px;
+  right: -8px;
+  background: #f1c40f;
+  color: #000;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
   font-weight: bold;
-  color: #f1c40f;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  z-index: 10;
+  opacity: 0;
+}
+
+/* Show DON deck count on zone hover */
+.zone--don-deck:hover .don-deck-count {
+  opacity: 1;
+}
+
+.don-deck-empty {
+  width: 100%;
+  height: 100%;
+  border: 2px dashed rgba(241, 196, 15, 0.3);
+  border-radius: 4px;
+}
+
+/* Cost Area Zone - DON cards in play - fixed size (fits 10 cards) */
+.zone--cost-area {
+  display: flex;
+  flex-direction: row;
+  gap: 3px;
+  padding: 4px 8px;
+  min-height: 80px;
+  flex: 1;
+  align-items: center;
+  justify-content: flex-start;
+  border-color: rgba(241, 196, 15, 0.3);
+  flex-wrap: wrap;
+}
+
+/* Cost Area label - uses inside styling via class modifier in JSX */
+
+/* Cost area cards container */
+.cost-area-cards {
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 /* Leader Zone */
 .zone--leader {
-  width: 116px;
-  min-height: 160px;
+  width: 120px;
+  min-height: 180px;
+  height: auto;
   padding: 8px;
   border-style: solid;
   border-color: rgba(241, 196, 15, 0.4);
+  flex-shrink: 0;
+  align-items: flex-end;
 }
 
-/* Character Zone */
+/* Card with attached DON wrapper */
+.card-with-don {
+  position: relative;
+  display: inline-block;
+}
+
+/* Character/Leader card stays on top */
+.card-with-don > .game-card {
+  position: relative;
+  z-index: 10;
+}
+
+/* Attached DON stack - positioned behind character with offset */
+.attached-don-stack {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+/* Individual DON card in stack - offset down-right */
+.attached-don-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+/* Full opacity for DON cards in stack */
+.attached-don-card .game-card {
+  opacity: 1 !important;
+}
+
+.attached-don-card:nth-child(1) {
+  top: 20px;
+  left: 20px;
+  z-index: 5;
+}
+
+.attached-don-card:nth-child(2) {
+  top: 40px;
+  left: 40px;
+  z-index: 4;
+}
+
+.attached-don-card:nth-child(3) {
+  top: 60px;
+  left: 60px;
+  z-index: 3;
+}
+
+.attached-don-card:nth-child(4) {
+  top: 80px;
+  left: 80px;
+  z-index: 2;
+}
+
+.attached-don-card:nth-child(5) {
+  top: 100px;
+  left: 100px;
+  z-index: 1;
+}
+
+/* Rested state - DON stack stays vertical, attached to rested card */
+.card-with-don--rested .attached-don-stack {
+  /* No rotation - DON stays vertical */
+  /* Keep same position - DON appears within the rested card's visual area */
+  top: 0;
+  left: 0;
+}
+
+/* DON offsets same as normal - stack down-right */
+.card-with-don--rested .attached-don-card:nth-child(1) {
+  top: 20px;
+  left: 20px;
+}
+
+.card-with-don--rested .attached-don-card:nth-child(2) {
+  top: 40px;
+  left: 40px;
+}
+
+.card-with-don--rested .attached-don-card:nth-child(3) {
+  top: 60px;
+  left: 60px;
+}
+
+.card-with-don--rested .attached-don-card:nth-child(4) {
+  top: 80px;
+  left: 80px;
+}
+
+.card-with-don--rested .attached-don-card:nth-child(5) {
+  top: 100px;
+  left: 100px;
+}
+
+/* Character Zone - fixed size (fits 10 cards) */
 .zone--characters {
   display: flex;
   flex-direction: row;
-  gap: 10px;
-  padding: 10px;
-  justify-content: flex-start;
-  min-width: 550px;
+  gap: 4px;
+  padding: 4px 12px;
   min-height: 160px;
+  width: 1060px;
+  align-items: flex-end;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 
 
@@ -227,13 +626,34 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 8px 16px;
-  min-height: 120px;
+  position: relative;
+  padding: 4px 30px; /* Extra horizontal padding for rested cards on edges */
+  min-height: 80px;
   background: linear-gradient(0deg, rgba(0, 0, 0, 0.3) 0%, transparent 100%);
+}
+
+/* Separator between player hand and player field */
+.hand-zone:not(.hand-zone--opponent) {
+  border-top: 2px solid rgba(241, 196, 15, 0.6);
+  box-shadow: 0 -4px 12px rgba(241, 196, 15, 0.3), 0 -2px 6px rgba(241, 196, 15, 0.4);
+  margin-top: 16px;
+  z-index: 2001; /* Stay above combat modal overlay */
 }
 
 .hand-zone--opponent {
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.3) 0%, transparent 100%);
+  position: relative;
+  z-index: 1;
+}
+
+.hand-zone--opponent .game-card {
+  position: relative;
+  z-index: 2;
+  transform: rotate(180deg);
+}
+
+.hand-zone--opponent .game-card:hover {
+  transform: rotate(180deg) translateY(4px) scale(1.1);
 }
 
 .hand-zone__cards {
@@ -242,7 +662,7 @@
 }
 
 .hand-zone__cards .game-card {
-  margin-left: -20px;
+  margin-left: -10px;
   transition: margin 0.15s ease, transform 0.15s ease, z-index 0s;
 }
 
@@ -251,9 +671,52 @@
 }
 
 .hand-zone__cards .game-card:hover {
-  margin-left: 5px;
-  margin-right: 25px;
+  margin-left: 3px;
+  margin-right: 13px;
   z-index: 100;
+}
+
+/* Card wrapper for spacing control (especially for rested cards in hand zone) */
+.hand-zone__card-wrapper {
+  display: inline-block;
+  margin-left: -10px;
+  transition: margin 0.15s ease;
+}
+
+.hand-zone__card-wrapper:first-child {
+  margin-left: 0;
+}
+
+/* Extra spacing for rested cards shown in hand zone (during blocker step) */
+.hand-zone__card-wrapper--rested {
+  margin-left: 28px; /* Add space on left for rested card rotation */
+  margin-right: 35px; /* Add extra space on right because rested cards are rotated 90deg */
+}
+
+/* Override first-child margin for rested cards (higher specificity needed) */
+.hand-zone__card-wrapper--rested.hand-zone__card-wrapper:first-child {
+  margin-left: 28px; /* Ensure first rested card still gets left margin */
+}
+
+.hand-zone__card-wrapper:hover {
+  margin-left: 3px;
+  margin-right: 13px;
+  z-index: 100;
+}
+
+.hand-zone__card-wrapper--rested:hover {
+  margin-left: 30px; /* Extra space on left when hovering rested cards */
+  margin-right: 45px; /* Extra space on right when hovering rested cards */
+}
+
+/* Override first-child hover margin for rested cards */
+.hand-zone__card-wrapper--rested.hand-zone__card-wrapper:first-child:hover {
+  margin-left: 30px; /* Ensure first rested card still gets left margin on hover */
+}
+
+/* Override direct .game-card margins when using wrapper */
+.hand-zone__card-wrapper .game-card {
+  margin-left: 0;
 }
 
 /* Opponent hand indicator */
@@ -273,7 +736,7 @@
   position: relative;
   width: 100px;
   height: 140px;
-  border-radius: 5px;
+  border-radius: 4px;
   overflow: hidden;
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -282,27 +745,27 @@
 }
 
 .game-card--small {
-  width: 60px;
-  height: 84px;
+  width: 50px;
+  height: 70px;
 }
 
 .game-card--large {
-  width: 120px;
-  height: 168px;
+  width: 86px;
+  height: 120px;
 }
 
 .game-card:hover {
-  transform: translateY(-8px) scale(1.05);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+  transform: translateY(-4px) scale(1.1);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
   z-index: 100;
 }
 
-.game-card--rested {
+.game-card.game-card--rested {
   transform: rotate(90deg);
 }
 
-.game-card--rested:hover {
-  transform: rotate(90deg) translateX(-8px) scale(1.05);
+.game-card.game-card--rested:hover {
+  transform: rotate(90deg) translateX(-4px) scale(1.1);
 }
 
 /* Highlight effects */
@@ -324,7 +787,51 @@
 
 .game-card--selected {
   box-shadow: 0 0 12px 4px rgba(52, 152, 219, 0.6);
-  transform: translateY(-4px);
+  transform: translateY(-2px);
+}
+
+/* DON card styling */
+.game-card--don {
+  width: 100px;
+  height: 140px;
+  border-radius: 4px;
+}
+
+.game-card--don:hover {
+  transform: translateY(-4px) scale(1.1);
+}
+
+/* Selected DON card - higher specificity to override DON styles */
+.game-card--don.game-card--selected {
+  box-shadow: 0 0 12px 4px rgba(52, 152, 219, 0.8);
+  transform: translateY(-4px) scale(1.05);
+  border: 2px solid #3498db;
+}
+
+/* Rested DON - rotated */
+.game-card.game-card--don.game-card--rested {
+  transform: rotate(90deg);
+  opacity: 0.7;
+}
+
+.game-card.game-card--don.game-card--rested:hover {
+  transform: rotate(90deg) translateX(-4px) scale(1.1);
+}
+
+/* Attached DON - dimmed */
+.game-card--don.game-card--attached {
+  opacity: 0.4;
+  transform: scale(0.9);
+  cursor: default;
+}
+
+/* DON attachment target - yellow/gold glow */
+.game-card--don-target {
+  box-shadow: 0 0 12px 4px rgba(241, 196, 15, 0.6);
+}
+
+.game-card--don-target:hover {
+  box-shadow: 0 0 16px 6px rgba(241, 196, 15, 0.8);
 }
 
 .game-card--attacking {
@@ -367,6 +874,13 @@
   border-radius: 4px;
 }
 
+.game-card__back-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
 /* Placeholder (when image fails) */
 .game-card__placeholder {
   width: 100%;
@@ -391,19 +905,19 @@
 }
 
 .game-card__placeholder-type {
-  font-size: 8px;
+  font-size: 6px;
   text-transform: uppercase;
   opacity: 0.7;
 }
 
 .game-card__placeholder-power {
-  font-size: 18px;
+  font-size: 12px;
   font-weight: bold;
 }
 
 .game-card__placeholder-name {
-  font-size: 8px;
-  max-width: 60px;
+  font-size: 6px;
+  max-width: 40px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -411,53 +925,113 @@
 
 .game-card__placeholder-cost {
   position: absolute;
-  top: 4px;
-  left: 4px;
-  width: 16px;
-  height: 16px;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
   background: rgba(0, 0, 0, 0.6);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: 8px;
   font-weight: bold;
 }
 
 /* Power badge */
 .game-card__power-badge {
   position: absolute;
-  bottom: 4px;
-  right: 4px;
+  bottom: 2px;
+  right: 2px;
   background: rgba(0, 0, 0, 0.8);
   color: #fff;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-size: 10px;
+  padding: 1px 3px;
+  border-radius: 2px;
+  font-size: 8px;
   font-weight: bold;
+  cursor: help;
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+
+/* Buffed power (positive buff) - green glow */
+.game-card__power-badge--buffed {
+  color: #4ade80;
+  text-shadow: 0 0 4px rgba(74, 222, 128, 0.8);
+}
+
+/* Debuffed power (negative buff) - red glow */
+.game-card__power-badge--debuffed {
+  color: #f87171;
+  text-shadow: 0 0 4px rgba(248, 113, 113, 0.8);
 }
 
 .game-card__attached-badge {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 2px;
+  right: 2px;
   background: #f1c40f;
   color: #000;
-  padding: 2px 4px;
-  border-radius: 3px;
-  font-size: 9px;
+  padding: 1px 2px;
+  border-radius: 2px;
+  font-size: 7px;
   font-weight: bold;
+}
+
+/* DON count badge shown on cards with attached DON */
+.game-card__don-badge {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  background: linear-gradient(135deg, #f1c40f 0%, #e67e22 100%);
+  color: #000;
+  padding: 1px 3px;
+  border-radius: 2px;
+  font-size: 8px;
+  font-weight: bold;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+}
+
+/* Card with stats wrapper */
+.card-with-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Stats label below card */
+.card-with-stats__stats {
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+  position: relative;
+  z-index: 20;
+}
+
+/* Buffed stats (positive power buff) */
+.card-with-stats__stats--buffed {
+  color: #4ade80;
+  text-shadow: 0 0 4px rgba(74, 222, 128, 0.8), 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* Debuffed stats (negative power buff) */
+.card-with-stats__stats--debuffed {
+  color: #f87171;
+  text-shadow: 0 0 4px rgba(248, 113, 113, 0.8), 0 1px 2px rgba(0, 0, 0, 0.8);
 }
 
 /* Selection ring */
 .game-card__ring {
   position: absolute;
-  top: -3px;
-  left: -3px;
-  right: -3px;
-  bottom: -3px;
-  border: 3px solid transparent;
-  border-radius: 7px;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  border: 2px solid transparent;
+  border-radius: 5px;
   pointer-events: none;
 }
 
@@ -475,6 +1049,16 @@
   border-color: #3498db;
 }
 
+.game-card--don-target .game-card__ring {
+  border-color: #f1c40f;
+  animation: pulse-gold 1.5s infinite;
+}
+
+@keyframes pulse-gold {
+  0%, 100% { box-shadow: 0 0 5px rgba(241, 196, 15, 0.5); }
+  50% { box-shadow: 0 0 15px rgba(241, 196, 15, 0.8); }
+}
+
 /* ===================================
    CARD PILE (Deck, Trash, Life)
    =================================== */
@@ -484,13 +1068,15 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   cursor: pointer;
+  box-sizing: border-box;
 }
 
 .card-pile__stack {
   position: relative;
-  width: 50px;
-  height: 70px;
+  width: 100px;
+  height: 140px;
 }
 
 .card-pile__layer {
@@ -498,18 +1084,26 @@
   width: 100%;
   height: 100%;
   background: linear-gradient(135deg, #2c3e50 0%, #1a252f 100%);
-  border-radius: 4px;
+  border-radius: 3px;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 0;
 }
 
 .card-pile__layer--2 {
   top: -2px;
-  left: 1px;
+  left: 2px;
+  z-index: 1;
 }
 
 .card-pile__layer--3 {
   top: -4px;
-  left: 2px;
+  left: 4px;
+  z-index: 0;
+}
+
+.card-pile__top {
+  position: relative;
+  z-index: 2;
 }
 
 .card-pile__top {
@@ -531,22 +1125,36 @@
   right: -4px;
   background: #e74c3c;
   color: #fff;
-  min-width: 20px;
-  height: 20px;
-  border-radius: 10px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: bold;
   z-index: 10;
+  opacity: 0;
+}
+
+/* Show count on zone hover */
+.zone--deck:hover .card-pile__count,
+.zone--trash:hover .card-pile__count {
+  opacity: 1;
+}
+
+/* Trash zone is clickable when it has cards */
+.zone--trash .card-pile {
+  cursor: pointer;
+}
+
+.zone--trash .card-pile:hover .card-pile__stack {
+  transform: scale(1.02);
+  transition: transform 0.2s;
 }
 
 .card-pile__label {
-  margin-top: 4px;
-  font-size: 9px;
-  color: rgba(255, 255, 255, 0.5);
-  text-transform: uppercase;
+  display: none; /* Label now provided by zone wrapper */
 }
 
 /* ===================================
@@ -563,8 +1171,8 @@
 }
 
 .card-preview__image-container {
-  width: 240px;
-  height: 336px;
+  width: 310px;
+  height: 434px;
   border-radius: 8px;
   overflow: hidden;
   background: #252540;
@@ -604,6 +1212,24 @@
   font-size: 12px;
   color: #888;
   margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.card-preview__colors {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.card-preview__color-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  display: inline-block;
 }
 
 .card-preview__stats {
@@ -631,19 +1257,206 @@
   text-transform: uppercase;
 }
 
+/* DON-boosted power styling - golden glow */
+.card-preview__stat--don-boosted .card-preview__stat-value {
+  color: #f1c40f;
+  text-shadow: 0 0 8px rgba(241, 196, 15, 0.8), 0 0 16px rgba(241, 196, 15, 0.5);
+}
+
+.card-preview__stat--don-boosted .card-preview__stat-label {
+  color: #f1c40f;
+}
+
+/* Combat buff power styling - purple glow */
+.card-preview__stat--combat-buffed .card-preview__stat-value {
+  color: #9b59b6;
+  text-shadow: 0 0 8px rgba(155, 89, 182, 0.8), 0 0 16px rgba(155, 89, 182, 0.5);
+}
+
+.card-preview__stat--combat-buffed .card-preview__stat-label {
+  color: #9b59b6;
+}
+
+/* Modified cost styling - green glow for cost reductions */
+.card-preview__stat-value--modified {
+  color: #22c55e !important;
+  font-weight: bold;
+  text-shadow: 0 0 8px rgba(34, 197, 94, 0.8), 0 0 16px rgba(34, 197, 94, 0.5);
+}
+
+.card-preview__traits {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid #333;
+  margin-top: 6px;
+}
+
+.card-preview__traits-value {
+  font-size: 14px;
+  font-weight: bold;
+  color: #fff;
+  text-align: center;
+}
+
+.card-preview__traits-label {
+  font-size: 10px;
+  color: #666;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
 .card-preview__effect {
-  font-size: 12px;
-  color: #aaa;
-  line-height: 1.4;
+  font-size: 18px;
+  font-weight: bold;
+  color: #ffffff;
+  line-height: 1.5;
   text-align: left;
-  padding: 8px;
-  background: rgba(0, 0, 0, 0.2);
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.4);
   border-radius: 4px;
+  margin-top: 8px;
+}
+
+.card-preview__effect-container {
+  width: 100%;
+  text-align: left;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 6px;
+  margin-top: 10px;
 }
 
 .card-preview__hidden {
   color: #666;
   font-style: italic;
+}
+
+.card-preview__activate {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.card-preview__activate-btn {
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  text-transform: uppercase;
+}
+
+.card-preview__activate-btn--active {
+  background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+  color: #fff;
+}
+
+.card-preview__activate-btn--active:hover {
+  background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
+  transform: scale(1.02);
+}
+
+.card-preview__activate-btn--active:active {
+  transform: scale(0.98);
+}
+
+.card-preview__activate-btn--disabled {
+  background: #444;
+  color: #888;
+  cursor: not-allowed;
+}
+
+.card-preview__activate-reason {
+  font-size: 11px;
+  color: #e74c3c;
+  text-align: center;
+}
+
+.card-preview__activate-instruction {
+  font-size: 13px;
+  color: #f39c12;
+  text-align: center;
+  padding: 8px;
+  background: rgba(243, 156, 18, 0.1);
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.card-preview__activate-btn--cancel {
+  background: linear-gradient(135deg, #7f8c8d 0%, #636e72 100%);
+  color: #fff;
+}
+
+.card-preview__activate-btn--cancel:hover {
+  background: linear-gradient(135deg, #636e72 0%, #4a5456 100%);
+  transform: scale(1.02);
+}
+
+.card-preview__activate-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.card-preview__activate-btn--skip {
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  color: #fff;
+}
+
+.card-preview__activate-btn--skip:hover {
+  background: linear-gradient(135deg, #2980b9 0%, #1f6b9e 100%);
+  transform: scale(1.02);
+}
+
+/* Play Effect Info - for ON_PLAY effects like ATTACH_DON */
+.card-preview__play-effect {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border: 1px solid #4a9eff;
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 12px;
+}
+
+.card-preview__play-effect-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.card-preview__play-effect-icon {
+  font-size: 18px;
+}
+
+.card-preview__play-effect-title {
+  font-weight: bold;
+  color: #4a9eff;
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+.card-preview__play-effect-description {
+  color: #ccc;
+  font-size: 12px;
+  margin: 0 0 8px 0;
+  line-height: 1.4;
+}
+
+.card-preview__play-effect-instruction {
+  color: #ffd700;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+  text-align: center;
+  padding: 8px;
+  background: rgba(255, 215, 0, 0.1);
+  border-radius: 4px;
 }
 
 /* ===================================
@@ -737,6 +1550,12 @@
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  opacity: 0;
+}
+
+/* Show life pips on zone hover */
+.zone--life:hover .life-bar {
+  opacity: 1;
 }
 
 .life-bar__container {
@@ -745,8 +1564,8 @@
 }
 
 .life-bar__pip {
-  width: 12px;
-  height: 12px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: #27ae60;
   transition: background-color 0.3s ease, transform 0.3s ease;
@@ -794,7 +1613,7 @@
   background: #1a1a2e;
   border-radius: 12px;
   padding: 32px 48px;
-  max-width: 800px;
+  max-width: 1000px;
   text-align: center;
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
@@ -809,7 +1628,40 @@
 .mulligan-panel__subtitle {
   font-size: 16px;
   color: #888;
-  margin-bottom: 28px;
+  margin-bottom: 16px;
+}
+
+.mulligan-panel__timer {
+  position: relative;
+  height: 8px;
+  background: #2d3748;
+  border-radius: 4px;
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+
+.mulligan-panel__timer-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #48bb78 0%, #38a169 100%);
+  border-radius: 4px;
+  transition: width 1s linear;
+}
+
+.mulligan-panel__timer-bar--urgent {
+  background: linear-gradient(90deg, #f56565 0%, #e53e3e 100%);
+  animation: pulse 0.5s ease-in-out infinite;
+}
+
+.mulligan-panel__timer-text {
+  position: absolute;
+  right: 8px;
+  top: -20px;
+  font-size: 14px;
+  font-weight: bold;
+  color: #a0aec0;
 }
 
 .mulligan-panel__cards {
@@ -829,10 +1681,16 @@
 .mulligan-panel__card-name {
   font-size: 12px;
   color: #aaa;
-  max-width: 100px;
+  max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Larger cards in mulligan panel */
+.mulligan-panel__card .game-card {
+  width: 150px;
+  height: 210px;
 }
 
 .mulligan-panel__buttons {
@@ -851,32 +1709,433 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.9);
+  background: rgba(0, 0, 0, 0.85);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   z-index: 2000;
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.game-over__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 32px;
 }
 
 .game-over__title {
-  font-size: 48px;
+  font-size: 56px;
   font-weight: bold;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
+  text-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
 }
 
 .game-over__title--victory {
-  color: #27ae60;
+  color: #2ecc71;
+  animation: victoryPulse 1.5s ease infinite;
 }
 
 .game-over__title--defeat {
   color: #e74c3c;
 }
 
+@keyframes victoryPulse {
+  0%, 100% { text-shadow: 0 0 20px rgba(46, 204, 113, 0.5), 0 4px 8px rgba(0, 0, 0, 0.5); }
+  50% { text-shadow: 0 0 40px rgba(46, 204, 113, 0.8), 0 4px 8px rgba(0, 0, 0, 0.5); }
+}
+
+.game-over__players {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.game-over__player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 24px;
+  border-radius: 12px;
+  min-width: 120px;
+}
+
+.game-over__player--winner {
+  background: linear-gradient(135deg, rgba(39, 174, 96, 0.3), rgba(46, 204, 113, 0.2));
+  border: 2px solid #27ae60;
+  box-shadow: 0 0 20px rgba(39, 174, 96, 0.4);
+}
+
+.game-over__player--loser {
+  background: linear-gradient(135deg, rgba(231, 76, 60, 0.2), rgba(192, 57, 43, 0.1));
+  border: 2px solid #e74c3c;
+  opacity: 0.8;
+}
+
+.game-over__player-icon {
+  font-size: 36px;
+}
+
+.game-over__player-name {
+  font-size: 16px;
+  font-weight: bold;
+  color: #fff;
+}
+
+.game-over__vs {
+  font-size: 20px;
+  color: #666;
+  font-weight: bold;
+}
+
 .game-over__reason {
   font-size: 18px;
-  color: #888;
+  color: #aaa;
   margin-bottom: 32px;
+  max-width: 400px;
+}
+
+/* ===================================
+   PLAYER AREA GAME OVER STATES
+   =================================== */
+
+.player-area--winner {
+  box-shadow: inset 0 0 40px rgba(39, 174, 96, 0.4), 0 0 25px rgba(39, 174, 96, 0.5);
+  border-color: #27ae60 !important;
+}
+
+.player-area--loser {
+  box-shadow: inset 0 0 30px rgba(231, 76, 60, 0.3);
+  border-color: #e74c3c !important;
+  filter: grayscale(30%) brightness(0.9);
+}
+
+/* Result banners */
+.player-area__result-banner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-15deg);
+  font-size: 42px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 6px;
+  padding: 12px 28px;
+  border-radius: 8px;
+  z-index: 100;
+  animation: bannerAppear 0.5s ease-out;
+  pointer-events: none;
+}
+
+.player-area__result-banner--winner {
+  color: #fff;
+  background: linear-gradient(135deg, #27ae60, #2ecc71);
+  box-shadow: 0 4px 25px rgba(39, 174, 96, 0.7);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+.player-area__result-banner--loser {
+  color: #fff;
+  background: linear-gradient(135deg, #c0392b, #e74c3c);
+  box-shadow: 0 4px 25px rgba(231, 76, 60, 0.7);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+@keyframes bannerAppear {
+  0% {
+    transform: translate(-50%, -50%) rotate(-15deg) scale(0);
+    opacity: 0;
+  }
+  60% {
+    transform: translate(-50%, -50%) rotate(-15deg) scale(1.1);
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(-15deg) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Winner leader card celebration effect */
+.game-card--winner-leader {
+  box-shadow: 0 0 20px 8px rgba(241, 196, 15, 0.8), 0 0 40px 16px rgba(39, 174, 96, 0.4) !important;
+  animation: winnerCelebrate 1s ease infinite !important;
+}
+
+/* Loser leader card fade effect */
+.game-card--loser-leader {
+  filter: grayscale(70%) brightness(0.7) !important;
+  opacity: 0.8 !important;
+}
+
+@keyframes winnerCelebrate {
+  0%, 100% {
+    box-shadow: 0 0 20px 8px rgba(241, 196, 15, 0.8), 0 0 40px 16px rgba(39, 174, 96, 0.4);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 30px 12px rgba(241, 196, 15, 1), 0 0 50px 20px rgba(39, 174, 96, 0.6);
+    transform: scale(1.02);
+  }
+}
+
+/* ===================================
+   TRASH PREVIEW MODAL
+   =================================== */
+
+.trash-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: calc(360px);  /* Leave space for sidebar preview */
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2500;  /* Below sidebar */
+}
+
+.trash-modal {
+  background: #1a1a2e;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  max-width: 800px;
+  max-height: 85vh;
+  min-width: 400px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.trash-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 12px;
+}
+
+.trash-modal__title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #f1c40f;
+  margin: 0;
+}
+
+.trash-modal__hint {
+  font-size: 12px;
+  color: #666;
+  font-style: italic;
+  flex: 1;
+  text-align: center;
+}
+
+.trash-modal__close {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.trash-modal__close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.trash-modal__content {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 16px;
+  padding: 20px;
+  overflow-y: auto;
+  max-height: 70vh;
+}
+
+.trash-modal__card {
+  display: flex;
+  justify-content: center;
+  position: relative;
+  cursor: pointer;
+}
+
+.trash-modal__card .game-card {
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.trash-modal__card:hover .game-card {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 1;
+}
+
+/* Pinned card styling */
+.trash-modal__card--pinned .game-card {
+  box-shadow: 0 0 0 3px #f1c40f, 0 0 20px rgba(241, 196, 15, 0.5);
+  transform: scale(1.05);
+}
+
+.trash-modal__pin-indicator {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  font-size: 16px;
+  z-index: 10;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+}
+
+/* ===================================
+   SETTINGS BUTTON & MODAL
+   =================================== */
+
+.settings-button {
+  background: rgba(241, 196, 15, 0.1);
+  border: 1px solid rgba(241, 196, 15, 0.3);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: rgba(241, 196, 15, 0.8);
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-button:hover {
+  background: rgba(241, 196, 15, 0.2);
+  color: #f1c40f;
+  border-color: rgba(241, 196, 15, 0.5);
+  box-shadow: 0 0 10px rgba(241, 196, 15, 0.3);
+}
+
+.settings-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+}
+
+.settings-modal {
+  background: #1a1a2e;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  min-width: 300px;
+  max-width: 400px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.settings-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.settings-modal__title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #f1c40f;
+  margin: 0;
+}
+
+.settings-modal__close {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.settings-modal__close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.settings-modal__content {
+  padding: 20px;
+}
+
+.settings-modal__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+}
+
+.settings-modal__label {
+  font-size: 14px;
+  color: #fff;
+}
+
+.settings-modal__toggle {
+  position: relative;
+  width: 60px;
+  height: 30px;
+  background: #444;
+  border: none;
+  border-radius: 15px;
+  cursor: pointer;
+  transition: background 0.3s;
+  padding: 0;
+}
+
+.settings-modal__toggle--on {
+  background: #27ae60;
+}
+
+.settings-modal__toggle-slider {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.3s;
+}
+
+.settings-modal__toggle--on .settings-modal__toggle-slider {
+  transform: translateX(30px);
+}
+
+.settings-modal__toggle-text {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  font-weight: bold;
+  color: #fff;
+  right: 8px;
+}
+
+.settings-modal__toggle--on .settings-modal__toggle-text {
+  right: auto;
+  left: 8px;
 }
 
 /* ===================================
@@ -950,6 +2209,34 @@
   }
 }
 
+/* Cost Modified Glow - Gold/Yellow for cards with reduced cost from stage effects */
+@keyframes pulse-cost-modified {
+  0%, 100% {
+    box-shadow: 0 0 8px 2px rgba(241, 196, 15, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 16px 6px rgba(241, 196, 15, 0.7);
+  }
+}
+
+.game-card--cost-modified {
+  animation: pulse-cost-modified 2s ease-in-out infinite;
+}
+
+/* Stage Active Effect - Purple pulsing glow for stages providing continuous effects */
+@keyframes pulse-stage-effect {
+  0%, 100% {
+    box-shadow: 0 0 10px 3px rgba(139, 92, 246, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 20px 8px rgba(139, 92, 246, 0.7);
+  }
+}
+
+.game-card--active-effect {
+  animation: pulse-stage-effect 2.5s ease-in-out infinite;
+}
+
 .card-entering {
   animation: card-play 0.3s ease-out;
 }
@@ -959,22 +2246,110 @@
 }
 
 /* ===================================
+   CARD DEALING ANIMATIONS
+   =================================== */
+
+/* Animating card - fixed position overlay */
+.animating-card {
+  position: fixed;
+  z-index: 2000;
+  pointer-events: none;
+  border-radius: 3px;
+  overflow: visible;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+}
+
+.animating-card--don {
+  border-radius: 3px;
+}
+
+.animating-card--flying {
+  /* Transition applied via inline styles for dynamic positions */
+}
+
+/* Card flip animation */
+.animating-card__flipper {
+  transform-style: preserve-3d;
+}
+
+.animating-card__face {
+  backface-visibility: hidden;
+}
+
+.animating-card__face--front {
+  transform: rotateY(180deg);
+}
+
+.animating-card__face--back {
+  transform: rotateY(0deg);
+}
+
+/* Blocking overlay during animations */
+.game-board--blocked {
+  position: relative;
+}
+
+.game-board--blocked .action-buttons {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.game-board--blocked .hand-zone__cards .game-card,
+.game-board--blocked .player-area .game-card {
+  pointer-events: none;
+}
+
+.game-board__blocking-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1500;
+  background: transparent;
+}
+
+/* Life zone hidden state during mulligan dealing */
+.zone--life--hidden {
+  opacity: 0;
+}
+
+.zone--life--hidden .life-stack,
+.zone--life--hidden .life-bar {
+  visibility: hidden;
+}
+
+/* Hand dealing indicator */
+.dealing-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.8;
+}
+
+/* ===================================
    RESPONSIVE
    =================================== */
 
 @media (max-width: 1200px) {
   .game-board {
-    grid-template-columns: 1fr 240px;
+    grid-template-columns: 1fr 280px;
   }
 
   .game-card {
-    width: 60px;
-    height: 84px;
+    width: 70px;
+    height: 98px;
   }
 
   .game-card--small {
-    width: 42px;
-    height: 60px;
+    width: 40px;
+    height: 56px;
   }
 }
 
@@ -986,4 +2361,865 @@
   .game-board__sidebar {
     display: none;
   }
+}
+
+/* ===================================
+   ATTACK PROMPT
+   =================================== */
+
+.attack-prompt {
+  position: fixed;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1500;
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.attack-prompt__content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(231, 76, 60, 0.4);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.attack-prompt__icon {
+  font-size: 24px;
+}
+
+.attack-prompt__text {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* ===================================
+   ATTACK EFFECT PROMPT
+   =================================== */
+
+.attack-effect-prompt {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2000;
+  animation: attackEffectFadeIn 0.3s ease;
+}
+
+@keyframes attackEffectFadeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.attack-effect-prompt__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 32px;
+  background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(155, 89, 182, 0.5);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  min-width: 300px;
+  max-width: 400px;
+}
+
+.attack-effect-prompt__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.attack-effect-prompt__icon {
+  font-size: 24px;
+}
+
+.attack-effect-prompt__title {
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.attack-effect-prompt__card-name {
+  color: #f1c40f;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.attack-effect-prompt__description {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  text-align: center;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.attack-effect-prompt__instruction {
+  color: #f1c40f;
+  font-size: 13px;
+  font-weight: 500;
+  margin: 0;
+}
+
+.attack-effect-prompt__buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.action-btn--use-effect {
+  background: linear-gradient(135deg, #27ae60 0%, #219a52 100%);
+  color: white;
+  padding: 10px 24px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.action-btn--use-effect:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+  transform: translateY(-1px);
+}
+
+.action-btn--use-effect:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.action-btn--skip-effect {
+  background: linear-gradient(135deg, #7f8c8d 0%, #6c7a7b 100%);
+  color: white;
+  padding: 10px 24px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.action-btn--skip-effect:hover {
+  background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
+  transform: translateY(-1px);
+}
+
+/* Attack effect target highlighting */
+.game-card--attack-effect-target {
+  box-shadow: 0 0 15px 5px rgba(155, 89, 182, 0.8) !important;
+  animation: attackEffectTargetPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes attackEffectTargetPulse {
+  0%, 100% {
+    box-shadow: 0 0 15px 5px rgba(155, 89, 182, 0.8);
+  }
+  50% {
+    box-shadow: 0 0 20px 8px rgba(155, 89, 182, 1);
+  }
+}
+
+.game-card--attack-effect-selected {
+  box-shadow: 0 0 20px 8px rgba(241, 196, 15, 0.9) !important;
+  transform: scale(1.05);
+}
+
+/* ===================================
+   PLAY EFFECT PROMPT (ON_PLAY abilities)
+   =================================== */
+
+.play-effect-prompt {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2000;
+  animation: playEffectFadeIn 0.3s ease;
+}
+
+@keyframes playEffectFadeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.play-effect-prompt__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 32px;
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(52, 152, 219, 0.5);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  min-width: 300px;
+  max-width: 400px;
+}
+
+.play-effect-prompt__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.play-effect-prompt__icon {
+  font-size: 24px;
+}
+
+.play-effect-prompt__title {
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.play-effect-prompt__card-name {
+  color: #f1c40f;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.play-effect-prompt__description {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  text-align: center;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.play-effect-prompt__instruction {
+  color: #f1c40f;
+  font-size: 13px;
+  font-weight: 500;
+  margin: 0;
+}
+
+.play-effect-prompt__buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+/* Play effect target highlighting */
+.game-card--play-effect-target {
+  box-shadow: 0 0 15px 5px rgba(52, 152, 219, 0.8) !important;
+  animation: playEffectTargetPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes playEffectTargetPulse {
+  0%, 100% {
+    box-shadow: 0 0 15px 5px rgba(52, 152, 219, 0.8);
+  }
+  50% {
+    box-shadow: 0 0 20px 8px rgba(52, 152, 219, 1);
+  }
+}
+
+.game-card--play-effect-selected {
+  box-shadow: 0 0 20px 8px rgba(241, 196, 15, 0.9) !important;
+  transform: scale(1.05);
+}
+
+/* Event effect target highlighting (orange glow) */
+.game-card--event-effect-target {
+  box-shadow: 0 0 15px 5px rgba(230, 126, 34, 0.8) !important;
+  animation: eventEffectTargetPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes eventEffectTargetPulse {
+  0%, 100% {
+    box-shadow: 0 0 15px 5px rgba(230, 126, 34, 0.8);
+  }
+  50% {
+    box-shadow: 0 0 20px 8px rgba(230, 126, 34, 1);
+  }
+}
+
+.game-card--event-effect-selected {
+  box-shadow: 0 0 20px 8px rgba(241, 196, 15, 0.9) !important;
+  transform: scale(1.05);
+}
+
+/* Counter effect target highlighting (cyan glow) */
+.game-card--counter-effect-target {
+  box-shadow: 0 0 15px 5px rgba(26, 188, 156, 0.8) !important;
+  animation: counterEffectTargetPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes counterEffectTargetPulse {
+  0%, 100% {
+    box-shadow: 0 0 15px 5px rgba(26, 188, 156, 0.8);
+  }
+  50% {
+    box-shadow: 0 0 20px 8px rgba(26, 188, 156, 1);
+  }
+}
+
+.game-card--counter-effect-selected {
+  box-shadow: 0 0 20px 8px rgba(241, 196, 15, 0.9) !important;
+  transform: scale(1.05);
+}
+
+/* ===================================
+   COUNTER NOTIFICATION
+   =================================== */
+
+.counter-notification {
+  position: fixed;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1500;
+  animation: counterSlideDown 0.3s ease;
+}
+
+@keyframes counterSlideDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.counter-notification__content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(52, 152, 219, 0.4);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.counter-notification__icon {
+  font-size: 24px;
+}
+
+.counter-notification__text {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* ===================================
+   ERROR BANNER
+   =================================== */
+
+.error-banner {
+  position: fixed;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1500;
+  cursor: pointer;
+  animation: errorSlideDown 0.3s ease;
+}
+
+@keyframes errorSlideDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.error-banner__content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(230, 126, 34, 0.4);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.error-banner__icon {
+  font-size: 24px;
+}
+
+.error-banner__text {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+/* ===================================
+   INFO BANNER (for ON_PLAY effects, etc.)
+   =================================== */
+
+.info-banner {
+  position: fixed;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1500;
+  cursor: pointer;
+  animation: infoSlideDown 0.3s ease;
+}
+
+@keyframes infoSlideDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.info-banner__content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(52, 152, 219, 0.4);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.info-banner__icon {
+  font-size: 24px;
+}
+
+.info-banner__text {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+/* ===================================
+   ATTACK ANIMATION
+   =================================== */
+
+.game-card--attack-jumping {
+  animation: attackJump 0.3s ease forwards;
+  z-index: 1000 !important;
+}
+
+.game-card--attack-returning {
+  animation: attackReturn 0.2s ease forwards;
+  z-index: 1000 !important;
+}
+
+@keyframes attackJump {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-60px) scale(1.15);
+  }
+  100% {
+    transform: translateY(-40px) scale(1.1);
+  }
+}
+
+@keyframes attackReturn {
+  0% {
+    transform: translateY(-40px) scale(1.1);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Attack target pulse */
+.game-card--attack-target {
+  animation: targetPulse 0.5s ease infinite;
+}
+
+@keyframes targetPulse {
+  0%, 100% {
+    box-shadow: 0 0 15px 5px rgba(231, 76, 60, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 25px 10px rgba(231, 76, 60, 0.9);
+  }
+}
+
+/* ===================================
+   LIFE DAMAGE INDICATOR
+   =================================== */
+
+.life-damage-indicator {
+  position: fixed;
+  z-index: 2500;
+  pointer-events: none;
+  animation: lifeDamageAppear 1.5s ease forwards;
+}
+
+.life-damage-indicator--player {
+  /* Position over player's life zone */
+  left: 100px;
+  bottom: 200px;
+}
+
+.life-damage-indicator--opponent {
+  /* Position over opponent's life zone */
+  left: 100px;
+  top: 200px;
+}
+
+.life-damage-indicator__text {
+  display: block;
+  font-size: 72px;
+  font-weight: bold;
+  color: #e74c3c;
+  text-shadow:
+    0 0 20px rgba(231, 76, 60, 0.8),
+    0 4px 8px rgba(0, 0, 0, 0.5),
+    2px 2px 0 #c0392b,
+    -2px -2px 0 #c0392b;
+}
+
+@keyframes lifeDamageAppear {
+  0% {
+    opacity: 0;
+    transform: scale(0.5) translateY(20px);
+  }
+  15% {
+    opacity: 1;
+    transform: scale(1.2) translateY(0);
+  }
+  30% {
+    transform: scale(1) translateY(0);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.8) translateY(-30px);
+  }
+}
+
+/* ===================================
+   PRE-GAME SETUP MODAL
+   =================================== */
+
+.pre-game-setup-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.pre-game-setup-modal {
+  background: linear-gradient(180deg, #2a2a4a 0%, #1a1a2e 100%);
+  border: 2px solid rgba(255, 215, 0, 0.5);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 1000px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+}
+
+.pre-game-setup-title {
+  color: #ffd700;
+  font-size: 24px;
+  font-weight: bold;
+  text-align: center;
+  margin: 0 0 12px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.pre-game-setup-description {
+  color: #fff;
+  font-size: 16px;
+  text-align: center;
+  margin: 0 0 16px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  line-height: 1.5;
+}
+
+.pre-game-setup-instruction {
+  color: #aaa;
+  font-size: 14px;
+  text-align: center;
+  margin: 0 0 16px;
+}
+
+.pre-game-setup-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: center;
+  padding: 16px 0;
+}
+
+.pre-game-card-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  border: 2px solid transparent;
+}
+
+.pre-game-card-wrapper:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-4px);
+}
+
+.pre-game-card-wrapper.selected {
+  border-color: #4ade80;
+  background: rgba(74, 222, 128, 0.15);
+  box-shadow: 0 0 20px rgba(74, 222, 128, 0.3);
+}
+
+.pre-game-card-name {
+  color: #fff;
+  font-size: 12px;
+  text-align: center;
+  margin-top: 8px;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Larger cards in pre-game setup modal */
+.pre-game-card-wrapper .game-card {
+  width: 150px;
+  height: 210px;
+}
+
+.pre-game-setup-no-cards {
+  color: #888;
+  font-size: 14px;
+  text-align: center;
+  padding: 24px;
+}
+
+.pre-game-setup-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+.pre-game-btn {
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.pre-game-btn-confirm {
+  background: linear-gradient(180deg, #4ade80 0%, #22c55e 100%);
+  color: #000;
+}
+
+.pre-game-btn-confirm:hover {
+  background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.4);
+}
+
+.pre-game-btn-skip {
+  background: linear-gradient(180deg, #6b7280 0%, #4b5563 100%);
+  color: #fff;
+}
+
+.pre-game-btn-skip:hover {
+  background: linear-gradient(180deg, #9ca3af 0%, #6b7280 100%);
+  transform: translateY(-2px);
+}
+
+/* ===================================
+   DECK REVEAL MODAL
+   =================================== */
+
+.deck-reveal-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.deck-reveal-modal__overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+}
+
+.deck-reveal-modal__content {
+  position: relative;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  padding: 28px 32px;
+  min-width: 500px;
+  max-width: 90vw;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  animation: deckRevealFadeIn 0.3s ease;
+}
+
+@keyframes deckRevealFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.deck-reveal-modal__title {
+  color: #f1c40f;
+  text-align: center;
+  margin: 0 0 12px 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.deck-reveal-modal__filter-info {
+  color: #aaa;
+  text-align: center;
+  margin: 0 0 20px 0;
+  font-size: 14px;
+}
+
+.deck-reveal-modal__trait {
+  color: #9b59b6;
+  font-weight: 600;
+}
+
+.deck-reveal-modal__cards {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.deck-reveal-modal__card-wrapper {
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.deck-reveal-modal__card-wrapper--dimmed {
+  opacity: 0.5;
+  filter: grayscale(50%);
+}
+
+.deck-reveal-modal__card-wrapper--dimmed:hover {
+  opacity: 0.7;
+}
+
+.deck-reveal-modal__card-label {
+  position: absolute;
+  bottom: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #e74c3c;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.deck-reveal-modal__no-matches {
+  color: #e74c3c;
+  text-align: center;
+  font-style: italic;
+  font-size: 16px;
+  margin: 20px 0;
+  padding: 12px;
+  background: rgba(231, 76, 60, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(231, 76, 60, 0.3);
+}
+
+.deck-reveal-modal__selection-info {
+  color: #3498db;
+  text-align: center;
+  font-size: 14px;
+  margin: 0 0 8px 0;
+}
+
+.deck-reveal-modal__remainder-info {
+  color: #888;
+  text-align: center;
+  font-size: 12px;
+  margin: 0 0 20px 0;
+}
+
+.deck-reveal-modal__buttons {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
 }

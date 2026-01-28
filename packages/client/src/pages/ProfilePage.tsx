@@ -278,80 +278,90 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Rank Progress */}
-      <div className="bg-gray-800 rounded-lg p-6 mt-6">
-        <h2 className="text-xl font-semibold mb-4">Rank Progress</h2>
+      {/* Rank Progress - Coming Soon */}
+      <div className="relative mt-6">
+        <div className={`bg-gray-800 rounded-lg p-6 ${!user?.isAdmin ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+          <h2 className="text-xl font-semibold mb-4">Rank Progress</h2>
 
-        <div className="flex items-center gap-4">
-          {/* Rank tiers */}
-          {[
-            { name: 'Bronze', min: 0, color: '#CD7F32' },
-            { name: 'Silver', min: 1000, color: '#C0C0C0' },
-            { name: 'Gold', min: 1200, color: '#FFD700' },
-            { name: 'Platinum', min: 1400, color: '#E5E4E2' },
-            { name: 'Diamond', min: 1600, color: '#B9F2FF' },
-            { name: 'Master', min: 1800, color: '#FFD700' },
-          ].map((tier, i) => {
-            const elo = displayUser.eloRating || 1000;
-            const isCurrentTier = elo >= tier.min && (i === 5 || elo < [0, 1000, 1200, 1400, 1600, 1800, Infinity][i + 1]);
+          <div className="flex items-center gap-4">
+            {/* Rank tiers */}
+            {[
+              { name: 'Bronze', min: 0, color: '#CD7F32' },
+              { name: 'Silver', min: 1000, color: '#C0C0C0' },
+              { name: 'Gold', min: 1200, color: '#FFD700' },
+              { name: 'Platinum', min: 1400, color: '#E5E4E2' },
+              { name: 'Diamond', min: 1600, color: '#B9F2FF' },
+              { name: 'Master', min: 1800, color: '#FFD700' },
+            ].map((tier, i) => {
+              const elo = displayUser.eloRating || 1000;
+              const isCurrentTier = elo >= tier.min && (i === 5 || elo < [0, 1000, 1200, 1400, 1600, 1800, Infinity][i + 1]);
 
-            return (
-              <div
-                key={tier.name}
-                className={`flex-1 text-center p-2 rounded ${isCurrentTier ? 'bg-gray-700 ring-2' : ''}`}
-                style={isCurrentTier ? { '--tw-ring-color': tier.color } as React.CSSProperties : undefined}
-              >
-                <div
-                  className={`text-2xl mb-1 ${isCurrentTier ? '' : 'opacity-50'}`}
-                  style={{ color: tier.color }}
-                >
-                  {['○', '☆', '★', '✦', '♦', '♔'][i]}
-                </div>
-                <p className={`text-xs ${isCurrentTier ? 'text-white' : 'text-gray-500'}`}>
-                  {tier.name}
-                </p>
-                <p className="text-xs text-gray-500">{tier.min}+</p>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Progress bar to next rank */}
-        <div className="mt-4">
-          {(() => {
-            const elo = displayUser.eloRating || 1000;
-            const tiers = [0, 1000, 1200, 1400, 1600, 1800, Infinity];
-            const currentTierIndex = tiers.findIndex((min, i) => elo >= min && elo < tiers[i + 1]);
-            const currentMin = tiers[currentTierIndex];
-            const nextMin = tiers[currentTierIndex + 1];
-
-            if (nextMin === Infinity) {
               return (
-                <p className="text-center text-gray-400 text-sm">
-                  You've reached the highest rank!
-                </p>
-              );
-            }
-
-            const progress = ((elo - currentMin) / (nextMin - currentMin)) * 100;
-
-            return (
-              <>
-                <div className="flex justify-between text-sm text-gray-400 mb-2">
-                  <span>{currentMin} ELO</span>
-                  <span>{nextMin - elo} ELO to next rank</span>
-                  <span>{nextMin} ELO</span>
-                </div>
-                <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  key={tier.name}
+                  className={`flex-1 text-center p-2 rounded ${isCurrentTier ? 'bg-gray-700 ring-2' : ''}`}
+                  style={isCurrentTier ? { '--tw-ring-color': tier.color } as React.CSSProperties : undefined}
+                >
                   <div
-                    className="h-full bg-red-600 transition-all"
-                    style={{ width: `${progress}%` }}
-                  />
+                    className={`text-2xl mb-1 ${isCurrentTier ? '' : 'opacity-50'}`}
+                    style={{ color: tier.color }}
+                  >
+                    {['○', '☆', '★', '✦', '♦', '♔'][i]}
+                  </div>
+                  <p className={`text-xs ${isCurrentTier ? 'text-white' : 'text-gray-500'}`}>
+                    {tier.name}
+                  </p>
+                  <p className="text-xs text-gray-500">{tier.min}+</p>
                 </div>
-              </>
-            );
-          })()}
+              );
+            })}
+          </div>
+
+          {/* Progress bar to next rank */}
+          <div className="mt-4">
+            {(() => {
+              const elo = displayUser.eloRating || 1000;
+              const tiers = [0, 1000, 1200, 1400, 1600, 1800, Infinity];
+              const currentTierIndex = tiers.findIndex((min, i) => elo >= min && elo < tiers[i + 1]);
+              const currentMin = tiers[currentTierIndex];
+              const nextMin = tiers[currentTierIndex + 1];
+
+              if (nextMin === Infinity) {
+                return (
+                  <p className="text-center text-gray-400 text-sm">
+                    You've reached the highest rank!
+                  </p>
+                );
+              }
+
+              const progress = ((elo - currentMin) / (nextMin - currentMin)) * 100;
+
+              return (
+                <>
+                  <div className="flex justify-between text-sm text-gray-400 mb-2">
+                    <span>{currentMin} ELO</span>
+                    <span>{nextMin - elo} ELO to next rank</span>
+                    <span>{nextMin} ELO</span>
+                  </div>
+                  <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-red-600 transition-all"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                </>
+              );
+            })()}
+          </div>
         </div>
+        {/* Coming Soon overlay for non-admins */}
+        {!user?.isAdmin && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="bg-yellow-600 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg">
+              Coming Soon
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Profile Customization - Only for own profile */}

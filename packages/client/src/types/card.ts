@@ -13,6 +13,8 @@ export interface Card {
   attribute: string | null;
   effect: string | null;
   trigger: string | null;
+  traits?: string[];
+  life?: number;  // Life count for leaders (4 or 5)
   imageUrl: string;
 }
 

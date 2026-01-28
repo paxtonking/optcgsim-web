@@ -46,6 +46,25 @@ npm run dev
 # - Backend: http://localhost:4000
 ```
 
+## Managing Dev Servers
+
+**IMPORTANT**: Before starting dev servers, always check if they're already running.
+
+### Check for running processes
+```bash
+netstat -ano | findstr ":3000 :4000"
+```
+
+### Stop all project processes
+```bash
+npm run stop
+```
+
+### Stop Docker (PostgreSQL)
+```bash
+docker stop optcgsim-postgres
+```
+
 ## Import Card Data
 
 After servers are running:

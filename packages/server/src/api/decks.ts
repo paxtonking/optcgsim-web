@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../services/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { authenticate, optionalAuth } from '../middleware/auth.js';
-import { DECK_SIZE, MAX_CARD_COPIES } from '@optcgsim/shared';
+import { DECK_SIZE, MAX_CARD_COPIES, parseLeaderRestrictions, cardViolatesRestriction } from '@optcgsim/shared';
 
 export const decksRouter = Router();
 
@@ -26,6 +26,7 @@ async function validateDeck(leaderId: string, cards: { cardId: string; count: nu
   // Check leader exists and is a LEADER type
   const leader = await prisma.card.findUnique({
     where: { id: leaderId },
+    select: { id: true, type: true, effectText: true, name: true },
   });
 
   if (!leader) {
@@ -46,7 +47,7 @@ async function validateDeck(leaderId: string, cards: { cardId: string; count: nu
   const cardIds = cards.map(c => c.cardId);
   const existingCards = await prisma.card.findMany({
     where: { id: { in: cardIds } },
-    select: { id: true, type: true, colors: true },
+    select: { id: true, type: true, colors: true, cost: true, name: true },
   });
 
   const existingCardIds = new Set(existingCards.map((c: any) => c.id));
@@ -66,6 +67,21 @@ async function validateDeck(leaderId: string, cards: { cardId: string; count: nu
   for (const card of cards) {
     if (card.count > MAX_CARD_COPIES) {
       throw new AppError(`Cannot have more than ${MAX_CARD_COPIES} copies of a card`, 400);
+    }
+  }
+
+  // Check leader deck building restrictions
+  if (leader.effectText) {
+    const { restrictions } = parseLeaderRestrictions(leader.effectText);
+    const cardMap = new Map(existingCards.map((c: any) => [c.id, c]));
+
+    for (const restriction of restrictions) {
+      for (const deckCard of cards) {
+        const card = cardMap.get(deckCard.cardId);
+        if (card && cardViolatesRestriction({ type: card.type, cost: card.cost }, restriction)) {
+          throw new AppError(`${card.name} violates leader restriction: ${restriction.description}`, 400);
+        }
+      }
     }
   }
 
@@ -190,6 +206,44 @@ decksRouter.get('/:id', optionalAuth, async (req, res, next) => {
     }
 
     res.json(deck);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Copy a public deck to user's collection
+decksRouter.post('/:id/copy', authenticate, async (req, res, next) => {
+  try {
+    const sourceDeck = await prisma.deck.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!sourceDeck) {
+      throw new AppError('Deck not found', 404);
+    }
+
+    // Only allow copying public decks (or user's own decks)
+    if (!sourceDeck.isPublic && sourceDeck.userId !== req.user!.id) {
+      throw new AppError('Cannot copy private deck', 403);
+    }
+
+    // Don't allow copying own deck through this endpoint (use duplicate instead)
+    if (sourceDeck.userId === req.user!.id) {
+      throw new AppError('Use duplicate to copy your own deck', 400);
+    }
+
+    // Create the copy with user's ID
+    const newDeck = await prisma.deck.create({
+      data: {
+        userId: req.user!.id,
+        name: `${sourceDeck.name} (Copy)`,
+        leaderId: sourceDeck.leaderId,
+        cards: sourceDeck.cards as any,
+        isPublic: false, // Copied decks are private by default
+      },
+    });
+
+    res.status(201).json(newDeck);
   } catch (error) {
     next(error);
   }

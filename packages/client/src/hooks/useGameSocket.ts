@@ -6,7 +6,6 @@ interface UseGameSocketOptions {
   gameId: string;
   playerId: string;
   isAIGame: boolean;
-  isSpectator: boolean;
   onStateUpdate: (state: GameState) => void;
   onGameEnd: (winner: string, reason: string) => void;
   onError: (error: string) => void;
@@ -15,10 +14,25 @@ interface UseGameSocketOptions {
 export interface UseGameSocketReturn {
   connected: boolean;
   sendAction: (action: GameAction) => void;
+  preGameSelect: (cardId: string) => void;
+  skipPreGame: () => void;
   keepHand: () => void;
   mulligan: () => void;
   playCard: (cardId: string, zone?: string) => void;
-  declareAttack: (attackerId: string, targetId: string) => void;
+  declareAttack: (attackerId: string, targetId: string, targetType: 'leader' | 'character') => void;
+  resolveAttackEffect: (effectId: string, selectedTargets: string[]) => void;
+  skipAttackEffect: (effectId: string) => void;
+  resolvePlayEffect: (effectId: string, selectedTargets: string[]) => void;
+  skipPlayEffect: (effectId: string) => void;
+  resolveActivateEffect: (effectId: string, selectedTargets: string[]) => void;
+  skipActivateEffect: (effectId: string) => void;
+  resolveEventEffect: (effectId: string, selectedTargets: string[]) => void;
+  skipEventEffect: (effectId: string) => void;
+  resolveCounterEffect: (effectId: string, selectedTargets: string[]) => void;
+  resolveDeckReveal: (selectedCardIds: string[]) => void;
+  skipDeckReveal: () => void;
+  payAdditionalCost: (costId: string) => void;
+  skipAdditionalCost: (costId: string) => void;
   endTurn: () => void;
   pass: () => void;
   useCounter: (cardIds: string[]) => void;
@@ -26,13 +40,15 @@ export interface UseGameSocketReturn {
   activateTrigger: (cardId: string) => void;
   passTrigger: () => void;
   attachDon: (donId: string, targetId: string) => void;
+  selectBlocker: (blockerId: string) => void;
+  passBlocker: () => void;
+  activateAbility: (cardId: string, targets?: string[]) => void;
 }
 
 export function useGameSocket({
   gameId,
   playerId,
   isAIGame,
-  isSpectator,
   onStateUpdate,
   onGameEnd,
   onError
@@ -70,6 +86,7 @@ export function useGameSocket({
 
     // State update handler
     const handleState = (data: { gameState: GameState }) => {
+      console.log('[useGameSocket] Received game:state - Phase:', data.gameState?.phase, 'Turn:', data.gameState?.turn);
       onStateUpdate(data.gameState);
     };
 
@@ -99,18 +116,8 @@ export function useGameSocket({
     socket.on('game:error', handleError);
 
     // Request initial state
-    if (isSpectator) {
-      socket.emit('spectate:join', gameId, (response: { success: boolean; state?: GameState; error?: string }) => {
-        if (response.success && response.state) {
-          onStateUpdate(response.state);
-        } else if (response.error) {
-          onError(response.error);
-        }
-      });
-    } else {
-      const getStateEvent = isAIGame ? 'ai:getState' : 'game:getState';
-      socket.emit(getStateEvent, { gameId });
-    }
+    const getStateEvent = isAIGame ? 'ai:getState' : 'game:getState';
+    socket.emit(getStateEvent, { gameId });
 
     // Cleanup
     return () => {
@@ -118,14 +125,18 @@ export function useGameSocket({
       socket.off('game:action:result', handleActionResult);
       socket.off('game:ended', handleGameEnd);
       socket.off('game:error', handleError);
-
-      if (isSpectator) {
-        socket.emit('spectate:leave', gameId);
-      }
     };
-  }, [gameId, isAIGame, isSpectator, onStateUpdate, onGameEnd, onError]);
+  }, [gameId, isAIGame, onStateUpdate, onGameEnd, onError]);
 
   // Action methods
+  const preGameSelect = useCallback((cardId: string) => {
+    sendAction(createAction(ActionType.PRE_GAME_SELECT, { cardId }));
+  }, [sendAction, createAction]);
+
+  const skipPreGame = useCallback(() => {
+    sendAction(createAction(ActionType.SKIP_PRE_GAME));
+  }, [sendAction, createAction]);
+
   const keepHand = useCallback(() => {
     sendAction(createAction(ActionType.KEEP_HAND));
   }, [sendAction, createAction]);
@@ -138,8 +149,60 @@ export function useGameSocket({
     sendAction(createAction(ActionType.PLAY_CARD, { cardId, zone }));
   }, [sendAction, createAction]);
 
-  const declareAttack = useCallback((attackerId: string, targetId: string) => {
-    sendAction(createAction(ActionType.DECLARE_ATTACK, { attackerId, targetId }));
+  const declareAttack = useCallback((attackerId: string, targetId: string, targetType: 'leader' | 'character') => {
+    sendAction(createAction(ActionType.DECLARE_ATTACK, { attackerId, targetId, targetType }));
+  }, [sendAction, createAction]);
+
+  const resolveAttackEffect = useCallback((effectId: string, selectedTargets: string[]) => {
+    sendAction(createAction(ActionType.RESOLVE_ATTACK_EFFECT, { effectId, selectedTargets }));
+  }, [sendAction, createAction]);
+
+  const skipAttackEffect = useCallback((effectId: string) => {
+    sendAction(createAction(ActionType.SKIP_ATTACK_EFFECT, { effectId }));
+  }, [sendAction, createAction]);
+
+  const resolvePlayEffect = useCallback((effectId: string, selectedTargets: string[]) => {
+    sendAction(createAction(ActionType.RESOLVE_PLAY_EFFECT, { effectId, selectedTargets }));
+  }, [sendAction, createAction]);
+
+  const skipPlayEffect = useCallback((effectId: string) => {
+    sendAction(createAction(ActionType.SKIP_PLAY_EFFECT, { effectId }));
+  }, [sendAction, createAction]);
+
+  const resolveActivateEffect = useCallback((effectId: string, selectedTargets: string[]) => {
+    sendAction(createAction(ActionType.RESOLVE_ACTIVATE_EFFECT, { effectId, selectedTargets }));
+  }, [sendAction, createAction]);
+
+  const skipActivateEffect = useCallback((effectId: string) => {
+    sendAction(createAction(ActionType.SKIP_ACTIVATE_EFFECT, { effectId }));
+  }, [sendAction, createAction]);
+
+  const resolveEventEffect = useCallback((effectId: string, selectedTargets: string[]) => {
+    sendAction(createAction(ActionType.RESOLVE_EVENT_EFFECT, { effectId, selectedTargets }));
+  }, [sendAction, createAction]);
+
+  const skipEventEffect = useCallback((effectId: string) => {
+    sendAction(createAction(ActionType.SKIP_EVENT_EFFECT, { effectId }));
+  }, [sendAction, createAction]);
+
+  const resolveCounterEffect = useCallback((effectId: string, selectedTargets: string[]) => {
+    sendAction(createAction(ActionType.RESOLVE_COUNTER_EFFECT, { effectId, selectedTargets }));
+  }, [sendAction, createAction]);
+
+  const resolveDeckReveal = useCallback((selectedCardIds: string[]) => {
+    sendAction(createAction(ActionType.RESOLVE_DECK_REVEAL, { selectedCardIds }));
+  }, [sendAction, createAction]);
+
+  const skipDeckReveal = useCallback(() => {
+    sendAction(createAction(ActionType.SKIP_DECK_REVEAL, {}));
+  }, [sendAction, createAction]);
+
+  const payAdditionalCost = useCallback((costId: string) => {
+    sendAction(createAction(ActionType.PAY_ADDITIONAL_COST, { costId }));
+  }, [sendAction, createAction]);
+
+  const skipAdditionalCost = useCallback((costId: string) => {
+    sendAction(createAction(ActionType.SKIP_ADDITIONAL_COST, { costId }));
   }, [sendAction, createAction]);
 
   const endTurn = useCallback(() => {
@@ -170,19 +233,49 @@ export function useGameSocket({
     sendAction(createAction(ActionType.ATTACH_DON, { donId, targetId }));
   }, [sendAction, createAction]);
 
+  const selectBlocker = useCallback((blockerId: string) => {
+    sendAction(createAction(ActionType.SELECT_BLOCKER, { blockerId }));
+  }, [sendAction, createAction]);
+
+  const passBlocker = useCallback(() => {
+    sendAction(createAction(ActionType.PASS_PRIORITY));
+  }, [sendAction, createAction]);
+
+  const activateAbility = useCallback((cardId: string, targets?: string[]) => {
+    sendAction(createAction(ActionType.ACTIVATE_ABILITY, { cardId, targets }));
+  }, [sendAction, createAction]);
+
   return {
     connected: connectedRef.current,
     sendAction,
+    preGameSelect,
+    skipPreGame,
     keepHand,
     mulligan,
     playCard,
     declareAttack,
+    resolveAttackEffect,
+    skipAttackEffect,
+    resolvePlayEffect,
+    skipPlayEffect,
+    resolveActivateEffect,
+    skipActivateEffect,
+    resolveEventEffect,
+    skipEventEffect,
+    resolveCounterEffect,
+    resolveDeckReveal,
+    skipDeckReveal,
+    payAdditionalCost,
+    skipAdditionalCost,
     endTurn,
     pass,
     useCounter,
     passCounter,
     activateTrigger,
     passTrigger,
-    attachDon
+    attachDon,
+    selectBlocker,
+    passBlocker,
+    activateAbility
   };
 }

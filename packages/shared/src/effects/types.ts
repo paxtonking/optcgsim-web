@@ -94,10 +94,12 @@ export enum EffectType {
   BUFF_COMBAT = 'BUFF_COMBAT',
   DEBUFF_POWER = 'DEBUFF_POWER',
   SET_POWER_ZERO = 'SET_POWER_ZERO',
+  SET_BASE_POWER = 'SET_BASE_POWER',  // Set base power to specific value
 
   // Cost modifications
   REDUCE_COST = 'REDUCE_COST',
   INCREASE_COST = 'INCREASE_COST',
+  DEBUFF_COST = 'DEBUFF_COST',  // Reduce opponent's character cost (for KO effects)
 
   // Draw effects
   DRAW_CARDS = 'DRAW_CARDS',
@@ -106,6 +108,7 @@ export enum EffectType {
   MILL_DECK = 'MILL_DECK',
   DISCARD_FROM_HAND = 'DISCARD_FROM_HAND',
   LOOK_AT_TOP_DECK = 'LOOK_AT_TOP_DECK',
+  SEARCH_AND_SELECT = 'SEARCH_AND_SELECT',  // Look at X cards, select matching ones, trash rest
 
   // Card movement
   RETURN_TO_HAND = 'RETURN_TO_HAND',
@@ -132,19 +135,26 @@ export enum EffectType {
   FREEZE = 'FREEZE',
   REST_CHARACTER = 'REST_CHARACTER',
   ACTIVATE_CHARACTER = 'ACTIVATE_CHARACTER',
+  REST_DON = 'REST_DON',             // Rest opponent's DON cards
+  SWAP_POWER = 'SWAP_POWER',         // Swap base power between characters
+  REDIRECT_ATTACK = 'REDIRECT_ATTACK', // Change attack target
 
   // Life effects
   ADD_TO_LIFE = 'ADD_TO_LIFE',
   TAKE_LIFE = 'TAKE_LIFE',
   TRASH_LIFE = 'TRASH_LIFE',
   LOOK_AT_LIFE = 'LOOK_AT_LIFE',
+  REORDER_LIFE = 'REORDER_LIFE',       // Look at all Life and reorder
+  PREVENT_LIFE_ADD = 'PREVENT_LIFE_ADD', // Cannot add Life to hand
 
   // Protection effects
   IMMUNE_EFFECTS = 'IMMUNE_EFFECTS',
   IMMUNE_COMBAT = 'IMMUNE_COMBAT',
   IMMUNE_KO = 'IMMUNE_KO',
+  IMMUNE_KO_UNTIL = 'IMMUNE_KO_UNTIL', // Cannot be K.O.'d until end of turn
   CANT_BE_BLOCKED = 'CANT_BE_BLOCKED',
   CANT_ATTACK = 'CANT_ATTACK',
+  CANT_BE_RESTED = 'CANT_BE_RESTED',   // Cannot be rested
 
   // Target manipulation
   BECOME_BLOCKER = 'BECOME_BLOCKER',
@@ -165,6 +175,7 @@ export enum EffectType {
   // Grant effects to other cards
   GRANT_KEYWORD = 'GRANT_KEYWORD',
   GRANT_EFFECT = 'GRANT_EFFECT',
+  GRANT_RUSH_VS_CHARACTERS = 'GRANT_RUSH_VS_CHARACTERS',
 }
 
 // ============================================
@@ -226,6 +237,7 @@ export enum ConditionType {
   DON_COUNT_OR_MORE = 'DON_COUNT_OR_MORE',
   DON_COUNT_OR_LESS = 'DON_COUNT_OR_LESS',
   DON_ATTACHED_COUNT = 'DON_ATTACHED_COUNT',
+  DON_ATTACHED_OR_MORE = 'DON_ATTACHED_OR_MORE',  // Card has X+ DON attached (for [DON!! x1] etc.)
 
   // Life conditions
   LIFE_COUNT_OR_MORE = 'LIFE_COUNT_OR_MORE',
@@ -263,6 +275,7 @@ export enum ConditionType {
   FIRST_TURN = 'FIRST_TURN',
 
   // Leader conditions
+  LEADER_IS = 'LEADER_IS',               // "If your Leader is [Name]"
   LEADER_HAS_COLOR = 'LEADER_HAS_COLOR',
   LEADER_HAS_TRAIT = 'LEADER_HAS_TRAIT',
 
@@ -288,6 +301,24 @@ export enum EffectDuration {
   UNTIL_END_OF_BATTLE = 'UNTIL_END_OF_BATTLE',
   WHILE_ON_FIELD = 'WHILE_ON_FIELD',
   PERMANENT = 'PERMANENT',
+}
+
+// ============================================
+// ADDITIONAL COST TYPES - Optional costs for effects
+// ============================================
+
+export enum AdditionalCostType {
+  REST_DON = 'REST_DON',         // "rest X of your DON!! cards"
+  TRASH_CARD = 'TRASH_CARD',     // "trash X cards from your hand"
+  RETURN_DON = 'RETURN_DON',     // "return X DON!! to your DON!! deck"
+  TRASH_FROM_HAND = 'TRASH_FROM_HAND', // Specifically from hand
+  LIFE = 'LIFE',                 // "place X cards from your Life face up at the top of your deck"
+}
+
+export interface AdditionalCost {
+  type: AdditionalCostType;
+  amount: number;
+  optional: boolean;  // "You may" makes it optional
 }
 
 // ============================================
@@ -346,7 +377,8 @@ export interface EffectCondition {
   colors?: string[];
   traits?: string[];
   cardTypes?: string[];
-  names?: string[];
+  names?: string[];             // For matching card names
+  leaderName?: string;          // For LEADER_IS condition: "If your Leader is [Name]"
   compare?: 'EQUAL' | 'OR_MORE' | 'OR_LESS' | 'EXACTLY';
 }
 
@@ -360,14 +392,15 @@ export interface EffectTarget {
 
 export interface TargetFilter {
   property: 'COST' | 'POWER' | 'COLOR' | 'TRAIT' | 'TYPE' | 'NAME' | 'STATE';
-  operator: 'EQUALS' | 'OR_MORE' | 'OR_LESS' | 'CONTAINS' | 'NOT_CONTAINS';
-  value: string | number | string[];
+  operator: 'EQUALS' | 'OR_MORE' | 'OR_LESS' | 'LESS_THAN_OR_EQUAL' | 'CONTAINS' | 'NOT_CONTAINS';
+  value: string | number | string[];  // Can be 'DON_COUNT' for dynamic value resolution
 }
 
 export interface EffectCost {
-  type: 'DON' | 'TRASH_CARD' | 'REST_DON' | 'RETURN_DON' | 'LIFE' | 'TRASH_FROM_HAND';
+  type: 'DON' | 'TRASH_CARD' | 'REST_DON' | 'RETURN_DON' | 'LIFE' | 'TRASH_FROM_HAND' | 'REST_SELF';
   count?: number;
   filters?: TargetFilter[];
+  optional?: boolean;  // "You may" makes this cost optional
 }
 
 export interface CardEffectDefinition {
@@ -390,6 +423,21 @@ export interface EffectAction {
   keyword?: string;
   conditions?: EffectCondition[];
   childEffects?: EffectAction[];  // For "then" effects
+  donCountByTarget?: {  // For ATTACH_DON effects: how many DON to attach per target type
+    leader: number;
+    character: number;
+  };
+  // For SEARCH_AND_SELECT effects
+  traitFilter?: string;           // Filter by trait (e.g., "Celestial Dragons")
+  excludeNames?: string[];        // Exclude cards with these names
+  maxCount?: number;              // Max cards to select (e.g., 1 for "up to 1")
+  selectAction?: 'ADD_TO_HAND' | 'PLAY_TO_FIELD' | 'ADD_TO_LIFE';
+  remainderAction?: 'TRASH' | 'DECK_BOTTOM' | 'SHUFFLE_INTO_DECK';
+  // For PLAY_FROM_TRASH / PLAY_FROM_DECK effects
+  playRested?: boolean;           // Play the card in rested state
+  // For IMMUNE_KO effects
+  immuneFrom?: string;            // Source of immunity (e.g., 'OPPONENT_CHARACTERS', 'ALL')
+  condition?: any;                // Additional condition for the effect
 }
 
 // ============================================

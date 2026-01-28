@@ -5,7 +5,6 @@ import { useDeckStore } from '../stores/deckStore';
 import { useCardStore } from '../stores/cardStore';
 import { useLobbyStore, type AIDifficulty } from '../stores/lobbyStore';
 import { CardDisplay } from '../components/CardDisplay';
-import { LiveGamesPanel } from '../components/LiveGamesPanel';
 import { FriendsPanel } from '../components/FriendsPanel';
 import { LobbyChatPanel } from '../components/LobbyChatPanel';
 
@@ -572,9 +571,6 @@ export default function LobbyPage() {
 
           {/* Practice vs AI - Hidden for guests */}
           {!isGuest && <AIPanel />}
-
-          {/* Live Games - Spectate */}
-          <LiveGamesPanel />
 
           {/* Friends Panel - Hidden for guests */}
           {!isGuest && <FriendsPanel />}

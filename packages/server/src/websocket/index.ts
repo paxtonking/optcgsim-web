@@ -15,6 +15,52 @@ interface AuthenticatedSocket extends Socket {
   isGuest?: boolean;
 }
 
+// Simple in-memory rate limiter for WebSocket events
+class RateLimiter {
+  private requests: Map<string, number[]> = new Map();
+
+  /**
+   * Check if action is allowed under rate limit
+   * @param key - Unique identifier (e.g., `${userId}:${action}`)
+   * @param limit - Max requests allowed
+   * @param windowMs - Time window in milliseconds
+   */
+  isAllowed(key: string, limit: number, windowMs: number): boolean {
+    const now = Date.now();
+    const timestamps = this.requests.get(key) || [];
+
+    // Remove old timestamps outside the window
+    const validTimestamps = timestamps.filter(t => now - t < windowMs);
+
+    if (validTimestamps.length >= limit) {
+      return false;
+    }
+
+    validTimestamps.push(now);
+    this.requests.set(key, validTimestamps);
+    return true;
+  }
+
+  // Cleanup old entries periodically
+  cleanup() {
+    const now = Date.now();
+    const maxAge = 60000; // 1 minute
+    for (const [key, timestamps] of this.requests.entries()) {
+      const valid = timestamps.filter(t => now - t < maxAge);
+      if (valid.length === 0) {
+        this.requests.delete(key);
+      } else {
+        this.requests.set(key, valid);
+      }
+    }
+  }
+}
+
+const rateLimiter = new RateLimiter();
+
+// Cleanup rate limiter every minute
+setInterval(() => rateLimiter.cleanup(), 60000);
+
 // Export presence manager for use in other modules
 let presenceManagerInstance: PresenceManager | null = null;
 
@@ -94,8 +140,11 @@ export function setupWebSocket(io: SocketServer) {
       }
     });
 
-    // Lobby chat events
+    // Lobby chat events (rate limited: 1 message per second)
     socket.on(WS_EVENTS.LOBBY_CHAT_SEND, (message: string) => {
+      if (!rateLimiter.isAllowed(`${socket.userId}:lobby-chat`, 1, 1000)) {
+        return; // Silently drop rate-limited messages
+      }
       lobbyChatManager.handleMessage(socket, message);
     });
 
@@ -112,7 +161,11 @@ export function setupWebSocket(io: SocketServer) {
       lobbyManager.createLobby(socket, settings, callback);
     });
 
+    // Rate limited: 5 attempts per minute (prevents lobby code brute-forcing)
     socket.on(WS_EVENTS.LOBBY_JOIN, (code, callback) => {
+      if (!rateLimiter.isAllowed(`${socket.userId}:lobby-join`, 5, 60000)) {
+        return callback?.({ success: false, error: 'Too many attempts. Please wait.' });
+      }
       lobbyManager.joinLobby(socket, code, callback);
     });
 
@@ -162,7 +215,11 @@ export function setupWebSocket(io: SocketServer) {
       gameManager.handleAction(socket, action, callback);
     });
 
+    // Rate limited: 1 message per second
     socket.on(WS_EVENTS.GAME_CHAT, (message) => {
+      if (!rateLimiter.isAllowed(`${socket.userId}:game-chat`, 1, 1000)) {
+        return; // Silently drop rate-limited messages
+      }
       gameManager.handleChat(socket, message);
     });
 
@@ -174,22 +231,22 @@ export function setupWebSocket(io: SocketServer) {
       gameManager.handleReconnect(socket, gameId, callback);
     });
 
-    // Spectator events
-    socket.on(WS_EVENTS.SPECTATE_JOIN, (gameId, callback) => {
-      gameManager.addSpectator(socket, gameId, callback);
+    // Rock-Paper-Scissors events (first player determination)
+    socket.on(WS_EVENTS.RPS_CHOOSE, (data: { gameId: string; choice: 'rock' | 'paper' | 'scissors' }) => {
+      gameManager.handleRPSChoice(socket, data.gameId, data.choice);
     });
 
-    socket.on(WS_EVENTS.SPECTATE_LEAVE, (gameId) => {
-      gameManager.removeSpectator(socket, gameId);
+    socket.on(WS_EVENTS.FIRST_CHOICE, (data: { gameId: string; goFirst: boolean }) => {
+      gameManager.handleFirstChoice(socket, data.gameId, data.goFirst);
     });
 
-    socket.on('spectate:getLiveGames', (callback) => {
-      const liveGames = gameManager.getLiveGames();
-      callback?.({ success: true, games: liveGames });
-    });
+    // Spectator functionality removed for security (prevents information leakage)
 
-    // Challenge events
+    // Challenge events (rate limited: 3 per minute)
     socket.on(WS_EVENTS.CHALLENGE_SEND, (data, callback) => {
+      if (!rateLimiter.isAllowed(`${socket.userId}:challenge`, 3, 60000)) {
+        return callback?.({ success: false, error: 'Too many challenge requests. Please wait.' });
+      }
       lobbyManager.sendChallenge(socket, data, callback);
     });
 
@@ -220,6 +277,11 @@ export function setupWebSocket(io: SocketServer) {
 
     socket.on('ai:surrender', () => {
       aiGameManager.handleSurrender(socket);
+    });
+
+    // AI game first choice (player chooses first/second)
+    socket.on('ai:first-choice', (data: { gameId: string; goFirst: boolean }) => {
+      aiGameManager.handleFirstChoice(socket, data.gameId, data.goFirst);
     });
 
     socket.on('ai:getState', (data) => {

@@ -14,14 +14,12 @@ export class GameController {
   private gameId?: string;
   private playerId?: string;
   private isAIGame: boolean;
-  private isSpectator: boolean;
   private lastStateSignature?: string;
   private socketListenersSetup = false;
   private resizeHandler?: () => void;
 
-  constructor(isAIGame: boolean = false, isSpectator: boolean = false) {
+  constructor(isAIGame: boolean = false) {
     this.isAIGame = isAIGame;
-    this.isSpectator = isSpectator;
     // Don't set up socket listeners here - do it in initialize()
   }
 
@@ -121,27 +119,12 @@ export class GameController {
     this.game.events.once('ready', () => {
       this.gameScene = this.game?.scene.getScene('GameScene') as GameScene;
 
-      // Only setup action listeners if not spectating
-      if (!this.isSpectator) {
-        this.setupSceneListeners();
-      }
+      this.setupSceneListeners();
 
-      // Join as spectator or request game state
-      if (this.isSpectator) {
-        console.log('[GameController] Joining as spectator...');
-        getSocket().emit('spectate:join', this.gameId, (response: { success: boolean; state?: GameState; error?: string }) => {
-          if (response.success && response.state) {
-            this.handleStateUpdate(response.state);
-          } else {
-            console.error('Failed to join as spectator:', response.error);
-          }
-        });
-      } else {
-        // Request initial game state using appropriate event for AI or regular games
-        const getStateEvent = this.isAIGame ? 'ai:getState' : 'game:getState';
-        console.log(`[GameController] Requesting game state via ${getStateEvent}, gameId: ${this.gameId}`);
-        getSocket().emit(getStateEvent, { gameId: this.gameId });
-      }
+      // Request initial game state using appropriate event for AI or regular games
+      const getStateEvent = this.isAIGame ? 'ai:getState' : 'game:getState';
+      console.log(`[GameController] Requesting game state via ${getStateEvent}, gameId: ${this.gameId}`);
+      getSocket().emit(getStateEvent, { gameId: this.gameId });
     });
   }
 
@@ -298,21 +281,13 @@ export class GameController {
 
     // Update the visual representation
     if (this.gameScene) {
-      // Spectators view from the first player's perspective
-      const playerIds = Object.keys(state.players);
-      const viewerId = this.isSpectator ? playerIds[0] : this.playerId;
+      const viewerId = this.playerId;
       console.log('[GameController] Updating game scene for viewer:', viewerId);
       if (viewerId) {
         this.gameScene.updateGameState(state, viewerId);
       }
     } else {
       console.warn('[GameController] gameScene not ready yet');
-    }
-
-    // Spectators can never take actions
-    if (this.isSpectator) {
-      this.disableActions();
-      return;
     }
 
     // Check if it's our turn
@@ -396,11 +371,6 @@ export class GameController {
   }
 
   public destroy() {
-    // Leave spectator mode if applicable
-    if (this.isSpectator && this.gameId) {
-      getSocket().emit('spectate:leave', this.gameId);
-    }
-
     // Reset lobby state to prevent navigation loop
     useLobbyStore.getState().reset();
 
@@ -428,7 +398,4 @@ export class GameController {
     getSocket().off('game:error');
   }
 
-  public getIsSpectator(): boolean {
-    return this.isSpectator;
-  }
 }

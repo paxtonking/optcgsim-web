@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../services/api';
+import { ComingSoonOverlay } from '../components/ComingSoonOverlay';
 
 type TournamentStatus = 'DRAFT' | 'REGISTRATION' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 type TournamentFormat = 'SINGLE_ELIMINATION' | 'DOUBLE_ELIMINATION' | 'SWISS' | 'ROUND_ROBIN';
@@ -74,10 +75,11 @@ export default function TournamentsPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Tournaments</h1>
-      </div>
+    <ComingSoonOverlay featureName="Tournaments">
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold">Tournaments</h1>
+        </div>
 
       {/* Filters */}
       <div className="bg-gray-800 rounded-lg p-4 mb-6">
@@ -171,6 +173,7 @@ export default function TournamentsPage() {
           })}
         </div>
       )}
-    </div>
+      </div>
+    </ComingSoonOverlay>
   );
 }

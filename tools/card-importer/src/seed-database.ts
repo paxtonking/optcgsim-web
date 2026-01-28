@@ -24,17 +24,72 @@ interface CardData {
   attribute: string | null;
   effect: string | null;
   trigger: string | null;
+  traits?: string[];
+  life?: number;  // Life count for leaders (4 or 5)
   imageUrl: string;
+}
+
+interface DeckCard {
+  cardId: string;
+  count: number;
+  name: string;
+}
+
+interface DeckData {
+  name: string;
+  leaderId: string;
+  leaderName: string;
+  cards: DeckCard[];
+  sourceUrl: string;
+}
+
+async function getOrCreateSystemUser(): Promise<string> {
+  // Look for existing system user
+  let systemUser = await prisma.user.findFirst({
+    where: { username: 'System' }
+  });
+
+  if (!systemUser) {
+    // Create system user for sample decks
+    systemUser = await prisma.user.create({
+      data: {
+        username: 'System',
+        email: 'system@optcgsim.local',
+        passwordHash: 'SYSTEM_USER_NO_LOGIN',
+        isAdmin: false,
+      }
+    });
+    console.log('Created System user for sample decks');
+  }
+
+  return systemUser.id;
 }
 
 async function main() {
   try {
     console.log('Loading card data...');
-    const cardsPath = path.join(__dirname, '../output/cards.json');
+    // Use the client data which has traits
+    const cardsPath = path.join(__dirname, '../../../packages/client/public/data/cards.json');
     const cardsData = await fs.readFile(cardsPath, 'utf-8');
     const cards: CardData[] = JSON.parse(cardsData);
-    
+
     console.log(`Found ${cards.length} cards to import`);
+
+    // Preserve existing structured effects before clearing
+    console.log('Preserving existing structured effects...');
+    const existingCards = await prisma.card.findMany({
+      select: { id: true, effects: true }
+    });
+    const preservedEffects = new Map<string, unknown>();
+    let preservedCount = 0;
+    for (const card of existingCards) {
+      // Only preserve if effects is an array with items (structured effects)
+      if (Array.isArray(card.effects) && card.effects.length > 0) {
+        preservedEffects.set(card.id, card.effects);
+        preservedCount++;
+      }
+    }
+    console.log(`  Preserved effects for ${preservedCount} cards`);
 
     // Clear existing cards
     console.log('Clearing existing cards...');
@@ -59,6 +114,18 @@ async function main() {
       sets.get(card.setCode)!.count++;
 
       try {
+        // Use preserved structured effects if available, otherwise use raw effect text
+        const existingEffects = preservedEffects.get(card.id);
+        const effects = existingEffects ?? (card.effect ? { raw: card.effect } : {});
+
+        // Combine effect and trigger fields into effectText
+        // The effect field may already contain trigger text (from new scraper)
+        // But for backwards compatibility, also check trigger field separately
+        let effectText = card.effect || '';
+        if (card.trigger && !effectText.includes(card.trigger)) {
+          effectText = effectText ? `${effectText} ${card.trigger}` : card.trigger;
+        }
+
         await prisma.card.create({
           data: {
             id: card.id,
@@ -71,9 +138,10 @@ async function main() {
             power: card.power,
             counter: card.counter,
             attribute: card.attribute,
-            traits: [], // Not in the current data
-            effects: card.effect ? { raw: card.effect } : {},
-            effectText: card.effect || '',
+            traits: card.traits || [],
+            life: card.type === 'LEADER' ? (card.life ?? 5) : null,
+            effects,
+            effectText,
             imageUrl: card.imageUrl || `/cards/${card.setCode}/${card.id}.png`,
           }
         });
@@ -103,6 +171,7 @@ async function main() {
     console.log(`\nSuccessfully imported:`);
     console.log(`  - ${imported} cards`);
     console.log(`  - ${sets.size} card sets`);
+    console.log(`  - ${preservedCount} cards with preserved structured effects`);
 
     // Show some stats
     const leaders = await prisma.card.count({ where: { type: 'LEADER' } });
@@ -115,6 +184,71 @@ async function main() {
     console.log(`  - Characters: ${characters}`);
     console.log(`  - Events: ${events}`);
     console.log(`  - Stages: ${stages}`);
+
+    // === DECK SEEDING ===
+    console.log('\n--- Seeding Decks ---');
+
+    // Load deck data
+    const decksPath = path.join(__dirname, '../../../packages/client/public/data/decks.json');
+    let decks: DeckData[] = [];
+
+    try {
+      const decksData = await fs.readFile(decksPath, 'utf-8');
+      decks = JSON.parse(decksData);
+      console.log(`Found ${decks.length} decks to import`);
+    } catch (error) {
+      console.log('No decks.json found, skipping deck seeding');
+    }
+
+    if (decks.length > 0) {
+      // Get or create system user
+      const userId = await getOrCreateSystemUser();
+
+      // Import each deck
+      let decksImported = 0;
+      let decksSkipped = 0;
+
+      for (const deck of decks) {
+        // Check if deck already exists (by name and leader)
+        const existing = await prisma.deck.findFirst({
+          where: {
+            name: deck.name,
+            leaderId: deck.leaderId,
+            userId: userId
+          }
+        });
+
+        if (existing) {
+          console.log(`  Skipping "${deck.name}" - already exists`);
+          decksSkipped++;
+          continue;
+        }
+
+        // Convert cards to the format expected by the Deck model
+        const cardsJson = deck.cards.map(c => ({
+          cardId: c.cardId,
+          count: c.count
+        }));
+
+        // Create the deck
+        await prisma.deck.create({
+          data: {
+            name: deck.name,
+            leaderId: deck.leaderId,
+            cards: cardsJson,
+            isPublic: true,
+            userId: userId,
+          }
+        });
+
+        console.log(`  Imported "${deck.name}" - Leader: ${deck.leaderName}`);
+        decksImported++;
+      }
+
+      console.log(`\nDeck import complete:`);
+      console.log(`  - Imported: ${decksImported}`);
+      console.log(`  - Skipped: ${decksSkipped}`);
+    }
 
   } catch (error) {
     console.error('Error:', error);

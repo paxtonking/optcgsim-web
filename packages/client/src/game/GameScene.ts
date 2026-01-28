@@ -1,3 +1,7 @@
+// @ts-nocheck
+// This file is legacy Phaser.js code kept for reference only.
+// It has been replaced by HTML/CSS React components in components/game/
+
 import Phaser from 'phaser';
 import { GameState, GameCard, CardZone, CardState, PlayerState, GamePhase } from '@optcgsim/shared';
 
@@ -53,12 +57,12 @@ export class GameScene extends Phaser.Scene {
   private soundEnabled = true;
 
   // Animation tracking
-  private previousCardPositions: Map<string, { x: number; y: number; zone: string }> = new Map();
+  private _previousCardPositions: Map<string, { x: number; y: number; zone: string }> = new Map();
   private animatingCards: Set<string> = new Set();
   private attackArrow?: Phaser.GameObjects.Graphics;
 
   // Board visuals
-  private backgroundRect?: Phaser.GameObjects.Rectangle;
+  private _backgroundRect?: Phaser.GameObjects.Rectangle;
   private zoneGraphics?: Phaser.GameObjects.Graphics;
 
   // Zone dimensions
@@ -419,7 +423,7 @@ export class GameScene extends Phaser.Scene {
   /**
    * Animate a card moving from one position to another
    */
-  private animateCardMove(
+  private _animateCardMove(
     cardSprite: Phaser.GameObjects.Image,
     toX: number,
     toY: number,
@@ -476,7 +480,7 @@ export class GameScene extends Phaser.Scene {
   /**
    * Animate a card being played (hand to field with scale effect)
    */
-  private animateCardPlay(
+  private _animateCardPlay(
     cardSprite: Phaser.GameObjects.Image,
     fromX: number,
     fromY: number,
@@ -516,7 +520,7 @@ export class GameScene extends Phaser.Scene {
   /**
    * Animate attack - card slides forward and back
    */
-  private animateAttack(attackerSprite: Phaser.GameObjects.Image, targetX: number, targetY: number) {
+  private _animateAttack(attackerSprite: Phaser.GameObjects.Image, targetX: number, targetY: number) {
     const originalX = attackerSprite.x;
     const originalY = attackerSprite.y;
 
@@ -608,7 +612,7 @@ export class GameScene extends Phaser.Scene {
   /**
    * Animate damage - card shakes and flashes red
    */
-  private animateDamage(cardSprite: Phaser.GameObjects.Image) {
+  private _animateDamage(cardSprite: Phaser.GameObjects.Image) {
     const originalX = cardSprite.x;
 
     this.playSound('damage');
@@ -633,7 +637,7 @@ export class GameScene extends Phaser.Scene {
   /**
    * Animate card being sent to trash
    */
-  private animateToTrash(cardSprite: Phaser.GameObjects.Image, trashX: number, trashY: number) {
+  private _animateToTrash(cardSprite: Phaser.GameObjects.Image, trashX: number, trashY: number) {
     cardSprite.setDepth(1000);
 
     this.tweens.add({
@@ -654,7 +658,7 @@ export class GameScene extends Phaser.Scene {
   /**
    * Animate drawing a card
    */
-  private animateDrawCard(cardSprite: Phaser.GameObjects.Image, deckX: number, deckY: number, handX: number, handY: number) {
+  private _animateDrawCard(cardSprite: Phaser.GameObjects.Image, deckX: number, deckY: number, handX: number, handY: number) {
     cardSprite.setPosition(deckX, deckY);
     cardSprite.setDepth(1000);
     cardSprite.setTexture('card-back');
@@ -702,7 +706,7 @@ export class GameScene extends Phaser.Scene {
   /**
    * Highlight a card needing attention (yellow glow)
    */
-  private highlightAttention(cardSprite: Phaser.GameObjects.Image) {
+  private _highlightAttention(cardSprite: Phaser.GameObjects.Image) {
     cardSprite.setData('highlighted', true);
     cardSprite.preFX?.clear();
     cardSprite.preFX?.addGlow(0xffff00, 4, 0, false, 0.1, 8);
@@ -738,8 +742,7 @@ export class GameScene extends Phaser.Scene {
 
     // Only highlight during your turn in main phase
     const isYourTurn = this.gameState.activePlayerId === this.playerId;
-    const isMainPhase = this.gameState.phase === GamePhase.MAIN_PHASE ||
-                        this.gameState.phase === 'main';
+    const isMainPhase = this.gameState.phase === GamePhase.MAIN_PHASE;
 
     if (!isYourTurn || !isMainPhase) {
       this.clearAllHighlights();
@@ -784,7 +787,7 @@ export class GameScene extends Phaser.Scene {
   /**
    * Show valid attack targets when selecting an attacker
    */
-  private showAttackTargets(attackerId: string) {
+  private _showAttackTargets(_attackerId: string) {
     if (!this.gameState || !this.playerId) return;
 
     const opponent = Object.values(this.gameState.players).find(p => p.id !== this.playerId);
@@ -811,7 +814,7 @@ export class GameScene extends Phaser.Scene {
 
   // ==================== END VISUAL EFFECTS ====================
 
-  private setupZones(width: number, height: number) {
+  private setupZones(width: number, _height: number) {
     // Card dimensions (76 x 106 at 1.2 scale)
     const cardW = this.CARD_WIDTH * this.CARD_SCALE;
     const cardH = this.CARD_HEIGHT * this.CARD_SCALE;
@@ -934,7 +937,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setupUI() {
-    const { width, height } = this.scale;
+    const { width, height: _height } = this.scale;
 
     // Turn/Phase indicator - top-left corner badge style
     const turnBadge = this.add.container(10, 10);
@@ -1362,7 +1365,7 @@ export class GameScene extends Phaser.Scene {
       // Visual DON stack (show up to 3 stacked cards)
       const stackCount = Math.min(totalDon, 3);
       for (let i = 0; i < stackCount; i++) {
-        const donSprite = this.add.image(
+        const _donSprite = this.add.image(
           donZone.x + donZone.width / 2 + i * 3,
           donZone.y + cardH / 2 + i * 3,
           'don-back'
@@ -1390,9 +1393,9 @@ export class GameScene extends Phaser.Scene {
 
     // Render deck (show stack with count)
     const deckZone = this.zones.get(`${prefix}-deck`);
-    if (deckZone && player.deck > 0) {
+    if (deckZone && player.deck.length > 0) {
       // Stack visual
-      for (let i = 0; i < Math.min(player.deck, 3); i++) {
+      for (let i = 0; i < Math.min(player.deck.length, 3); i++) {
         this.add.image(
           deckZone.x + cardW / 2 + i * 2,
           deckZone.y + cardH / 2 + i * 2,
@@ -1402,7 +1405,7 @@ export class GameScene extends Phaser.Scene {
 
       // Count badge
       this.add.circle(deckZone.x + cardW - 5, deckZone.y + 15, 14, 0x000000, 0.85);
-      this.add.text(deckZone.x + cardW - 5, deckZone.y + 15, `${player.deck}`, {
+      this.add.text(deckZone.x + cardW - 5, deckZone.y + 15, `${player.deck.length}`, {
         fontSize: '12px',
         color: '#ffffff',
         fontStyle: 'bold'

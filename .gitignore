@@ -72,3 +72,15 @@ packages/client/node_modules/.vite/
 *.key
 credentials.json
 service-account.json
+
+# Temporary files
+nul
+body.txt
+*.tmp
+
+# Backup files
+tools/card-importer/backups/
+
+# Analysis output (regenerated)
+tools/card-importer/audit-report.json
+tools/card-importer/unparsed-analysis.json

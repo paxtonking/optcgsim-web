@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AVATARS, BADGES, BADGE_RARITY_COLORS } from '@optcgsim/shared';
 import { api } from '../services/api';
+import { useAuthStore } from '../stores/authStore';
 
 interface ProfileCustomizationProps {
   currentAvatarId: string;
@@ -13,6 +14,7 @@ export function ProfileCustomization({
   currentBadges,
   onAvatarChange,
 }: ProfileCustomizationProps) {
+  const { user } = useAuthStore();
   const [selectedAvatar, setSelectedAvatar] = useState(currentAvatarId);
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'avatar' | 'badges'>('avatar');
@@ -119,56 +121,66 @@ export function ProfileCustomization({
 
       {/* Badges Tab */}
       {activeTab === 'badges' && (
-        <div>
-          <h3 className="text-lg font-semibold mb-4">Your Badges</h3>
+        <div className="relative">
+          {/* Coming Soon overlay for non-admins */}
+          {!user?.isAdmin && (
+            <div className="absolute inset-0 bg-gray-800/80 backdrop-blur-sm flex items-center justify-center z-10 rounded-lg">
+              <span className="bg-yellow-600 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg">
+                Coming Soon
+              </span>
+            </div>
+          )}
+          <div className={!user?.isAdmin ? 'opacity-40 pointer-events-none select-none' : ''}>
+            <h3 className="text-lg font-semibold mb-4">Your Badges</h3>
 
-          {/* Earned badges */}
-          {earnedBadges.length > 0 && (
-            <div className="mb-6">
-              <p className="text-sm text-gray-400 mb-3">Earned</p>
+            {/* Earned badges */}
+            {earnedBadges.length > 0 && (
+              <div className="mb-6">
+                <p className="text-sm text-gray-400 mb-3">Earned</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {earnedBadges.map((badge) => (
+                    <div
+                      key={badge.id}
+                      className={`flex items-center gap-3 p-3 bg-gray-700 rounded-lg border ${
+                        BADGE_RARITY_COLORS[badge.rarity as keyof typeof BADGE_RARITY_COLORS]
+                      }`}
+                    >
+                      <span className="text-2xl">{badge.icon}</span>
+                      <div>
+                        <p className="font-medium text-white">{badge.name}</p>
+                        <p className="text-xs text-gray-400">{badge.description}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Locked badges */}
+            <div>
+              <p className="text-sm text-gray-400 mb-3">Locked</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {earnedBadges.map((badge) => (
+                {unearnedBadges.map((badge) => (
                   <div
                     key={badge.id}
-                    className={`flex items-center gap-3 p-3 bg-gray-700 rounded-lg border ${
-                      BADGE_RARITY_COLORS[badge.rarity as keyof typeof BADGE_RARITY_COLORS]
-                    }`}
+                    className="flex items-center gap-3 p-3 bg-gray-700/50 rounded-lg border border-gray-600 opacity-60"
                   >
-                    <span className="text-2xl">{badge.icon}</span>
+                    <span className="text-2xl grayscale">{badge.icon}</span>
                     <div>
-                      <p className="font-medium text-white">{badge.name}</p>
-                      <p className="text-xs text-gray-400">{badge.description}</p>
+                      <p className="font-medium text-gray-400">{badge.name}</p>
+                      <p className="text-xs text-gray-500">{badge.description}</p>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-          )}
 
-          {/* Locked badges */}
-          <div>
-            <p className="text-sm text-gray-400 mb-3">Locked</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {unearnedBadges.map((badge) => (
-                <div
-                  key={badge.id}
-                  className="flex items-center gap-3 p-3 bg-gray-700/50 rounded-lg border border-gray-600 opacity-60"
-                >
-                  <span className="text-2xl grayscale">{badge.icon}</span>
-                  <div>
-                    <p className="font-medium text-gray-400">{badge.name}</p>
-                    <p className="text-xs text-gray-500">{badge.description}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+            {earnedBadges.length === 0 && (
+              <p className="text-gray-500 text-center py-8">
+                No badges earned yet. Play games and complete achievements to earn badges!
+              </p>
+            )}
           </div>
-
-          {earnedBadges.length === 0 && (
-            <p className="text-gray-500 text-center py-8">
-              No badges earned yet. Play games and complete achievements to earn badges!
-            </p>
-          )}
         </div>
       )}
     </div>

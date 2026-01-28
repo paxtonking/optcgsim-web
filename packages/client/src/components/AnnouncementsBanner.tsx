@@ -15,7 +15,7 @@ interface Announcement {
 const TYPE_STYLES: Record<AnnouncementType, { bg: string; border: string; icon: string }> = {
   INFO: { bg: 'bg-blue-900/30', border: 'border-blue-600', icon: 'Info' },
   UPDATE: { bg: 'bg-green-900/30', border: 'border-green-600', icon: 'New' },
-  EVENT: { bg: 'bg-purple-900/30', border: 'border-purple-600', icon: 'Event' },
+  EVENT: { bg: 'bg-accent/10', border: 'border-accent/60', icon: 'Event' },
   MAINTENANCE: { bg: 'bg-orange-900/30', border: 'border-orange-600', icon: 'Maintenance' },
   ALERT: { bg: 'bg-red-900/30', border: 'border-red-600', icon: 'Alert' },
 };
@@ -71,14 +71,14 @@ export default function AnnouncementsBanner() {
                   <span className="font-semibold">{announcement.title}</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-muted">
                     {new Date(announcement.publishedAt).toLocaleDateString()}
                   </span>
-                  <span className="text-gray-400">{isExpanded ? '−' : '+'}</span>
+                  <span className="text-muted">{isExpanded ? '-' : '+'}</span>
                 </div>
               </button>
               {isExpanded && (
-                <div className="px-4 pb-4 text-gray-300 whitespace-pre-wrap">
+                <div className="px-4 pb-4 text-sand/90 whitespace-pre-wrap">
                   {announcement.content}
                 </div>
               )}
