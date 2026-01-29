@@ -2271,7 +2271,49 @@ export class EffectEngine {
         console.warn(`Unhandled effect type: ${action.type}`);
     }
 
-    return { changes };
+    // If this action has childEffects (from "Then" clauses), convert them to PendingEffects
+    const result: { changes: StateChange[]; childEffects?: PendingEffect[] } = { changes };
+
+    if (action.childEffects && action.childEffects.length > 0) {
+      console.log('[resolveAction] Found childEffects:', action.childEffects.length);
+      result.childEffects = action.childEffects.map((childAction, index) => ({
+        id: `child-${Date.now()}-${index}`,
+        sourceCardId: context.sourceCard.id,
+        playerId: context.sourcePlayer.id,
+        effect: {
+          id: `child-effect-${Date.now()}-${index}`,
+          trigger: EffectTrigger.IMMEDIATE,
+          effects: [childAction],
+          description: `Then effect: ${childAction.type}`,
+        },
+        trigger: EffectTrigger.IMMEDIATE,
+        requiresChoice: this.childEffectRequiresChoice(childAction),
+        priority: 0,
+      }));
+    }
+
+    return result;
+  }
+
+  /**
+   * Check if a childEffect action requires player choice
+   */
+  private childEffectRequiresChoice(effect: EffectAction): boolean {
+    // Effects that require player to select cards/targets
+    const choiceEffects = [
+      EffectType.DISCARD_FROM_HAND,
+      EffectType.RETURN_TO_HAND,
+      EffectType.KO_CHARACTER,
+      EffectType.BUFF_POWER,
+      EffectType.DEBUFF_POWER,
+      EffectType.REST_CHARACTER,
+      EffectType.KO_COST_OR_LESS,
+      EffectType.KO_POWER_OR_LESS,
+      EffectType.SEND_TO_DECK_BOTTOM,
+      EffectType.SEND_TO_DECK_TOP,
+      EffectType.SEND_TO_TRASH,
+    ];
+    return choiceEffects.includes(effect.type);
   }
 
   // ============================================

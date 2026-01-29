@@ -70,6 +70,9 @@ export enum EffectTrigger {
   WHILE_RESTED = 'WHILE_RESTED',
   MANDATORY = 'MANDATORY',
   HAND_EMPTY = 'HAND_EMPTY',
+
+  // For childEffects (Then clauses) that execute immediately
+  IMMEDIATE = 'IMMEDIATE',
 }
 
 // ============================================

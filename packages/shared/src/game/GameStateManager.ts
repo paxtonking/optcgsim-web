@@ -1385,6 +1385,12 @@ export class GameStateManager {
     const result = this.effectEngine.resolveEffect(pending.effect, context);
     this.effectEngine.removePendingEffect(effectId);
 
+    // Process childEffects if any
+    if (result.childEffects && result.childEffects.length > 0) {
+      console.log('[resolveEffect] Processing', result.childEffects.length, 'childEffects');
+      this.processChildEffects(result.childEffects, pending.playerId, pending.sourceCardId);
+    }
+
     return result.changes;
   }
 
@@ -1795,6 +1801,12 @@ export class GameStateManager {
     // Resolve the effect
     const result = this.effectEngine.resolveEffect(activateEffect, context);
     console.log('[resolveActivateEffect] Effect result:', result);
+
+    // Process childEffects if any
+    if (result.childEffects && result.childEffects.length > 0) {
+      console.log('[resolveActivateEffect] Processing', result.childEffects.length, 'childEffects');
+      this.processChildEffects(result.childEffects, pendingEffect.playerId, pendingEffect.sourceCardId);
+    }
 
     return result.success;
   }
@@ -2926,6 +2938,12 @@ export class GameStateManager {
     const result = this.effectEngine.resolveEffect(activateEffect, context);
     console.log('[ActivateAbility] Effect result:', result);
 
+    // Process childEffects if any
+    if (result.childEffects && result.childEffects.length > 0) {
+      console.log('[ActivateAbility] Processing', result.childEffects.length, 'childEffects');
+      this.processChildEffects(result.childEffects, playerId, cardId);
+    }
+
     // If effect requires target selection and none provided, add to pending
     if (result.success && activateEffect.effects.some(e => e.target && e.target.count)) {
       if (!selectedTargets || selectedTargets.length === 0) {
@@ -3641,6 +3659,193 @@ export class GameStateManager {
     this.state.phase = GamePhase.MAIN_PHASE;
 
     return true;
+  }
+
+  /**
+   * Process childEffects from "Then" clauses
+   * Handles effects that need player choice vs auto-execute
+   * Supports recursion with depth limit of 3
+   */
+  private processChildEffects(
+    childEffects: PendingEffect[],
+    playerId: string,
+    sourceCardId: string,
+    depth: number = 0
+  ): void {
+    const MAX_DEPTH = 3;
+    if (depth >= MAX_DEPTH) {
+      console.warn('[processChildEffects] Max recursion depth reached:', depth);
+      return;
+    }
+
+    console.log('[processChildEffects] Processing', childEffects.length, 'effects at depth', depth);
+
+    for (const childEffect of childEffects) {
+      const effectAction = childEffect.effect.effects[0];
+      if (!effectAction) continue;
+
+      // Determine if this childEffect needs player choice
+      if (this.childEffectNeedsChoice(effectAction)) {
+        this.setupChildEffectChoice(effectAction, playerId, sourceCardId);
+      } else {
+        this.executeChildEffectImmediately(effectAction, playerId, sourceCardId, depth);
+      }
+    }
+  }
+
+  /**
+   * Check if a childEffect requires player choice
+   */
+  private childEffectNeedsChoice(effect: EffectAction): boolean {
+    const choiceEffects = [
+      EffectType.DISCARD_FROM_HAND,
+      EffectType.RETURN_TO_HAND,
+      EffectType.KO_CHARACTER,
+      EffectType.BUFF_POWER,
+      EffectType.DEBUFF_POWER,
+      EffectType.REST_CHARACTER,
+      EffectType.KO_COST_OR_LESS,
+      EffectType.KO_POWER_OR_LESS,
+      EffectType.SEND_TO_DECK_BOTTOM,
+      EffectType.SEND_TO_DECK_TOP,
+      EffectType.SEND_TO_TRASH,
+    ];
+    return choiceEffects.includes(effect.type);
+  }
+
+  /**
+   * Set up a childEffect that requires player choice
+   */
+  private setupChildEffectChoice(
+    effect: EffectAction,
+    playerId: string,
+    sourceCardId: string
+  ): void {
+    console.log('[setupChildEffectChoice] Setting up choice for:', effect.type);
+
+    switch (effect.type) {
+      case EffectType.DISCARD_FROM_HAND: {
+        const discardCount = effect.value || 1;
+        this.setupHandSelectEffect(
+          playerId,
+          sourceCardId,
+          `Trash ${discardCount} card${discardCount > 1 ? 's' : ''} from your hand`,
+          'TRASH',
+          discardCount,
+          discardCount,
+          false // Not optional for "then" effects
+        );
+        break;
+      }
+
+      case EffectType.RETURN_TO_HAND: {
+        // This would require target selection from field - needs different UI
+        console.warn('[setupChildEffectChoice] RETURN_TO_HAND childEffect not yet fully implemented');
+        break;
+      }
+
+      case EffectType.KO_CHARACTER:
+      case EffectType.KO_COST_OR_LESS:
+      case EffectType.KO_POWER_OR_LESS: {
+        // These require target selection - would need to set up pending effect for target selection
+        console.warn('[setupChildEffectChoice] KO childEffect requires target selection - not yet implemented');
+        break;
+      }
+
+      case EffectType.BUFF_POWER:
+      case EffectType.DEBUFF_POWER: {
+        // These require target selection
+        console.warn('[setupChildEffectChoice] Buff/Debuff childEffect requires target selection - not yet implemented');
+        break;
+      }
+
+      default:
+        console.warn('[setupChildEffectChoice] Unhandled choice effect type:', effect.type);
+    }
+  }
+
+  /**
+   * Execute a childEffect immediately (no player choice required)
+   */
+  private executeChildEffectImmediately(
+    effect: EffectAction,
+    playerId: string,
+    sourceCardId: string,
+    depth: number
+  ): void {
+    console.log('[executeChildEffectImmediately] Executing:', effect.type);
+
+    const player = this.state.players[playerId];
+    if (!player) return;
+
+    switch (effect.type) {
+      case EffectType.DRAW_CARDS: {
+        const drawCount = effect.value || 1;
+        this.drawCards(playerId, drawCount);
+        console.log('[executeChildEffectImmediately] Drew', drawCount, 'cards');
+        break;
+      }
+
+      case EffectType.BUFF_SELF: {
+        const card = this.findCard(sourceCardId);
+        if (card) {
+          // Add power buff
+          const buffValue = effect.value || 0;
+          card.power = (card.power || 0) + buffValue;
+          console.log('[executeChildEffectImmediately] Buffed self by', buffValue);
+        }
+        break;
+      }
+
+      case EffectType.ADD_TO_LIFE: {
+        const addCount = effect.value || 1;
+        for (let i = 0; i < addCount && player.deck.length > 0; i++) {
+          const card = player.deck.shift()!;
+          card.zone = CardZone.LIFE;
+          card.faceUp = false;
+          player.lifeCards.push(card);
+          player.life++;
+        }
+        console.log('[executeChildEffectImmediately] Added', addCount, 'to life');
+        break;
+      }
+
+      case EffectType.ACTIVE_DON: {
+        const activateCount = effect.value || 1;
+        let activated = 0;
+        for (const don of player.donField) {
+          if (don.state === CardState.RESTED && activated < activateCount) {
+            don.state = CardState.ACTIVE;
+            activated++;
+          }
+        }
+        console.log('[executeChildEffectImmediately] Activated', activated, 'DON');
+        break;
+      }
+
+      default:
+        console.warn('[executeChildEffectImmediately] Unhandled auto effect type:', effect.type);
+    }
+
+    // Check if this effect also has childEffects (recursive)
+    if (effect.childEffects && effect.childEffects.length > 0) {
+      console.log('[executeChildEffectImmediately] Found nested childEffects:', effect.childEffects.length);
+      const nestedPendingEffects: PendingEffect[] = effect.childEffects.map((childAction, index) => ({
+        id: `nested-child-${Date.now()}-${index}`,
+        sourceCardId: sourceCardId,
+        playerId: playerId,
+        effect: {
+          id: `nested-effect-${Date.now()}-${index}`,
+          trigger: EffectTrigger.IMMEDIATE,
+          effects: [childAction],
+          description: `Nested effect: ${childAction.type}`,
+        },
+        trigger: EffectTrigger.IMMEDIATE,
+        requiresChoice: this.childEffectNeedsChoice(childAction),
+        priority: 0,
+      }));
+      this.processChildEffects(nestedPendingEffects, playerId, sourceCardId, depth + 1);
+    }
   }
 
   /**
