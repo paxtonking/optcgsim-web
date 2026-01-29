@@ -124,9 +124,10 @@ export class ThreatAssessor {
 
       // Cards with KO effects
       const hasKOEffect = cardDef.effects.some(e =>
-        e.effects?.some(action =>
-          action.type === 'KO_CHARACTER' || action.type === 'TRASH_CHARACTER'
-        )
+        e.effects?.some(action => {
+          const actionType = action.type as string;
+          return actionType === 'KO_CHARACTER' || actionType === 'TRASH_CHARACTER';
+        })
       );
       if (hasKOEffect) {
         threatLevel += 2;

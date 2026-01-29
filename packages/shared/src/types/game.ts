@@ -24,6 +24,7 @@ export enum GamePhase {
   COUNTER_EFFECT_STEP = 'COUNTER_EFFECT_STEP', // Player selects targets for event counter effects
   ADDITIONAL_COST_STEP = 'ADDITIONAL_COST_STEP', // Player chooses whether to pay optional costs
   DECK_REVEAL_STEP = 'DECK_REVEAL_STEP',      // Player selects from revealed deck cards
+  HAND_SELECT_STEP = 'HAND_SELECT_STEP',      // Player selects cards from hand (discard, return, etc.)
   COUNTER_STEP = 'COUNTER_STEP',
   BLOCKER_STEP = 'BLOCKER_STEP',
   TRIGGER_STEP = 'TRIGGER_STEP',
@@ -242,6 +243,19 @@ export interface PendingDeckRevealEffect {
   excludeNames?: string[];     // e.g., ["The Five Elders Are at Your Service!!!"]
   selectAction: 'ADD_TO_HAND' | 'PLAY_TO_FIELD' | 'ADD_TO_LIFE';
   remainderAction: 'TRASH' | 'DECK_BOTTOM' | 'SHUFFLE_INTO_DECK';
+  childEffects?: any[];        // Follow-up effects to execute after deck reveal (e.g., discard from hand)
+}
+
+// Pending effect for hand selection effects ("Discard X cards", "Return X cards to deck")
+export interface PendingHandSelectEffect {
+  id: string;
+  sourceCardId: string;        // The card that triggered this effect
+  playerId: string;
+  description: string;         // Human-readable description (e.g., "Trash 1 card from your hand")
+  selectAction: 'TRASH' | 'RETURN_TO_DECK' | 'RETURN_TO_DECK_TOP' | 'RETURN_TO_DECK_BOTTOM';
+  minSelections: number;       // Required number of selections
+  maxSelections: number;       // Maximum selections allowed
+  canSkip: boolean;            // Whether player can skip (for optional effects)
 }
 
 export interface GameState {
@@ -267,6 +281,7 @@ export interface GameState {
   pendingCounterEffects?: PendingCounterEffect[]; // Event counter effects requiring target selection
   pendingAdditionalCost?: PendingAdditionalCost; // Optional additional cost waiting for player decision
   pendingDeckRevealEffect?: PendingDeckRevealEffect; // Deck reveal effect waiting for card selection
+  pendingHandSelectEffect?: PendingHandSelectEffect; // Hand selection effect waiting for card selection (discard, etc.)
 }
 
 export interface GameAction {
@@ -338,7 +353,11 @@ export enum ActionType {
 
   // Deck reveal actions (Look at X cards effects)
   RESOLVE_DECK_REVEAL = 'RESOLVE_DECK_REVEAL',     // Player confirms card selection from revealed cards
-  SKIP_DECK_REVEAL = 'SKIP_DECK_REVEAL'            // Player skips selection (for "up to" effects)
+  SKIP_DECK_REVEAL = 'SKIP_DECK_REVEAL',           // Player skips selection (for "up to" effects)
+
+  // Hand select actions (discard, return to deck, etc.)
+  RESOLVE_HAND_SELECT = 'RESOLVE_HAND_SELECT',     // Player confirms card selection from hand
+  SKIP_HAND_SELECT = 'SKIP_HAND_SELECT'            // Player skips selection (if allowed)
 }
 
 export interface TurnAction {

@@ -7,7 +7,6 @@ import {
   PlayerState,
   GameCard,
   CardState,
-  ActionType,
 } from '@optcgsim/shared';
 import { AIDecision, AttackTarget, DifficultyLevel, GameSituation } from '../types.js';
 import { DifficultyConfig, AI_CONFIG } from '../config.js';

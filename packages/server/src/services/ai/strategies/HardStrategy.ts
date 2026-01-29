@@ -12,7 +12,7 @@ import {
   CardState,
   ActionType,
 } from '@optcgsim/shared';
-import { AIDecision, AttackTarget, ThreatCard } from '../types.js';
+import { AIDecision, AttackTarget } from '../types.js';
 import { BaseStrategy } from './BaseStrategy.js';
 import { ThreatAssessor } from '../evaluators/ThreatAssessor.js';
 import { LethalCalculator } from '../evaluators/LethalCalculator.js';
@@ -128,8 +128,8 @@ export class HardStrategy extends BaseStrategy {
       // Consider if this card can remove a threat
       // Cards with KO effects are valuable when threats exist
       if (threats.length > 0) {
-        const hasRemoval = def.effects?.some(e =>
-          e.effects?.some(a => a.type === 'KO_CHARACTER' || a.type === 'TRASH_CHARACTER')
+        const hasRemoval = def.effects?.some((e: { effects?: Array<{ type: string }> }) =>
+          e.effects?.some((a: { type: string }) => a.type === 'KO_CHARACTER' || a.type === 'TRASH_CHARACTER')
         );
         if (hasRemoval) score += 3;
       }

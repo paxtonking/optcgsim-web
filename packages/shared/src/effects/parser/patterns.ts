@@ -1214,7 +1214,8 @@ export function extractSearchAndSelectDetails(text: string): SearchAndSelectDeta
   let selectAction: 'ADD_TO_HAND' | 'PLAY_TO_FIELD' | 'ADD_TO_LIFE' = 'ADD_TO_HAND';
   if (/add.*to.*life/i.test(text)) {
     selectAction = 'ADD_TO_LIFE';
-  } else if (/play/i.test(text)) {
+  } else if (/(?:play it|play (?:that|the|this) card|play (?:it )?(?:to|on|onto)(?: the)? field)/i.test(text)) {
+    // Only match "play" when it refers to playing the selected card, not "[On Play]" trigger
     selectAction = 'PLAY_TO_FIELD';
   }
 

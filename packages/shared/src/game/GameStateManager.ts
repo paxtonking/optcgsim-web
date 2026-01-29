@@ -14,6 +14,7 @@ import {
   PendingCounterEffect,
   PendingAdditionalCost,
   PendingDeckRevealEffect,
+  PendingHandSelectEffect,
 } from '../types/game';
 
 import {
@@ -564,6 +565,7 @@ export class GameStateManager {
           const excludeNames = searchDetails?.excludeNames ?? effectAction?.excludeNames;
           const selectAction = searchDetails?.selectAction ?? 'ADD_TO_HAND';
           const remainderAction = searchDetails?.remainderAction ?? 'TRASH';
+          const childEffects = effectAction?.childEffects;
 
           // Remove this effect from pending (it will be handled by deck reveal flow)
           this.effectEngine.removePendingEffect(searchSelectEffect.id);
@@ -577,7 +579,8 @@ export class GameStateManager {
             traitFilter,
             excludeNames,
             selectAction,
-            remainderAction
+            remainderAction,
+            childEffects
           );
           return true; // Early return - deck reveal UI will handle the rest
         } else {
@@ -727,6 +730,7 @@ export class GameStateManager {
             const excludeNames = searchDetails?.excludeNames ?? effectAction?.excludeNames;
             const selectAction = searchDetails?.selectAction ?? effectAction?.selectAction ?? 'ADD_TO_HAND';
             const remainderAction = searchDetails?.remainderAction ?? effectAction?.remainderAction ?? 'TRASH';
+            const childEffects = effectAction?.childEffects;
 
             this.setupDeckRevealEffect(
               playerId,
@@ -737,7 +741,8 @@ export class GameStateManager {
               traitFilter,
               excludeNames,
               selectAction,
-              remainderAction
+              remainderAction,
+              childEffects
             );
           }
         } else {
@@ -2719,6 +2724,12 @@ export class GameStateManager {
       case ActionType.SKIP_DECK_REVEAL:
         return this.skipDeckReveal(action.playerId);
 
+      case ActionType.RESOLVE_HAND_SELECT:
+        return this.resolveHandSelect(action.playerId, action.data.selectedCardIds);
+
+      case ActionType.SKIP_HAND_SELECT:
+        return this.skipHandSelect(action.playerId);
+
       default:
         return false;
     }
@@ -3286,7 +3297,8 @@ export class GameStateManager {
     traitFilter?: string,
     excludeNames?: string[],
     selectAction: 'ADD_TO_HAND' | 'PLAY_TO_FIELD' | 'ADD_TO_LIFE' = 'ADD_TO_HAND',
-    remainderAction: 'TRASH' | 'DECK_BOTTOM' | 'SHUFFLE_INTO_DECK' = 'TRASH'
+    remainderAction: 'TRASH' | 'DECK_BOTTOM' | 'SHUFFLE_INTO_DECK' = 'TRASH',
+    childEffects?: any[]
   ): void {
     const player = this.state.players[playerId];
     if (!player) return;
@@ -3338,6 +3350,7 @@ export class GameStateManager {
       excludeNames: excludeNames,
       selectAction: selectAction,
       remainderAction: remainderAction,
+      childEffects: childEffects,
     };
 
     this.state.pendingDeckRevealEffect = pendingEffect;
@@ -3436,10 +3449,37 @@ export class GameStateManager {
       }
     }
 
-    // Clear pending and return to main phase
-    this.state.pendingDeckRevealEffect = undefined;
-    this.state.phase = GamePhase.MAIN_PHASE;
+    // Check for childEffects (e.g., "Then, trash 1 card from your hand")
+    const childEffects = pending.childEffects;
 
+    // Clear pending deck reveal
+    this.state.pendingDeckRevealEffect = undefined;
+
+    // Process childEffects if any
+    if (childEffects && childEffects.length > 0) {
+      const discardEffect = childEffects.find((e: any) =>
+        e.type === 'DISCARD_FROM_HAND' || e.type === EffectType.DISCARD_FROM_HAND
+      );
+
+      if (discardEffect && player.hand.length > 0) {
+        // Set up hand select for discard
+        const discardCount = discardEffect.value || 1;
+        console.log('[resolveDeckReveal] Setting up hand discard for', discardCount, 'cards');
+        this.setupHandSelectEffect(
+          playerId,
+          pending.sourceCardId,
+          `Trash ${discardCount} card${discardCount > 1 ? 's' : ''} from your hand`,
+          'TRASH',
+          discardCount,
+          discardCount,
+          false // Cannot skip - it's mandatory
+        );
+        return true;
+      }
+    }
+
+    // No childEffects or player has no cards in hand - return to main phase
+    this.state.phase = GamePhase.MAIN_PHASE;
     return true;
   }
 
@@ -3466,6 +3506,141 @@ export class GameStateManager {
 
     // Resolve with empty selection (all cards go to remainder action)
     return this.resolveDeckReveal(playerId, []);
+  }
+
+  /**
+   * Set up a hand selection effect (discard, return to deck, etc.)
+   */
+  public setupHandSelectEffect(
+    playerId: string,
+    sourceCardId: string,
+    description: string,
+    selectAction: 'TRASH' | 'RETURN_TO_DECK' | 'RETURN_TO_DECK_TOP' | 'RETURN_TO_DECK_BOTTOM',
+    minSelections: number,
+    maxSelections: number,
+    canSkip: boolean
+  ): void {
+    const player = this.state.players[playerId];
+    if (!player) return;
+
+    // If player doesn't have enough cards, adjust requirements
+    const adjustedMin = Math.min(minSelections, player.hand.length);
+    const adjustedMax = Math.min(maxSelections, player.hand.length);
+
+    console.log('[setupHandSelectEffect] Setting up hand select:', { description, adjustedMin, adjustedMax, handSize: player.hand.length });
+
+    const pendingEffect: PendingHandSelectEffect = {
+      id: `hand-select-${sourceCardId}-${Date.now()}`,
+      sourceCardId: sourceCardId,
+      playerId: playerId,
+      description: description,
+      selectAction: selectAction,
+      minSelections: adjustedMin,
+      maxSelections: adjustedMax,
+      canSkip: canSkip || adjustedMin === 0,
+    };
+
+    this.state.pendingHandSelectEffect = pendingEffect;
+    this.state.phase = GamePhase.HAND_SELECT_STEP;
+  }
+
+  /**
+   * Resolve hand selection - player chose cards to discard/return
+   */
+  public resolveHandSelect(playerId: string, selectedCardIds: string[]): boolean {
+    console.log('[resolveHandSelect] Called:', { playerId, selectedCardIds });
+
+    if (this.state.phase !== GamePhase.HAND_SELECT_STEP) {
+      console.log('[resolveHandSelect] Not in HAND_SELECT_STEP');
+      return false;
+    }
+
+    const pending = this.state.pendingHandSelectEffect;
+    if (!pending || pending.playerId !== playerId) {
+      console.log('[resolveHandSelect] No pending effect or wrong player');
+      return false;
+    }
+
+    const player = this.state.players[playerId];
+    if (!player) return false;
+
+    // Validate selections are in hand
+    for (const id of selectedCardIds) {
+      if (!player.hand.some(c => c.id === id)) {
+        console.log('[resolveHandSelect] Invalid selection - not in hand:', id);
+        return false;
+      }
+    }
+
+    if (selectedCardIds.length > pending.maxSelections) {
+      console.log('[resolveHandSelect] Too many selections');
+      return false;
+    }
+
+    if (selectedCardIds.length < pending.minSelections) {
+      console.log('[resolveHandSelect] Not enough selections');
+      return false;
+    }
+
+    // Process selected cards based on selectAction
+    for (const cardId of selectedCardIds) {
+      const cardIndex = player.hand.findIndex(c => c.id === cardId);
+      if (cardIndex !== -1) {
+        const card = player.hand.splice(cardIndex, 1)[0];
+
+        switch (pending.selectAction) {
+          case 'TRASH':
+            card.zone = CardZone.TRASH;
+            player.trash.push(card);
+            console.log('[resolveHandSelect] Trashed:', card.cardId);
+            break;
+          case 'RETURN_TO_DECK':
+          case 'RETURN_TO_DECK_BOTTOM':
+            card.zone = CardZone.DECK;
+            player.deck.push(card); // Bottom of deck
+            console.log('[resolveHandSelect] Returned to deck bottom:', card.cardId);
+            break;
+          case 'RETURN_TO_DECK_TOP':
+            card.zone = CardZone.DECK;
+            player.deck.unshift(card); // Top of deck
+            console.log('[resolveHandSelect] Returned to deck top:', card.cardId);
+            break;
+        }
+      }
+    }
+
+    // Clear pending and return to main phase
+    this.state.pendingHandSelectEffect = undefined;
+    this.state.phase = GamePhase.MAIN_PHASE;
+
+    return true;
+  }
+
+  /**
+   * Skip hand selection (only if allowed)
+   */
+  public skipHandSelect(playerId: string): boolean {
+    console.log('[skipHandSelect] Called:', { playerId });
+
+    if (this.state.phase !== GamePhase.HAND_SELECT_STEP) {
+      return false;
+    }
+
+    const pending = this.state.pendingHandSelectEffect;
+    if (!pending || pending.playerId !== playerId) {
+      return false;
+    }
+
+    if (!pending.canSkip) {
+      console.log('[skipHandSelect] Cannot skip - effect is mandatory');
+      return false;
+    }
+
+    // Clear pending and return to main phase
+    this.state.pendingHandSelectEffect = undefined;
+    this.state.phase = GamePhase.MAIN_PHASE;
+
+    return true;
   }
 
   /**

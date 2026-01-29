@@ -428,8 +428,11 @@ interface HandZoneProps {
   selectedCard?: GameCardType | null;
   pinnedCard?: GameCardType | null;  // For combat phase card selection highlighting
   activateEffectSelectedTargets?: string[];  // Cards selected for activate effect
+  handSelectMode?: boolean;                  // Whether hand select mode is active (discard, etc.)
+  handSelectSelectedCards?: Set<string>;     // Cards selected for hand select effect
   onCardHover: (card: GameCardType | null) => void;
   onCardClick: (card: GameCardType) => void;
+  onHandSelectCardClick?: (card: GameCardType) => void;  // Handler for hand select clicks
 }
 
 export const HandZone: React.FC<HandZoneProps> = ({
@@ -440,8 +443,11 @@ export const HandZone: React.FC<HandZoneProps> = ({
   selectedCard,
   pinnedCard,
   activateEffectSelectedTargets = [],
+  handSelectMode = false,
+  handSelectSelectedCards = new Set(),
   onCardHover,
-  onCardClick
+  onCardClick,
+  onHandSelectCardClick
 }) => {
   const classes = [
     'hand-zone',
@@ -454,6 +460,14 @@ export const HandZone: React.FC<HandZoneProps> = ({
         {cards.map(card => {
           // Add extra spacing for rested cards shown in hand zone (during blocker step)
           const isRested = card.state === CardState.RESTED;
+          const isHandSelectTarget = !isOpponent && handSelectMode;
+          const isHandSelectSelected = handSelectSelectedCards.has(card.id);
+
+          // Determine click handler based on mode
+          const handleClick = handSelectMode && onHandSelectCardClick
+            ? () => onHandSelectCardClick(card)
+            : onCardClick;
+
           return (
             <div
               key={card.id}
@@ -463,11 +477,13 @@ export const HandZone: React.FC<HandZoneProps> = ({
                 card={card}
                 cardDef={isOpponent ? undefined : cardDefinitions.get(card.cardId)}
                 faceUp={!isOpponent}
-                isPlayable={!isOpponent && playableCards.has(card.id)}
+                isPlayable={!isOpponent && !handSelectMode && playableCards.has(card.id)}
                 isSelected={!isOpponent && (selectedCard?.id === card.id || pinnedCard?.id === card.id || activateEffectSelectedTargets.includes(card.id))}
+                isEventEffectTarget={isHandSelectTarget && !isHandSelectSelected}
+                isEventEffectSelected={isHandSelectSelected}
                 hasCostModified={!isOpponent && card.modifiedCost !== undefined}
                 onHover={isOpponent ? undefined : onCardHover}
-                onClick={isOpponent ? undefined : onCardClick}
+                onClick={isOpponent ? undefined : handleClick}
               />
             </div>
           );

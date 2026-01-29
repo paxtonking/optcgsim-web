@@ -3141,9 +3141,13 @@
 .deck-reveal-modal__title {
   color: #f1c40f;
   text-align: center;
-  margin: 0 0 12px 0;
-  font-size: 20px;
+  margin: 0 auto 12px auto;
+  font-size: 18px;
   font-weight: 600;
+  max-width: 500px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.4;
 }
 
 .deck-reveal-modal__filter-info {
@@ -3222,4 +3226,50 @@
   display: flex;
   gap: 16px;
   justify-content: center;
+}
+
+/* Hand Select Panel - for discard/return effects */
+.hand-select-panel {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  animation: handSelectSlideIn 0.3s ease;
+}
+
+@keyframes handSelectSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.hand-select-panel__content {
+  background: linear-gradient(135deg, #2c3e50 0%, #1a252f 100%);
+  border: 2px solid rgba(241, 196, 15, 0.5);
+  border-radius: 12px;
+  padding: 16px 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.hand-select-panel__text {
+  color: #f1c40f;
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  text-align: center;
+}
+
+.hand-select-panel__buttons {
+  display: flex;
+  gap: 12px;
 }

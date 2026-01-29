@@ -52,9 +52,6 @@ export class LethalCalculator {
     const leaderPower = opponent.leaderCard?.power || 5000;
     const opponentLife = opponent.life;
 
-    // Simple case: can we deal enough damage to leader?
-    const totalPossibleDamage = this.calculateMaxDamage(attackers, availableDon.length, player);
-
     // Each successful hit = 1 life damage
     // Need to hit leader "life" times
     const hitsNeeded = opponentLife;
@@ -171,19 +168,6 @@ export class LethalCalculator {
     }
 
     return results;
-  }
-
-  /**
-   * Calculate maximum possible damage
-   */
-  private calculateMaxDamage(attackers: GameCard[], availableDon: number, player: PlayerState): number {
-    let totalPower = 0;
-    for (const attacker of attackers) {
-      totalPower += this.calculateAttackerPower(attacker, player);
-    }
-    // Add DON bonus
-    totalPower += availableDon * 1000;
-    return totalPower;
   }
 
   /**

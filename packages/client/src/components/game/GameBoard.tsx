@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { GameState, GameCard as GameCardType, GamePhase, CardZone, CardState, RPSChoice, RPSState, PendingActivateEffect, PendingDeckRevealEffect } from '@optcgsim/shared';
+import { GameState, GameCard as GameCardType, GamePhase, CardZone, CardState, RPSChoice, RPSState, PendingActivateEffect, PendingDeckRevealEffect, PendingHandSelectEffect } from '@optcgsim/shared';
 import { useGameSocket } from '../../hooks/useGameSocket';
 import { useGameState } from '../../hooks/useGameState';
 import { useSoundEffects } from '../../hooks/useSoundEffects';
@@ -17,9 +17,9 @@ import { PreGameSetup } from './PreGameSetup';
 import { DeckRevealModal } from './DeckRevealModal';
 import { useLobbyStore } from '../../stores/lobbyStore';
 import { getSocket } from '../../services/socket';
-import { EffectToastContainer, toastPresets } from './EffectToast';
+import { EffectToastContainer } from './EffectToast';
 import { EffectAnimationLayer, EffectAnimationAPI } from './EffectAnimation';
-import { useEffectToast, getToastTypeFromEffect, getToastTypeFromTrigger } from '../../hooks/useEffectToast';
+import { useEffectToast } from '../../hooks/useEffectToast';
 import './GameBoard.css';
 import './RPSModal.css';
 import './EffectToast.css';
@@ -93,7 +93,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   const { playSound, isMuted, toggleMute } = useSoundEffects();
 
   // Effect toast notifications
-  const { toasts, addToast, removeToast } = useEffectToast();
+  const { toasts, removeToast } = useEffectToast();
 
   // Effect animations
   const effectAnimationRef = useRef<EffectAnimationAPI | null>(null);
@@ -1099,6 +1099,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     resolveCounterEffect,
     resolveDeckReveal,
     skipDeckReveal,
+    resolveHandSelect,
+    skipHandSelect,
     payAdditionalCost,
     skipAdditionalCost,
     endTurn,
@@ -1552,6 +1554,57 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   const handleDeckRevealSkip = useCallback(() => {
     skipDeckReveal();
   }, [skipDeckReveal]);
+
+  // Hand select state - for effects that require selecting cards from hand (discard, return, etc.)
+  const [handSelectSelectedCards, setHandSelectSelectedCards] = useState<Set<string>>(new Set());
+
+  // Get current pending hand select effect
+  const currentHandSelectEffect = useMemo((): PendingHandSelectEffect | null => {
+    if (phase !== GamePhase.HAND_SELECT_STEP || !gameState?.pendingHandSelectEffect) return null;
+    return gameState.pendingHandSelectEffect;
+  }, [phase, gameState?.pendingHandSelectEffect]);
+
+  // Show toast when entering HAND_SELECT_STEP
+  useEffect(() => {
+    if (phase === GamePhase.HAND_SELECT_STEP && currentHandSelectEffect && currentHandSelectEffect.playerId === playerId) {
+      showInfoBanner(currentHandSelectEffect.description);
+      setHandSelectSelectedCards(new Set()); // Reset selection
+    }
+  }, [phase, currentHandSelectEffect, playerId, showInfoBanner]);
+
+  // Hand select handlers
+  const handleHandSelectCardClick = useCallback((card: GameCardType) => {
+    if (!currentHandSelectEffect || currentHandSelectEffect.playerId !== playerId) return;
+
+    setHandSelectSelectedCards(prev => {
+      const next = new Set(prev);
+      if (next.has(card.id)) {
+        next.delete(card.id);
+      } else if (next.size < currentHandSelectEffect.maxSelections) {
+        next.add(card.id);
+      }
+      return next;
+    });
+  }, [currentHandSelectEffect, playerId]);
+
+  const handleHandSelectConfirm = useCallback(() => {
+    if (!currentHandSelectEffect) return;
+    resolveHandSelect(Array.from(handSelectSelectedCards));
+    setHandSelectSelectedCards(new Set());
+    playSound('play');
+  }, [currentHandSelectEffect, handSelectSelectedCards, resolveHandSelect, playSound]);
+
+  const handleHandSelectSkip = useCallback(() => {
+    if (!currentHandSelectEffect || !currentHandSelectEffect.canSkip) return;
+    skipHandSelect();
+    setHandSelectSelectedCards(new Set());
+  }, [currentHandSelectEffect, skipHandSelect]);
+
+  // Check if we can confirm hand select (have selected enough cards)
+  const canConfirmHandSelect = useMemo(() => {
+    if (!currentHandSelectEffect) return false;
+    return handSelectSelectedCards.size >= currentHandSelectEffect.minSelections;
+  }, [currentHandSelectEffect, handSelectSelectedCards]);
 
   // Debug logging for play effect modal display
   useEffect(() => {
@@ -2393,6 +2446,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       [GamePhase.COUNTER_EFFECT_STEP]: 'Counter Effect',
       [GamePhase.ADDITIONAL_COST_STEP]: 'Pay Cost',
       [GamePhase.DECK_REVEAL_STEP]: 'Deck Reveal',
+      [GamePhase.HAND_SELECT_STEP]: 'Select from Hand',
       [GamePhase.COUNTER_STEP]: 'Counter',
       [GamePhase.BLOCKER_STEP]: 'Blocker',
       [GamePhase.TRIGGER_STEP]: 'Trigger',
@@ -2645,8 +2699,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             selectedCard={selectedCard}
             pinnedCard={pinnedCard}
             activateEffectSelectedTargets={activateEffectSelectedTargets}
+            handSelectMode={phase === GamePhase.HAND_SELECT_STEP && currentHandSelectEffect?.playerId === playerId}
+            handSelectSelectedCards={handSelectSelectedCards}
             onCardHover={handleCardHover}
             onCardClick={handleCardClick}
+            onHandSelectCardClick={handleHandSelectCardClick}
           />
         )}
       </div>
@@ -3030,6 +3087,37 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           onSkip={handleDeckRevealSkip}
           onCardHover={handleCardHover}
         />
+      )}
+
+      {/* Hand Select UI - shown when player needs to select cards from hand (discard, etc.) */}
+      {currentHandSelectEffect && currentHandSelectEffect.playerId === playerId && (
+        <div className="hand-select-panel">
+          <div className="hand-select-panel__content">
+            <p className="hand-select-panel__text">
+              Select {currentHandSelectEffect.minSelections === currentHandSelectEffect.maxSelections
+                ? currentHandSelectEffect.minSelections
+                : `${currentHandSelectEffect.minSelections}-${currentHandSelectEffect.maxSelections}`} card{currentHandSelectEffect.maxSelections > 1 ? 's' : ''} from your hand
+              {handSelectSelectedCards.size > 0 && ` (${handSelectSelectedCards.size} selected)`}
+            </p>
+            <div className="hand-select-panel__buttons">
+              <button
+                className="action-btn action-btn--use-effect"
+                onClick={handleHandSelectConfirm}
+                disabled={!canConfirmHandSelect}
+              >
+                Confirm
+              </button>
+              {currentHandSelectEffect.canSkip && (
+                <button
+                  className="action-btn action-btn--skip-effect"
+                  onClick={handleHandSelectSkip}
+                >
+                  Skip
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Counter notification - shown when opponent uses a counter */}
