@@ -16,7 +16,7 @@ import {
 } from '@optcgsim/shared';
 import { prisma } from '../services/prisma.js';
 import { cardLoaderService } from '../services/CardLoaderService.js';
-import { AIService, createAIPlayer } from '../services/AIService.js';
+import { AIService, createAIPlayer } from '../services/ai/index.js';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -271,7 +271,7 @@ export class AIGameManager {
       stateManager,
       actionLog: [],
       startedAt: new Date(),
-      aiThinkDelay: pending.difficulty === 'basic' ? 1000 : pending.difficulty === 'medium' ? 750 : 500,
+      aiThinkDelay: pending.aiPlayer.getThinkDelay(),
     };
 
     // Move from pending to active games

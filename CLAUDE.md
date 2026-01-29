@@ -75,7 +75,7 @@ tools/
 | `server/src/services/CardLoaderService.ts` | Loads cards from database, converts to CardDefinition |
 | `client/src/game/GameScene.ts` | Legacy Phaser.js rendering (kept for reference) |
 | `client/src/game/GameController.ts` | Legacy game controller (kept for reference) |
-| `server/src/services/AIService.ts` | AI decision making |
+| `server/src/services/ai/AIService.ts` | AI decision making (strategy pattern) |
 | `server/src/websocket/AIGameManager.ts` | AI vs Human coordination |
 | `server/src/api/images.ts` | Image proxy for card images (CORS bypass) |
 
@@ -209,14 +209,14 @@ docker stop optcgsim-postgres
 - Profile customization (16 avatars, 14 badges)
 - Spectator mode for live games
 - Deck import/export (text and JSON formats)
-- AI opponent with 3 difficulty levels
+- AI opponent with 3 distinct difficulty strategies (Easy/Medium/Hard)
 - Counter Step & Trigger Step UI implemented
 - Admin dashboard with user management and analytics
 - Tournament system (Single/Double Elimination, Swiss, Round Robin)
 - HTML/CSS game board with CSS animations
 - Dual-domain image proxy for card images
 - ~18,000+ lines of TypeScript
-- 49 unit tests for EffectEngine and registry (Vitest)
+- 77 unit tests for EffectEngine, triggers, and effects (Vitest)
 - Effect audit script for tracking implementation gaps
 - 16 effect types implemented, 13 trigger types implemented
 - Server startup validation for effect implementations
@@ -270,6 +270,56 @@ interface CardEffectDefinition {
 | `shared/src/effects/cardDefinitions.reference.ts` | Historical reference (deprecated) |
 | `shared/src/effects/registry.ts` | Tracks implemented vs stub effect types |
 | `tools/card-importer/src/audit-effects.ts` | Audit script for implementation gaps |
+
+## AI System Architecture
+
+The AI opponent uses a strategy pattern with distinct decision-making for each difficulty level.
+
+### File Structure
+```
+packages/server/src/services/ai/
+├── index.ts              # Module exports
+├── AIService.ts          # Main service (strategy selector)
+├── types.ts              # AI-specific types
+├── config.ts             # Difficulty settings
+├── strategies/
+│   ├── BaseStrategy.ts   # Abstract base class
+│   ├── EasyStrategy.ts   # Suboptimal, makes mistakes
+│   ├── MediumStrategy.ts # Solid fundamentals
+│   └── HardStrategy.ts   # Advanced strategic play
+└── evaluators/
+    ├── BoardEvaluator.ts   # Position scoring
+    ├── ThreatAssessor.ts   # Threat identification
+    └── LethalCalculator.ts # Win detection
+```
+
+### Difficulty Differences
+
+| Feature | Easy | Medium | Hard |
+|---------|------|--------|------|
+| Mistake Rate | 25% | 0% | 0% |
+| Mulligan | Low standards | Curve evaluation | Full analysis |
+| Card Play | Random sometimes | Keyword-aware | Threat response |
+| Attacks | Misses optimal targets | Prioritizes threats | Full assessment |
+| Blocking | Only if survives | Life management | Value preservation |
+| Countering | Over/under-counters | Efficient | Resource optimal |
+| Think Delay | 1500ms | 1000ms | 750ms |
+
+### Key Classes
+
+- **BoardEvaluator**: Scores field presence, hand advantage, life, DON, and tempo
+- **ThreatAssessor**: Identifies dangerous cards (Rush, Double Attack, high power, effects)
+- **LethalCalculator**: Detects win opportunities and optimal attack sequences
+
+### Configuration
+Settings in `config.ts` control AI behavior:
+```typescript
+AI_CONFIG = {
+  easy: { mistakeChance: 0.25, threatAwareness: 0.3, ... },
+  medium: { mistakeChance: 0, threatAwareness: 0.7, ... },
+  hard: { mistakeChance: 0, threatAwareness: 1.0, lookAheadTurns: 2, ... }
+}
+```
 
 ## Testing
 
