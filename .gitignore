@@ -82,6 +82,8 @@ body.txt
 # Backup files
 tools/card-importer/backups/
 backups/
+*.sql
+*.sql.gz
 
 # Analysis output (regenerated)
 tools/card-importer/audit-report.json

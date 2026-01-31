@@ -26,6 +26,19 @@ else
     FIRST_RUN=false
 fi
 
+# Create pre-deployment backup (skip on first run)
+if [ "$FIRST_RUN" = false ]; then
+    echo -e "${GREEN}[0/6] Creating pre-deployment backup...${NC}"
+    BACKUP_DIR="$SCRIPT_DIR/backups/pre-deploy"
+    mkdir -p "$BACKUP_DIR"
+    TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+    docker exec optcgsim-postgres pg_dump -U optcgsim_user optcgsim > "$BACKUP_DIR/pre-deploy_$TIMESTAMP.sql" 2>/dev/null || echo -e "${YELLOW}Backup skipped (database not running)${NC}"
+
+    # Keep only last 5 pre-deploy backups
+    ls -t "$BACKUP_DIR"/pre-deploy_*.sql 2>/dev/null | tail -n +6 | xargs -r rm
+    echo -e "${GREEN}Backup saved: pre-deploy_$TIMESTAMP.sql${NC}"
+fi
+
 # Pull latest changes
 echo -e "${GREEN}[1/6] Pulling latest changes...${NC}"
 git pull origin main || git pull origin master
