@@ -1477,8 +1477,9 @@ export class GameStateManager {
     const attacker = this.findCard(attackerId);
     if (!attacker || attacker.state !== CardState.ACTIVE) return false;
 
-    // First player cannot attack on turn 1 (One Piece TCG rule)
-    if (this.state.turn === 1 && attacker.owner === this.state.firstPlayerId) {
+    // Neither player can attack on their first personal turn (One Piece TCG rule)
+    const attackerPlayer = this.state.players[attacker.owner];
+    if (attackerPlayer && attackerPlayer.turnCount === 1) {
       return false;
     }
 
@@ -2145,7 +2146,8 @@ export class GameStateManager {
       if (targetPlayer) {
         // Check for Double Attack
         let damageMultiplier = 1;
-        if (attacker && this.effectEngine.hasDoubleAttack(attacker)) {
+        const hasDoubleAttack = attacker && this.effectEngine.hasDoubleAttack(attacker);
+        if (hasDoubleAttack) {
           damageMultiplier = 2;
         }
 
@@ -2155,7 +2157,7 @@ export class GameStateManager {
           : 0;
         if (attackPower >= leaderPower + counterPower + effectBuffPower) {
           // Deal damage
-          this.takeDamage(targetPlayer.id, damageMultiplier, attacker);
+          this.takeDamage(targetPlayer.id, damageMultiplier, attacker, hasDoubleAttack);
 
           // Trigger HIT_LEADER
           const triggerEvent: TriggerEvent = {
@@ -2241,9 +2243,12 @@ export class GameStateManager {
     }
   }
 
-  private takeDamage(playerId: string, damage: number, attacker?: GameCard): void {
+  private takeDamage(playerId: string, damage: number, attacker?: GameCard, isDoubleAttack?: boolean): void {
     const player = this.state.players[playerId];
     if (!player) return;
+
+    // Capture life before damage for Double Attack win prevention check
+    const lifeBeforeDamage = player.lifeCards.length;
 
     // Check if attacker has Banish - cards go to trash instead of hand
     const hasBanish = attacker && this.effectEngine.hasBanish(attacker);
@@ -2251,6 +2256,12 @@ export class GameStateManager {
     for (let i = 0; i < damage; i++) {
       // Win condition: If player has no life cards and takes damage, they lose
       if (player.lifeCards.length === 0) {
+        // Double Attack cannot win if opponent had only 1 life (One Piece TCG rule)
+        if (isDoubleAttack && lifeBeforeDamage === 1) {
+          // Opponent survives - Double Attack rule prevents win
+          return;
+        }
+
         const opponentId = Object.keys(this.state.players).find(id => id !== playerId);
         this.state.winner = opponentId;
         this.state.phase = GamePhase.GAME_OVER;
