@@ -13,7 +13,7 @@ interface LobbyPlayer {
   username: string;
   socketId: string;
   deckId?: string;
-  ready: boolean;
+  isReady: boolean;
 }
 
 interface Challenge {
@@ -109,7 +109,7 @@ export class LobbyManager {
           username: socket.username!,
           socketId: socket.id,
           deckId,
-          ready: false,
+          isReady: false,
         },
       ],
     };
@@ -160,7 +160,7 @@ export class LobbyManager {
       username: socket.username!,
       socketId: socket.id,
       deckId,
-      ready: false,
+      isReady: false,
     });
     targetLobby.guestId = socket.userId!;
 
@@ -210,11 +210,11 @@ export class LobbyManager {
 
     const player = lobby.players.find(p => p.id === socket.userId);
     if (player) {
-      player.ready = !player.ready;
+      player.isReady = !player.isReady;
     }
 
     // Check if all players ready
-    if (lobby.players.length === 2 && lobby.players.every(p => p.ready)) {
+    if (lobby.players.length === 2 && lobby.players.every(p => p.isReady)) {
       lobby.status = 'READY';
     } else {
       lobby.status = 'WAITING';
@@ -364,14 +364,14 @@ export class LobbyManager {
           username: challenge.fromUsername,
           socketId: challengerSocketId,
           deckId: challenge.deckId,
-          ready: false,
+          isReady: false,
         },
         {
           id: socket.userId!,
           username: socket.username!,
           socketId: socket.id,
           deckId,
-          ready: false,
+          isReady: false,
         },
       ],
     };
