@@ -3033,6 +3033,24 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         </div>
       )}
 
+      {/* Play card prompt - shown when a character card is selected for placement */}
+      {pendingPlayCard && (
+        <div className="play-card-prompt">
+          <div className="play-card-prompt__content">
+            <span className="play-card-prompt__icon">🎴</span>
+            <span className="play-card-prompt__text">
+              Click character zone to play {cardDefinitions.get(pendingPlayCard.cardId)?.name || 'card'}
+            </span>
+            <button
+              className="play-card-prompt__cancel"
+              onClick={() => setPendingPlayCard(null)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Attack prompt - shown when targets should be highlighted
           For cards with abilities: only after Attack button is clicked (isAttackMode)
           For cards without abilities: immediately when card is selected */}

@@ -298,6 +298,12 @@ export class EffectEngine {
     // Check if trigger type matches
     if (effect.trigger !== event.type) return false;
 
+    // Check once-per-turn restriction for triggered effects
+    if (effect.oncePerTurn && sourceCard.activatedThisTurn) {
+      console.log(`[EffectEngine] Once per turn already used for ${sourceCard.cardId}`);
+      return false;
+    }
+
     // ON_PLAY triggers should only fire for the card that was just played
     if (effect.trigger === EffectTrigger.ON_PLAY) {
       if (event.cardId !== sourceCard.id) return false;
@@ -2771,6 +2777,20 @@ export class EffectEngine {
 
       case TargetType.OPPONENT_LEADER:
         targets = opponent?.leaderCard ? [opponent.leaderCard] : [];
+        break;
+
+      case TargetType.YOUR_LEADER_OR_CHARACTER:
+        targets = [
+          ...(sourcePlayer.leaderCard ? [sourcePlayer.leaderCard] : []),
+          ...sourcePlayer.field
+        ];
+        break;
+
+      case TargetType.OPPONENT_LEADER_OR_CHARACTER:
+        targets = [
+          ...(opponent?.leaderCard ? [opponent.leaderCard] : []),
+          ...(opponent?.field || [])
+        ];
         break;
 
       case TargetType.YOUR_HAND:

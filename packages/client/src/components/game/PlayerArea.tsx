@@ -321,20 +321,12 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
 
       {/* Main center area: Characters, Cost Area, Trash */}
       <div className="player-area__center">
-        {/* Character Area */}
+        {/* Character Area - clickable when pending card placement */}
         <div
           className={`zone zone--characters ${!isOpponent && pendingPlayCard ? 'zone--drop-target' : ''}`}
+          onClick={!isOpponent && pendingPlayCard && onCharacterZoneClick ? onCharacterZoneClick : undefined}
         >
           <span className="zone__label zone__label--inside">Characters</span>
-          {/* Play Here overlay - shown when a character card is pending placement */}
-          {!isOpponent && pendingPlayCard && onCharacterZoneClick && (
-            <div
-              className="zone__play-overlay"
-              onClick={onCharacterZoneClick}
-            >
-              <span className="zone__play-overlay-text">Click to Play Character</span>
-            </div>
-          )}
           {characters.map(card => {
             const cardDef = cardDefinitions.get(card.cardId);
             const isRested = card.state === CardState.RESTED;

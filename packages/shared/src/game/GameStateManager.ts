@@ -1387,6 +1387,12 @@ export class GameStateManager {
     const result = this.effectEngine.resolveEffect(pending.effect, context);
     this.effectEngine.removePendingEffect(effectId);
 
+    // Mark card as activated this turn if effect is once-per-turn
+    if (pending.effect.oncePerTurn && card) {
+      card.activatedThisTurn = true;
+      console.log(`[resolveEffect] Marked ${card.cardId} as activatedThisTurn`);
+    }
+
     // Process childEffects if any
     if (result.childEffects && result.childEffects.length > 0) {
       console.log('[resolveEffect] Processing', result.childEffects.length, 'childEffects');
@@ -1546,15 +1552,22 @@ export class GameStateManager {
       // Pause at ATTACK_EFFECT_STEP to let player select targets
       this.state.phase = GamePhase.ATTACK_EFFECT_STEP;
 
-      // Populate pendingAttackEffects for the client to display
-      this.state.pendingAttackEffects = effectsRequiringChoice.map(e => ({
-        id: e.id,
-        sourceCardId: e.sourceCardId,
-        playerId: e.playerId,
-        description: e.effect.description || 'Activate ability',
-        validTargets: e.validTargets,
-        requiresChoice: e.requiresChoice
-      }));
+      // Populate pendingAttackEffects for the client to display (compute valid targets like play effects)
+      this.state.pendingAttackEffects = effectsRequiringChoice.map(e => {
+        // Get valid targets for the effect
+        const validTargets = this.getValidTargetsForEffect(e.id);
+        const effectAction = e.effect.effects[0];
+
+        return {
+          id: e.id,
+          sourceCardId: e.sourceCardId,
+          playerId: e.playerId,
+          description: e.effect.description || 'Activate ability',
+          validTargets,
+          requiresChoice: e.requiresChoice,
+          maxTargets: effectAction?.target?.count || 1
+        };
+      });
 
       return true;
     }
@@ -1594,15 +1607,20 @@ export class GameStateManager {
     );
 
     if (remainingEffects.length > 0) {
-      // Update pendingAttackEffects for the client
-      this.state.pendingAttackEffects = remainingEffects.map(e => ({
-        id: e.id,
-        sourceCardId: e.sourceCardId,
-        playerId: e.playerId,
-        description: e.effect.description || 'Activate ability',
-        validTargets: e.validTargets,
-        requiresChoice: e.requiresChoice
-      }));
+      // Update pendingAttackEffects for the client (compute valid targets)
+      this.state.pendingAttackEffects = remainingEffects.map(e => {
+        const validTargets = this.getValidTargetsForEffect(e.id);
+        const effectAction = e.effect.effects[0];
+        return {
+          id: e.id,
+          sourceCardId: e.sourceCardId,
+          playerId: e.playerId,
+          description: e.effect.description || 'Activate ability',
+          validTargets,
+          requiresChoice: e.requiresChoice,
+          maxTargets: effectAction?.target?.count || 1
+        };
+      });
       // Stay in ATTACK_EFFECT_STEP for next effect
       return true;
     }
@@ -1625,15 +1643,20 @@ export class GameStateManager {
     );
 
     if (remainingEffects.length > 0) {
-      // Update pendingAttackEffects for the client
-      this.state.pendingAttackEffects = remainingEffects.map(e => ({
-        id: e.id,
-        sourceCardId: e.sourceCardId,
-        playerId: e.playerId,
-        description: e.effect.description || 'Activate ability',
-        validTargets: e.validTargets,
-        requiresChoice: e.requiresChoice
-      }));
+      // Update pendingAttackEffects for the client (compute valid targets)
+      this.state.pendingAttackEffects = remainingEffects.map(e => {
+        const validTargets = this.getValidTargetsForEffect(e.id);
+        const effectAction = e.effect.effects[0];
+        return {
+          id: e.id,
+          sourceCardId: e.sourceCardId,
+          playerId: e.playerId,
+          description: e.effect.description || 'Activate ability',
+          validTargets,
+          requiresChoice: e.requiresChoice,
+          maxTargets: effectAction?.target?.count || 1
+        };
+      });
       // Stay in ATTACK_EFFECT_STEP for next effect
       return true;
     }
