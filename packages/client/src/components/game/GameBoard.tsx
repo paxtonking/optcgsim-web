@@ -2760,7 +2760,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             onPassBlocker={passBlocker}
             onActivateTrigger={() => activateTrigger('')}
             onPassTrigger={passTrigger}
-            canAttack={selectedCardCanAttack && selectedCardHasAbilities}
+            showAttackButton={selectedCardHasAbilities}
+            canAttack={selectedCardCanAttack}
             isAttackMode={isAttackMode}
             onAttack={() => setIsAttackMode(true)}
             onCancelAttack={() => setIsAttackMode(false)}

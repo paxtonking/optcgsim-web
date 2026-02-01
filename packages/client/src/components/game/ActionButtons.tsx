@@ -18,7 +18,8 @@ interface ActionButtonsProps {
   onPassTrigger?: () => void;
   mulliganAvailable?: boolean;
   // Attack mode props (for cards with abilities)
-  canAttack?: boolean;
+  showAttackButton?: boolean;  // True when a card with abilities is selected
+  canAttack?: boolean;         // True when the selected card can actually attack
   isAttackMode?: boolean;
   onAttack?: () => void;
   onCancelAttack?: () => void;
@@ -39,6 +40,7 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
   onActivateTrigger,
   onPassTrigger,
   mulliganAvailable: _mulliganAvailable = true,
+  showAttackButton = false,
   canAttack = false,
   isAttackMode = false,
   onAttack,
@@ -113,11 +115,13 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
   // Main phase buttons
   return (
     <div className="action-buttons">
-      {/* Attack button for cards with abilities */}
-      {canAttack && !isAttackMode && (
+      {/* Attack button for cards with abilities - shown when card with abilities is selected, greyed when can't attack */}
+      {showAttackButton && !isAttackMode && (
         <button
           className="action-btn action-btn--attack"
           onClick={onAttack}
+          disabled={!canAttack}
+          title={!canAttack ? 'Cannot attack (card may be rested, already attacked, or has summoning sickness)' : 'Declare an attack'}
         >
           Attack
         </button>
