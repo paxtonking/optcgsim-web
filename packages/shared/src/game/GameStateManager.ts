@@ -2880,7 +2880,7 @@ export class GameStateManager {
             id: `cost-trash-${card.id}-${Date.now()}`,
             sourceCardId: card.cardId,
             playerId,
-            description: `Trash ${requiredCount} card${requiredCount > 1 ? 's' : ''} from your hand to activate ${cardDef.name}'s ability`,
+            description: `Select ${requiredCount} card${requiredCount > 1 ? 's' : ''} to trash to activate ${cardDef.name}'s ability`,
             selectAction: 'TRASH',
             minSelections: requiredCount,
             maxSelections: requiredCount,

@@ -1569,13 +1569,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     return gameState.pendingHandSelectEffect;
   }, [phase, gameState?.pendingHandSelectEffect]);
 
-  // Show toast when entering HAND_SELECT_STEP
+  // Reset selection when entering HAND_SELECT_STEP
   useEffect(() => {
     if (phase === GamePhase.HAND_SELECT_STEP && currentHandSelectEffect && currentHandSelectEffect.playerId === playerId) {
-      showInfoBanner(currentHandSelectEffect.description);
       setHandSelectSelectedCards(new Set()); // Reset selection
     }
-  }, [phase, currentHandSelectEffect, playerId, showInfoBanner]);
+  }, [phase, currentHandSelectEffect, playerId]);
 
   // Hand select handlers
   const handleHandSelectCardClick = useCallback((card: GameCardType) => {
@@ -3118,14 +3117,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         />
       )}
 
-      {/* Hand Select UI - shown when player needs to select cards from hand (discard, etc.) */}
+      {/* Hand Select UI - shown when player needs to select cards from hand or field */}
       {currentHandSelectEffect && currentHandSelectEffect.playerId === playerId && (
         <div className="hand-select-panel">
           <div className="hand-select-panel__content">
             <p className="hand-select-panel__text">
-              Select {currentHandSelectEffect.minSelections === currentHandSelectEffect.maxSelections
-                ? currentHandSelectEffect.minSelections
-                : `${currentHandSelectEffect.minSelections}-${currentHandSelectEffect.maxSelections}`} card{currentHandSelectEffect.maxSelections > 1 ? 's' : ''} from your hand
+              {currentHandSelectEffect.description}
               {handSelectSelectedCards.size > 0 && ` (${handSelectSelectedCards.size} selected)`}
             </p>
             <div className="hand-select-panel__buttons">
