@@ -88,16 +88,29 @@ export class CardLoaderService {
     // Priority 1: Use effects from database if available
     if (Array.isArray(dbCard.effects) && dbCard.effects.length > 0) {
       effects = dbCard.effects as CardEffectDefinition[];
+      // Debug: log for Imu
+      if (dbCard.id === 'OP13-079') {
+        console.log(`[CardLoader] OP13-079: Using ${effects.length} effects from database`);
+        console.log(`[CardLoader] OP13-079 effects:`, JSON.stringify(effects.map(e => ({ id: e.id, trigger: e.trigger })), null, 2));
+      }
     }
     // Priority 2: Parse from effect text (fallback)
     else if (dbCard.effectText) {
       try {
         effects = effectTextParser.parse(dbCard.effectText, dbCard.id);
+        // Debug: log for Imu
+        if (dbCard.id === 'OP13-079') {
+          console.log(`[CardLoader] OP13-079: Parsed ${effects.length} effects from effectText`);
+          console.log(`[CardLoader] OP13-079 effectText:`, dbCard.effectText);
+          console.log(`[CardLoader] OP13-079 parsed effects:`, JSON.stringify(effects.map(e => ({ id: e.id, trigger: e.trigger })), null, 2));
+        }
       } catch (e) {
         // Log error but continue - card will work without effects
         console.warn(`[CardLoader] Failed to parse effects for ${dbCard.id}:`, e);
         effects = [];
       }
+    } else if (dbCard.id === 'OP13-079') {
+      console.log(`[CardLoader] OP13-079: No effects in DB and no effectText`);
     }
 
     const cardDef: CardDefinition = {
