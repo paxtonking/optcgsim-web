@@ -64,6 +64,7 @@ interface PlayerAreaProps {
   hideLifeZone?: boolean;
   gameOverResult?: 'winner' | 'loser' | null;  // Result for this player when game ends
   playmatImage?: string;  // Custom playmat background image path
+  isMyTurn?: boolean;  // Whether it's the current player's turn (for DON power display)
 }
 
 export const PlayerArea: React.FC<PlayerAreaProps> = ({
@@ -96,8 +97,13 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
   visibleDonCount,
   hideLifeZone = false,
   gameOverResult,
-  playmatImage
+  playmatImage,
+  isMyTurn = true
 }) => {
+  // DON attached to cards are inactive (dimmed) when it's not the card owner's turn
+  // For player's cards: inactive when it's opponent's turn
+  // For opponent's cards: always inactive (from player's perspective)
+  const isDonInactiveForArea = isOpponent ? true : !isMyTurn;
   // Helper to get attack animation class for a card
   const getAttackAnimationClass = (cardId: string): string => {
     if (!attackAnimation) return '';
@@ -235,6 +241,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                             card={don}
                             faceUp={true}
                             isDon={true}
+                            isDonInactive={isDonInactiveForArea}
                             onHover={onCardHover}
                           />
                         </div>
@@ -337,6 +344,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                             card={don}
                             faceUp={true}
                             isDon={true}
+                            isDonInactive={isDonInactiveForArea}
                             onHover={onCardHover}
                           />
                         </div>

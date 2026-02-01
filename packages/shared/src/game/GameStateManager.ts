@@ -2348,7 +2348,7 @@ export class GameStateManager {
 
     this.state.activePlayerId = playerId;
     this.state.turn++;
-    this.state.phase = GamePhase.UNTAP_PHASE;
+    this.state.phase = GamePhase.REFRESH_PHASE;
     player.isActive = true;
     player.turnCount++;
 
@@ -2358,7 +2358,18 @@ export class GameStateManager {
     // Recalculate hand costs based on stage effects (your turn only)
     this.applyStageEffects(playerId);
 
-    // Untap all cards
+    // REFRESH PHASE: Return all attached DON to cost area (skip on turn 1)
+    // According to official rules, Refresh Phase is skipped on the very first turn
+    if (this.state.turn > 1) {
+      player.donField.forEach(don => {
+        if (don.attachedTo) {
+          don.attachedTo = undefined;
+          don.state = CardState.ACTIVE;
+        }
+      });
+    }
+
+    // Untap all cards (including any rested DON)
     this.untapAll(playerId);
 
     // Trigger START_OF_TURN effects
@@ -2444,9 +2455,9 @@ export class GameStateManager {
       card.activatedThisTurn = false;
     });
 
-    // Untap DON!
+    // Untap DON! (all DON should be in cost area now after refresh phase)
     player.donField.forEach(don => {
-      if (don.state === CardState.RESTED && !don.attachedTo) {
+      if (don.state === CardState.RESTED) {
         don.state = CardState.ACTIVE;
       }
     });
@@ -2521,9 +2532,10 @@ export class GameStateManager {
       })
       .reduce((sum, buff) => sum + buff.value, 0);
 
-    // DON bonus (+1000 per attached DON)
+    // DON bonus (+1000 per attached DON) - only applies on the card owner's turn
     const attachedDon = this.getAttachedDon(card.id);
-    const donBonus = attachedDon.length * 1000;
+    const isOwnersTurn = card.owner === this.state.activePlayerId;
+    const donBonus = isOwnersTurn ? (attachedDon.length * 1000) : 0;
 
     return base + buffTotal + donBonus;
   }

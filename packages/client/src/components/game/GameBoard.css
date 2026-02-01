@@ -3273,3 +3273,55 @@
   display: flex;
   gap: 12px;
 }
+
+/* ===================================
+   REFRESH PHASE BANNER
+   =================================== */
+
+.refresh-phase-banner {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  color: white;
+  padding: 16px 48px;
+  border-radius: 8px;
+  font-size: 24px;
+  font-weight: bold;
+  z-index: 1000;
+  animation: refreshBannerAppear 0.5s ease-out, refreshBannerFade 0.5s ease-in 1s forwards;
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.5);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+@keyframes refreshBannerAppear {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes refreshBannerFade {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.9);
+  }
+}
+
+/* ===================================
+   INACTIVE DON (Opponent's Turn)
+   =================================== */
+
+.game-card--don-inactive {
+  filter: grayscale(50%) brightness(0.7);
+  opacity: 0.5;
+}

@@ -127,6 +127,7 @@ export const WS_EVENTS = {
   GAME_SURRENDER: 'game:surrender',
   GAME_RECONNECT: 'game:reconnect',
   GAME_END: 'game:end',
+  GAME_DON_REFRESH: 'game:don:refresh',  // DON cards returned during Refresh Phase
 
   // Rock-Paper-Scissors (first player determination)
   RPS_CHOOSE: 'rps:choose',              // Player sends their RPS choice

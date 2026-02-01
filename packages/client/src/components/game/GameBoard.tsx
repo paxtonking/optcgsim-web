@@ -79,6 +79,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   const previousDonCountRef = useRef<{ player: number; opponent: number }>({ player: 0, opponent: 0 });
   const [visibleDonCount, setVisibleDonCount] = useState<{ player: number; opponent: number }>({ player: 0, opponent: 0 });
 
+  // DON refresh animation state (Refresh Phase - DON returning to cost area)
+  const [animatingDonRefresh, setAnimatingDonRefresh] = useState<AnimatingCardData[]>([]);
+  const [showRefreshBanner, setShowRefreshBanner] = useState(false);
+  const refreshPhaseTriggeredRef = useRef<number>(0); // Track which turn triggered refresh
+
   // Life damage animation state
   const [animatingLifeDamage, setAnimatingLifeDamage] = useState<AnimatingCardData[]>([]);
   // Initialize to -1 to indicate "not yet set" - prevents false damage detection on first load
@@ -449,6 +454,22 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     return { x, y: rect.top + rect.height / 2 };
   }, []);
 
+  // Get position of an attached DON card (for refresh animation)
+  const getAttachedDonPosition = useCallback((attachedToId: string, donIndex: number, isOpponent: boolean): { x: number; y: number } => {
+    // Try to find the card element by data attribute
+    const cardSelector = `[data-card-id="${attachedToId}"]`;
+    const cardElement = document.querySelector(cardSelector);
+    if (cardElement) {
+      const rect = cardElement.getBoundingClientRect();
+      // DON cards stack diagonally behind the card
+      const offsetX = 20 + donIndex * 20;
+      const offsetY = 20 + donIndex * 20;
+      return { x: rect.left + offsetX + 50, y: rect.top + offsetY + 70 };
+    }
+    // Fallback position
+    return { x: window.innerWidth / 2, y: isOpponent ? 300 : window.innerHeight - 300 };
+  }, []);
+
   // Start dealing hand animation
   const startDealingHand = useCallback(() => {
     if (!myPlayer || !opponent) return;
@@ -767,6 +788,58 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     // Update refs
     previousDonCountRef.current = { player: playerDonCount, opponent: opponentDonCount };
   }, [myPlayer, opponent, dealingPhase, getDonDeckPosition, getCostAreaPosition]);
+
+  // Detect Refresh Phase and animate DON returning to cost area
+  useEffect(() => {
+    if (!myPlayer || !opponent || !gameState) return;
+    if (dealingPhase !== 'complete') return;
+
+    // Only trigger on REFRESH_PHASE when it's my turn
+    if (gameState.phase === GamePhase.REFRESH_PHASE && isMyTurn && gameState.turn > 1) {
+      // Prevent duplicate triggers for the same turn
+      if (refreshPhaseTriggeredRef.current === gameState.turn) return;
+      refreshPhaseTriggeredRef.current = gameState.turn;
+
+      // Find all attached DON cards that need to return
+      const attachedDon = myPlayer.donField.filter(d => d.attachedTo);
+
+      if (attachedDon.length > 0) {
+        console.log('[GameBoard] Refresh Phase - returning', attachedDon.length, 'attached DON to cost area');
+
+        // Show the Refresh Phase banner
+        setShowRefreshBanner(true);
+        setTimeout(() => setShowRefreshBanner(false), 1500);
+
+        // Create animations for all attached DON flying back simultaneously
+        const totalDonAfterRefresh = myPlayer.donField.length;
+        const newAnimations: AnimatingCardData[] = attachedDon.map((don, i) => {
+          const attachedToId = don.attachedTo!;
+          // Calculate which index this DON will be at in the cost area
+          const costAreaIndex = myPlayer.donField.filter(d => !d.attachedTo).length + i;
+
+          return {
+            id: `refresh-don-${don.id}-${Date.now()}`,
+            card: don,
+            faceUp: true,  // DON cards are face-up when attached
+            startPos: getAttachedDonPosition(attachedToId, i, false),
+            endPos: getCostAreaPosition(costAreaIndex, false, totalDonAfterRefresh),
+            delay: 0,  // All fly back simultaneously
+            targetZone: 'don' as const,
+            isOpponent: false,
+            flipDuringFlight: false
+          };
+        });
+
+        setAnimatingDonRefresh(newAnimations);
+        playSound('don');
+
+        // Clear animation after it completes
+        setTimeout(() => {
+          setAnimatingDonRefresh([]);
+        }, 400);
+      }
+    }
+  }, [gameState?.phase, gameState?.turn, isMyTurn, myPlayer, opponent, dealingPhase, getAttachedDonPosition, getCostAreaPosition, playSound]);
 
   // Detect and animate life damage
   useEffect(() => {
@@ -2455,7 +2528,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       [GamePhase.PRE_GAME_SETUP]: 'Pre-Game Setup',
       [GamePhase.START_MULLIGAN]: 'Mulligan',
       [GamePhase.START_SETUP]: 'Setup',
-      [GamePhase.UNTAP_PHASE]: 'Untap',
+      [GamePhase.REFRESH_PHASE]: 'Refresh',
       [GamePhase.DRAW_PHASE]: 'Draw',
       [GamePhase.DON_PHASE]: 'DON',
       [GamePhase.MAIN_PHASE]: 'Main',
@@ -2540,6 +2613,27 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           onComplete={() => handleAnimationComplete(animCard.id, animCard.targetZone, animCard.isOpponent)}
         />
       ))}
+
+      {/* Animating DON refresh (returning to cost area) */}
+      {animatingDonRefresh.map(animCard => (
+        <AnimatingCard
+          key={animCard.id}
+          card={animCard.card}
+          faceUp={animCard.faceUp}
+          startPos={animCard.startPos}
+          endPos={animCard.endPos}
+          delay={animCard.delay}
+          isDon={true}
+          duration={300}
+        />
+      ))}
+
+      {/* Refresh Phase banner */}
+      {showRefreshBanner && (
+        <div className="refresh-phase-banner">
+          Refresh Phase
+        </div>
+      )}
 
       {/* Animating life damage cards */}
       {animatingLifeDamage.map(animCard => (
@@ -2666,6 +2760,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             hideLifeZone={hideLifeZone}
             gameOverResult={gameOver ? (gameOver.winner === playerId ? 'loser' : 'winner') : null}
             playmatImage={opponentPlaymat}
+            isMyTurn={isMyTurn}
           />
         )}
 
@@ -2699,6 +2794,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             hideLifeZone={hideLifeZone}
             gameOverResult={gameOver ? (gameOver.winner === playerId ? 'winner' : 'loser') : null}
             playmatImage={playerPlaymat}
+            isMyTurn={isMyTurn}
           />
         )}
 

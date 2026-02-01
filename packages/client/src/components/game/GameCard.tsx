@@ -35,6 +35,7 @@ interface GameCardProps {
   hasCostModified?: boolean;         // Has modified cost from stage effects (gold glow)
   hasActiveEffect?: boolean;         // Stage providing active continuous effect (purple pulse)
   isDon?: boolean;          // This is a DON card (smaller size, different styling)
+  isDonInactive?: boolean;  // DON is attached but not providing power bonus (opponent's turn)
   attachedDonCount?: number; // Number of DON cards attached to this card
   effectivePower?: number;  // Calculated power including buffs and DON
   buffTotal?: number;       // Total buff amount (positive or negative)
@@ -65,6 +66,7 @@ export const GameCard: React.FC<GameCardProps> = ({
   hasCostModified = false,
   hasActiveEffect = false,
   isDon = false,
+  isDonInactive = false,
   attachedDonCount = 0,
   effectivePower,
   buffTotal = 0,
@@ -144,6 +146,7 @@ export const GameCard: React.FC<GameCardProps> = ({
     isPlayable && 'game-card--playable',
     isTarget && 'game-card--target',
     isDonTarget && 'game-card--don-target',
+    isDonInactive && 'game-card--don-inactive',
     isSelected && 'game-card--selected',
     isAttacking && 'game-card--attacking',
     isAttackEffectTarget && 'game-card--attack-effect-target',

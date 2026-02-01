@@ -10,7 +10,7 @@ export enum GamePhase {
   START_SETUP = 'START_SETUP',
   
   // Turn phases
-  UNTAP_PHASE = 'UNTAP_PHASE',
+  REFRESH_PHASE = 'REFRESH_PHASE',  // Return attached DON to cost area, then untap all cards
   DRAW_PHASE = 'DRAW_PHASE',
   DON_PHASE = 'DON_PHASE',
   MAIN_PHASE = 'MAIN_PHASE',

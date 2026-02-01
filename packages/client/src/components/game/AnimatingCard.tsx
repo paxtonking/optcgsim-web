@@ -17,7 +17,7 @@ interface AnimatingCardProps {
   endRotation?: number;  // rotation at end position in degrees (default 0)
   flipDuringFlight?: boolean;  // flip from face-down to face-up during flight
   isDon?: boolean;  // DON card (smaller size)
-  onComplete: () => void;
+  onComplete?: () => void;  // callback when animation completes
 }
 
 export const AnimatingCard: React.FC<AnimatingCardProps> = ({
@@ -71,7 +71,7 @@ export const AnimatingCard: React.FC<AnimatingCardProps> = ({
         } else {
           // No rotation needed, we're done
           setAnimationState('done');
-          onComplete();
+          onComplete?.();
         }
       }, flyDuration + 20);
 
@@ -84,7 +84,7 @@ export const AnimatingCard: React.FC<AnimatingCardProps> = ({
     if (animationState === 'landing') {
       const landTimer = setTimeout(() => {
         setAnimationState('done');
-        onComplete();
+        onComplete?.();
       }, landDuration + 20);
 
       return () => clearTimeout(landTimer);
