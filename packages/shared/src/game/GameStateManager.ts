@@ -136,6 +136,7 @@ export class GameStateManager {
 
   public startGame(firstPlayerId: string): void {
     this.state.activePlayerId = firstPlayerId;
+    this.state.firstPlayerId = firstPlayerId;  // Track who goes first (cannot attack on turn 1)
     this.state.turn = 1;
 
     // Reset mulligan confirmations
@@ -1474,6 +1475,11 @@ export class GameStateManager {
   public declareAttack(attackerId: string, targetId: string, targetType: 'leader' | 'character'): boolean {
     const attacker = this.findCard(attackerId);
     if (!attacker || attacker.state !== CardState.ACTIVE) return false;
+
+    // First player cannot attack on turn 1 (One Piece TCG rule)
+    if (this.state.turn === 1 && attacker.owner === this.state.firstPlayerId) {
+      return false;
+    }
 
     // Check if card can attack (Rush check for cards played this turn)
     if (attacker.turnPlayed === this.state.turn) {

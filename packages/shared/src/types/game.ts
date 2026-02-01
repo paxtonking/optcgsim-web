@@ -263,6 +263,7 @@ export interface GameState {
   phase: GamePhase;
   turn: number;
   activePlayerId: string;
+  firstPlayerId?: string;        // Player who goes first (cannot attack on turn 1)
   players: {
     [playerId: string]: PlayerState;
   };
