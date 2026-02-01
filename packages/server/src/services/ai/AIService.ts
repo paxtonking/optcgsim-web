@@ -18,6 +18,7 @@ import { BaseStrategy } from './strategies/BaseStrategy.js';
 import { EasyStrategy } from './strategies/EasyStrategy.js';
 import { MediumStrategy } from './strategies/MediumStrategy.js';
 import { HardStrategy } from './strategies/HardStrategy.js';
+import { cardLoaderService } from '../CardLoaderService.js';
 
 export class AIService {
   private playerId: string;
@@ -515,8 +516,6 @@ export class AIService {
    * Get characters ready to attack
    */
   private getReadyAttackers(player: PlayerState, currentTurn: number): any[] {
-    const { cardLoaderService } = require('../CardLoaderService.js');
-
     return player.field.filter(card => {
       if (card.state !== CardState.ACTIVE) return false;
       if (card.hasAttacked) return false;
