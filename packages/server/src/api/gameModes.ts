@@ -95,6 +95,15 @@ gameModesRouter.get('/series', async (req, res, next) => {
 gameModesRouter.post('/series/:id/record-result', async (req, res, next) => {
   try {
     const { matchId, winnerId } = req.body;
+    const userId = req.user!.id;
+
+    if (!winnerId || typeof winnerId !== 'string') {
+      throw new AppError('winnerId is required', 400);
+    }
+
+    if (matchId && typeof matchId !== 'string') {
+      throw new AppError('matchId must be a string', 400);
+    }
 
     const series = await prisma.gameSeries.findUnique({
       where: { id: req.params.id },
@@ -106,6 +115,34 @@ gameModesRouter.post('/series/:id/record-result', async (req, res, next) => {
 
     if (series.status === 'COMPLETED') {
       throw new AppError('Series is already completed', 400);
+    }
+
+    if (series.player1Id !== userId && series.player2Id !== userId) {
+      throw new AppError('Not authorized to record results for this series', 403);
+    }
+
+    if (winnerId !== series.player1Id && winnerId !== series.player2Id) {
+      throw new AppError('Winner must be a series participant', 400);
+    }
+
+    if (matchId) {
+      const match = await prisma.match.findUnique({
+        where: { id: matchId },
+        select: { id: true, seriesId: true, player1Id: true, player2Id: true },
+      });
+
+      if (!match) {
+        throw new AppError('Match not found', 404);
+      }
+
+      if (match.seriesId && match.seriesId !== series.id) {
+        throw new AppError('Match does not belong to this series', 400);
+      }
+
+      const matchPlayers = new Set([match.player1Id, match.player2Id]);
+      if (!matchPlayers.has(series.player1Id) || !matchPlayers.has(series.player2Id)) {
+        throw new AppError('Match players do not match series participants', 400);
+      }
     }
 
     // Update series score
