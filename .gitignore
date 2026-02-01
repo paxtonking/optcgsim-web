@@ -88,3 +88,4 @@ backups/
 # Analysis output (regenerated)
 tools/card-importer/audit-report.json
 tools/card-importer/unparsed-analysis.json
+dbpasswords.txt
