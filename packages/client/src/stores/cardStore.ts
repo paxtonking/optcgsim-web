@@ -52,11 +52,17 @@ export const useCardStore = create<CardStore>((set, get) => ({
 
     set({ isLoading: true, error: null });
     try {
-      const response = await fetch('/data/cards.json');
+      // Use API if VITE_API_URL is set, otherwise fall back to static file
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const url = apiUrl ? `${apiUrl}/api/cards?limit=5000` : '/data/cards.json';
+
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error('Failed to load card data');
       }
-      const cards: Card[] = await response.json();
+      const data = await response.json();
+      // API returns { cards: [...] }, static file returns [...]
+      const cards: Card[] = Array.isArray(data) ? data : data.cards;
       set({ cards, isLoading: false });
     } catch (error) {
       set({
