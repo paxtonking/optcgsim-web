@@ -20,6 +20,9 @@ async function proxyImage(imageUrl: string, filename: string, res: any) {
     // Set cache headers (cache for 1 day)
     res.setHeader('Cache-Control', 'public, max-age=86400');
 
+    // Allow cross-origin requests (frontend is on different subdomain)
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+
     // Pipe the image data
     const buffer = await response.arrayBuffer();
     res.send(Buffer.from(buffer));
