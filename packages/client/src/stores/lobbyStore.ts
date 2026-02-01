@@ -113,6 +113,12 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
     socketService.emit('lobby:create', {
       deckId: serverDeckId,
       isRanked,
+    }, (response: { success: boolean; lobby?: any; error?: string }) => {
+      if (response.success && response.lobby) {
+        set({ lobby: response.lobby, lobbyStatus: 'waiting', lobbyError: null });
+      } else {
+        set({ lobbyError: response.error || 'Failed to create lobby', lobbyStatus: 'idle' });
+      }
     });
   },
 
@@ -140,6 +146,12 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
     socketService.emit('lobby:join', {
       code,
       deckId: serverDeckId,
+    }, (response: { success: boolean; lobby?: any; error?: string }) => {
+      if (response.success && response.lobby) {
+        set({ lobby: response.lobby, lobbyStatus: 'waiting', lobbyError: null });
+      } else {
+        set({ lobbyError: response.error || 'Failed to join lobby', lobbyStatus: 'idle' });
+      }
     });
   },
 

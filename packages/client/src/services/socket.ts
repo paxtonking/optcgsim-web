@@ -67,9 +67,13 @@ export function emitSocketEvent<T>(
 export const socketService = {
   connect: connectSocket,
   disconnect: disconnectSocket,
-  emit: (event: string, data?: unknown) => {
+  emit: (event: string, data?: unknown, callback?: (response: any) => void) => {
     const sock = getSocket();
-    sock.emit(event, data);
+    if (callback) {
+      sock.emit(event, data, callback);
+    } else {
+      sock.emit(event, data);
+    }
   },
   on: <T = unknown>(event: string, callback: (data: T) => void) => {
     return onSocketEvent<T>(event, callback);
