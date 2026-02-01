@@ -434,10 +434,12 @@ export class AIGameManager {
     if (state.activePlayerId !== socket.userId) {
       // Allow defensive actions during opponent's turn
       // Allow mulligan actions during mulligan phase (both players decide)
+      // Allow pre-game actions during pre-game setup (both players may have start-of-game abilities)
       const isMulliganAction = state.phase === GamePhase.START_MULLIGAN;
+      const isPreGameAction = state.phase === GamePhase.PRE_GAME_SETUP;
       const isDefensivePhase = state.phase === GamePhase.COUNTER_STEP || state.phase === GamePhase.BLOCKER_STEP;
 
-      if (!isMulliganAction && !isDefensivePhase) {
+      if (!isMulliganAction && !isPreGameAction && !isDefensivePhase) {
         callback?.({ success: false, error: 'Not your turn' });
         return;
       }
