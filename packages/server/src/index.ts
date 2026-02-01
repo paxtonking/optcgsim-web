@@ -36,10 +36,36 @@ for (const envVar of requiredEnvVars) {
 const app = express();
 const httpServer = createServer(app);
 
+// CORS origin handler - allows Vercel preview deployments and production
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  'http://localhost:3000',
+  'http://localhost:5173',
+].filter(Boolean) as string[];
+
+const corsOriginHandler = (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+  // Allow requests with no origin (mobile apps, curl, etc.)
+  if (!origin) {
+    callback(null, true);
+    return;
+  }
+  // Allow exact matches
+  if (allowedOrigins.includes(origin)) {
+    callback(null, true);
+    return;
+  }
+  // Allow Vercel preview deployments
+  if (origin.includes('paxtonkings-projects.vercel.app') || origin.includes('vercel.app')) {
+    callback(null, true);
+    return;
+  }
+  callback(new Error('Not allowed by CORS'));
+};
+
 // Socket.IO setup
 const io = new SocketServer(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    origin: corsOriginHandler,
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -48,7 +74,7 @@ const io = new SocketServer(httpServer, {
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  origin: corsOriginHandler,
   credentials: true,
 }));
 app.use(express.json());
