@@ -421,6 +421,23 @@ export class AIService {
       };
     }
 
+    // Handle REST_DON effects (e.g., "rest up to 1 DON")
+    if (pendingEffect.effectType === 'REST_DON') {
+      // If no valid targets (all DON already rested), skip
+      if (validTargets.length === 0) {
+        console.log('[AI] REST_DON effect has no valid targets, skipping');
+        return { action: ActionType.SKIP_PLAY_EFFECT, data: { effectId: pendingEffect.id } };
+      }
+
+      // Select DON to rest (pick first available)
+      const maxTargets = pendingEffect.maxTargets || 1;
+      const selectedTargets = validTargets.slice(0, maxTargets);
+      return {
+        action: ActionType.RESOLVE_PLAY_EFFECT,
+        data: { effectId: pendingEffect.id, selectedTargets },
+      };
+    }
+
     // Use strategy for target selection
     if (validTargets.length > 0) {
       const selectedTargets = this.strategy.selectEffectTargets(validTargets, gameState, pendingEffect.effectType);
@@ -430,8 +447,9 @@ export class AIService {
       };
     }
 
-    // Skip optional effects with no targets
-    if (pendingEffect.minTargets === 0) {
+    // Skip optional effects with no targets (minTargets === 0 or undefined means optional)
+    if (!pendingEffect.minTargets || pendingEffect.minTargets === 0) {
+      console.log('[AI] Optional effect with no valid targets, skipping');
       return { action: ActionType.SKIP_PLAY_EFFECT, data: { effectId: pendingEffect.id } };
     }
 
