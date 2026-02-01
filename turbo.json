@@ -1,6 +1,7 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": ["**/.env.*local"],
+  "globalEnv": ["VITE_API_URL", "VITE_WS_URL"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
