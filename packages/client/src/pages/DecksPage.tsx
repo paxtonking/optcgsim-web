@@ -22,6 +22,17 @@ interface PublicDeck {
   };
 }
 
+// Helper to convert direct imageUrl to proxied URL via backend
+function getProxyImageUrl(imageUrl: string | undefined): string {
+  if (!imageUrl) return '/images/card-back.png';
+  const apiBase = import.meta.env.VITE_API_URL || '';
+  const filename = imageUrl.split('/').pop();
+  if (imageUrl.includes('onepiece-cardgame.com')) {
+    return `${apiBase}/api/images/official/${filename}`;
+  }
+  return `${apiBase}/api/images/cards/${filename}`;
+}
+
 export default function DecksPage() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuthStore();
@@ -303,7 +314,7 @@ export default function DecksPage() {
                     <div className="aspect-[5/3] relative bg-gray-900">
                       {leaderCard ? (
                         <img
-                          src={leaderCard.imageUrl}
+                          src={getProxyImageUrl(leaderCard.imageUrl)}
                           alt={leaderCard.name}
                           className="w-full h-full object-cover object-top"
                           loading="lazy"
@@ -443,7 +454,7 @@ export default function DecksPage() {
                     {cards.get(selectedDeck.leaderId) && (
                       <>
                         <img
-                          src={cards.get(selectedDeck.leaderId)!.imageUrl}
+                          src={getProxyImageUrl(cards.get(selectedDeck.leaderId)!.imageUrl)}
                           alt={cards.get(selectedDeck.leaderId)!.name}
                           className="w-32 rounded-lg"
                         />

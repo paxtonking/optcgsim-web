@@ -7,6 +7,17 @@ const COLORS = ['RED', 'GREEN', 'BLUE', 'PURPLE', 'BLACK', 'YELLOW'];
 const TYPES = ['LEADER', 'CHARACTER', 'EVENT', 'STAGE'];
 const RARITIES = ['L', 'SR', 'R', 'UC', 'C', 'SEC', 'SP', 'P'];
 
+// Helper to convert direct imageUrl to proxied URL via backend
+function getProxyImageUrl(imageUrl: string | undefined): string {
+  if (!imageUrl) return '/images/card-back.png';
+  const apiBase = import.meta.env.VITE_API_URL || '';
+  const filename = imageUrl.split('/').pop();
+  if (imageUrl.includes('onepiece-cardgame.com')) {
+    return `${apiBase}/api/images/official/${filename}`;
+  }
+  return `${apiBase}/api/images/cards/${filename}`;
+}
+
 export default function CardsPage() {
   // Use shared card store for caching
   const { cards, isLoading, error, loadCards } = useCardStore();
@@ -351,7 +362,7 @@ export default function CardsPage() {
             >
               <div className="aspect-[5/7] relative">
                 <img
-                  src={card.imageUrl}
+                  src={getProxyImageUrl(card.imageUrl)}
                   alt={card.name}
                   className="w-full h-full object-cover"
                   loading="lazy"
@@ -480,7 +491,7 @@ export default function CardsPage() {
               {/* Card Image */}
               <div className="md:w-1/2 p-4">
                 <img
-                  src={selectedCard.imageUrl}
+                  src={getProxyImageUrl(selectedCard.imageUrl)}
                   alt={selectedCard.name}
                   className="w-full rounded-lg"
                   onError={(e) => {

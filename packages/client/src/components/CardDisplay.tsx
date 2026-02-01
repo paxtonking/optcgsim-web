@@ -4,6 +4,17 @@ import type { Card } from '../types/card';
 import { COLOR_HEX, type CardColor } from '../types/card';
 import { FormattedEffect } from './common/FormattedEffect';
 
+// Helper to convert direct imageUrl to proxied URL via backend
+function getProxyImageUrl(imageUrl: string | undefined): string {
+  if (!imageUrl) return '/images/card-back.png';
+  const apiBase = import.meta.env.VITE_API_URL || '';
+  const filename = imageUrl.split('/').pop();
+  if (imageUrl.includes('onepiece-cardgame.com')) {
+    return `${apiBase}/api/images/official/${filename}`;
+  }
+  return `${apiBase}/api/images/cards/${filename}`;
+}
+
 interface CardDisplayProps {
   card: Card;
   size?: 'sm' | 'md' | 'lg';
@@ -96,7 +107,7 @@ export function CardDisplay({
     >
       {!imageError ? (
         <img
-          src={card.imageUrl}
+          src={getProxyImageUrl(card.imageUrl)}
           alt={card.name}
           className="w-full h-full object-cover"
           onError={() => setImageError(true)}
@@ -160,7 +171,7 @@ export function CardPreview({ card }: CardPreviewProps) {
       <div className="flex gap-6">
         {!imageError ? (
           <img
-            src={card.imageUrl}
+            src={getProxyImageUrl(card.imageUrl)}
             alt={card.name}
             className="w-72 h-[400px] object-cover rounded-lg"
             onError={() => setImageError(true)}
