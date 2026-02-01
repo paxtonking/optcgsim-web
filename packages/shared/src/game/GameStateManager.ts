@@ -85,7 +85,7 @@ export class GameStateManager {
       donField: [],
       stage: null,
       isActive: false,
-      turnCount: 0
+      turnCount: 1
     };
   }
 

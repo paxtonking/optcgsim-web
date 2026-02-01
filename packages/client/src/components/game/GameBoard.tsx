@@ -1649,11 +1649,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   }, [currentActivateEffect]);
 
   // Show info banner when there's a pending activate effect
+  // Don't show if we're in HAND_SELECT_STEP (cost payment shows its own banner)
   useEffect(() => {
-    if (currentActivateEffect && currentActivateEffect.playerId === playerId) {
+    if (currentActivateEffect && currentActivateEffect.playerId === playerId && phase !== GamePhase.HAND_SELECT_STEP) {
       showInfoBanner(`Activate: ${currentActivateEffect.description}`);
     }
-  }, [currentActivateEffect, playerId, showInfoBanner]);
+  }, [currentActivateEffect, playerId, showInfoBanner, phase]);
 
   // Show combat modal during combat phases
   const showCombatModal = phase === GamePhase.BLOCKER_STEP || phase === GamePhase.COUNTER_STEP;
