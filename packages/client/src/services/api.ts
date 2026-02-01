@@ -1,8 +1,14 @@
 import { useAuthStore } from '../stores/authStore';
 
+// Debug: Log env vars
+console.log('VITE_API_URL:', import.meta.env.VITE_API_URL);
+console.log('VITE_WS_URL:', import.meta.env.VITE_WS_URL);
+
 const API_URL = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
   : '/api';
+
+console.log('Using API_URL:', API_URL);
 
 class ApiClient {
   private baseUrl: string;

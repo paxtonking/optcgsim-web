@@ -6,7 +6,8 @@
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
-      "env": ["VITE_API_URL", "VITE_WS_URL"]
+      "env": ["VITE_API_URL", "VITE_WS_URL"],
+      "cache": false
     },
     "dev": {
       "cache": false,
