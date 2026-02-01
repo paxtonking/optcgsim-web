@@ -11,6 +11,8 @@
   background-color: #1a1a2e;
   font-family: 'Segoe UI', system-ui, sans-serif;
   overflow: hidden;
+  /* Prevent accidental zoom gestures (pinch-to-zoom, double-tap zoom) */
+  touch-action: manipulation;
 }
 
 .game-board__header {
