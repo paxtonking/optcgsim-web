@@ -134,8 +134,9 @@ export class AIService {
 
       case GamePhase.TRIGGER_STEP:
         // Trigger step - AI should pass if no trigger to activate
+        // Use TRIGGER_LIFE with no effectId to pass the trigger
         console.log('[AI] In TRIGGER_STEP, passing trigger');
-        return { action: ActionType.PASS_PRIORITY, data: {} };
+        return { action: ActionType.TRIGGER_LIFE, data: {} };
 
       default:
         return null;
