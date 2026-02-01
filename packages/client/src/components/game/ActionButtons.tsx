@@ -30,7 +30,7 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
   isMyTurn,
   isDefender,
   onEndTurn,
-  onPass,
+  onPass: _onPass,
   onKeepHand: _onKeepHand,
   onMulligan: _onMulligan,
   onUseCounter: _onUseCounter,
@@ -48,6 +48,8 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
 }) => {
   // Note: These props are kept for interface compatibility but are handled elsewhere
   // Combat actions are handled by CombatModal, mulligan actions by MulliganModal
+  // Pass button is only shown during specific phases (Blocker step uses CombatModal)
+  void _onPass;
   void _onUseCounter;
   void _onPassCounter;
   void _onSelectBlocker;
@@ -141,13 +143,6 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
         disabled={!isMyTurn}
       >
         End Turn
-      </button>
-      <button
-        className="action-btn action-btn--pass"
-        onClick={onPass}
-        disabled={!isMyTurn}
-      >
-        Pass
       </button>
     </div>
   );
