@@ -2861,6 +2861,37 @@ export class GameStateManager {
             return false; // Already rested, can't pay this cost
           }
           card.state = CardState.RESTED;
+        } else if (cost.type === 'TRASH_FROM_HAND') {
+          // Trash card(s) from hand as cost
+          const requiredCount = cost.count || 1;
+          if (player.hand.length < requiredCount) {
+            return false; // Not enough cards in hand to pay cost
+          }
+
+          // Mark as activated this turn BEFORE creating pending
+          if (activateEffect.oncePerTurn) {
+            card.activatedThisTurn = true;
+          }
+
+          // Create pending hand select for cost payment
+          const pendingEffect: PendingHandSelectEffect = {
+            id: `cost-trash-${card.id}-${Date.now()}`,
+            sourceCardId: card.cardId,
+            playerId,
+            description: `Trash ${requiredCount} card${requiredCount > 1 ? 's' : ''} from your hand to activate ${cardDef.name}'s ability`,
+            selectAction: 'TRASH',
+            minSelections: requiredCount,
+            maxSelections: requiredCount,
+            canSkip: false, // Must pay the cost once activated
+            isCostPayment: true,
+            pendingEffectId: activateEffect.id,
+            sourceCardInstanceId: card.id,
+          };
+
+          this.state.pendingHandSelectEffect = pendingEffect;
+          this.state.phase = GamePhase.HAND_SELECT_STEP;
+
+          return true; // Effect will be executed after cost is paid
         }
       }
     }
@@ -3648,6 +3679,32 @@ export class GameStateManager {
             player.deck.unshift(card); // Top of deck
             console.log('[resolveHandSelect] Returned to deck top:', card.cardId);
             break;
+        }
+      }
+    }
+
+    // If this was a cost payment, execute the pending effect
+    if (pending.isCostPayment && pending.pendingEffectId && pending.sourceCardInstanceId) {
+      console.log('[resolveHandSelect] Cost paid, executing pending effect:', pending.pendingEffectId);
+
+      // Find the source card
+      const sourceCard = this.findCard(pending.sourceCardInstanceId);
+      if (sourceCard) {
+        // Get the card definition and effect
+        const cardDef = this.effectEngine.getCardDefinition(pending.sourceCardId);
+        if (cardDef) {
+          const effect = cardDef.effects.find(e => e.id === pending.pendingEffectId);
+          if (effect) {
+            // Execute the effect
+            const context: EffectContext = {
+              gameState: this.state,
+              sourceCard: sourceCard,
+              sourcePlayer: player,
+            };
+
+            console.log('[resolveHandSelect] Resolving effect:', effect.id);
+            this.effectEngine.resolveEffect(effect, context);
+          }
         }
       }
     }

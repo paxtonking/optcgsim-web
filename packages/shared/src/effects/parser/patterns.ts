@@ -997,7 +997,14 @@ export const COST_PATTERNS: CostPattern[] = [
     extractCount: (m) => m[1] ? parseInt(m[1]) : 1
   },
 
-  // Trash costs
+  // Trash costs - complex "or" pattern: "trash X ... Characters or X card from hand"
+  // Must come BEFORE simple pattern
+  {
+    pattern: /[Tt]rash\s*(\d+)?\s*(?:of\s+your\s+)?(?:\{[^}]+\}\s*type\s+)?Characters?\s+or\s+(\d+)?\s*cards?\s*from\s*(?:your\s*)?hand/i,
+    costType: 'TRASH_FROM_HAND',
+    extractCount: (m) => m[1] ? parseInt(m[1]) : 1
+  },
+  // Trash costs - simple pattern
   {
     pattern: /[Tt]rash\s*(\d+)?\s*cards?\s*from\s*(?:your\s*)?hand/i,
     costType: 'TRASH_FROM_HAND',

@@ -256,6 +256,10 @@ export interface PendingHandSelectEffect {
   minSelections: number;       // Required number of selections
   maxSelections: number;       // Maximum selections allowed
   canSkip: boolean;            // Whether player can skip (for optional effects)
+  // For cost payment - effect to execute after cost is paid
+  isCostPayment?: boolean;     // True if this is paying a cost for an ability
+  pendingEffectId?: string;    // ID of the effect to execute after cost paid
+  sourceCardInstanceId?: string; // Instance ID of the card with the ability
 }
 
 export interface GameState {
