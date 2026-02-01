@@ -1198,6 +1198,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   // Track selected DON for attaching
   const [selectedDon, setSelectedDon] = useState<GameCardType | null>(null);
 
+  // Track character card selected from hand pending placement on field
+  const [pendingPlayCard, setPendingPlayCard] = useState<GameCardType | null>(null);
+
   // Track pinned card for combat phases and main phase (click to pin, stays until phase ends)
   const [pinnedCard, setPinnedCard] = useState<GameCardType | null>(null);
 
@@ -1221,20 +1224,42 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     }
   }, [phase]);
 
-  // Also clear pinned card and activation mode when turn changes (new turn = fresh state)
+  // Also clear pinned card, activation mode, and pending play when turn changes (new turn = fresh state)
   useEffect(() => {
     setPinnedCard(null);
     setActivationMode(null);
     setIsAttackMode(false);
+    setPendingPlayCard(null);
   }, [turn]);
 
-  // Clear activation mode and attack mode when phase changes away from main phase
+  // Clear activation mode, attack mode, and pending play when phase changes away from main phase
   useEffect(() => {
     if (phase !== GamePhase.MAIN_PHASE) {
       setActivationMode(null);
       setIsAttackMode(false);
+      setPendingPlayCard(null);
     }
   }, [phase]);
+
+  // Escape key handler - cancel pending actions
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (pendingPlayCard) {
+          setPendingPlayCard(null);
+        }
+        if (selectedDon) {
+          setSelectedDon(null);
+        }
+        if (activationMode) {
+          setActivationMode(null);
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [pendingPlayCard, selectedDon, activationMode]);
 
   // RPS Socket event handlers
   useEffect(() => {
@@ -2198,9 +2223,25 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       return;
     }
 
-    // If card is in hand and playable, play it
+    // If card is in hand and playable
     if (card.zone === CardZone.HAND && playableCards.has(card.id)) {
       const targetZone = getTargetZone(card.cardId);
+
+      // Character cards use two-step flow: select first, then click zone to play
+      if (targetZone === 'FIELD') {
+        // If clicking the same pending card, deselect it
+        if (pendingPlayCard?.id === card.id) {
+          setPendingPlayCard(null);
+        } else {
+          // Select this character card for placement
+          setPendingPlayCard(card);
+          setSelectedDon(null); // Clear DON selection
+          setSelectedCard(null); // Clear attack selection
+        }
+        return;
+      }
+
+      // Events and Stages use single-click auto-play
       playCard(card.id, targetZone);
       playSound('play');
       return;
@@ -2215,6 +2256,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         } else {
           setSelectedDon(card);
           setSelectedCard(null); // Clear any selected character
+          setPendingPlayCard(null); // Clear pending play
         }
         return;
       }
@@ -2316,9 +2358,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     const isButtonClick = target.closest('button') !== null;
     const isModalClick = target.closest('.combat-modal') !== null;
     const isSidebarClick = target.closest('.game-board__sidebar') !== null;
+    const isZoneClick = target.closest('.zone--characters') !== null;
 
-    // If not clicking on a card, button, modal, or sidebar, it's a background click
-    const isBackgroundClick = !isCardClick && !isButtonClick && !isModalClick && !isSidebarClick;
+    // If not clicking on a card, button, modal, sidebar, or character zone, it's a background click
+    const isBackgroundClick = !isCardClick && !isButtonClick && !isModalClick && !isSidebarClick && !isZoneClick;
 
     if (isBackgroundClick) {
       if (selectedDon) {
@@ -2333,8 +2376,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       if (activationMode) {
         setActivationMode(null);
       }
+      if (pendingPlayCard) {
+        setPendingPlayCard(null);
+      }
     }
-  }, [selectedDon, selectedCard, setSelectedCard, pinnedCard, phase, activationMode]);
+  }, [selectedDon, selectedCard, setSelectedCard, pinnedCard, phase, activationMode, pendingPlayCard]);
 
   // Trash click handlers
   const handlePlayerTrashClick = useCallback(() => {
@@ -2348,6 +2394,15 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       setTrashModalOpen('opponent');
     }
   }, [opponent]);
+
+  // Character zone click handler - plays the pending character card
+  const handleCharacterZoneClick = useCallback(() => {
+    if (pendingPlayCard && phase === GamePhase.MAIN_PHASE) {
+      playCard(pendingPlayCard.id, 'FIELD');
+      playSound('play');
+      setPendingPlayCard(null);
+    }
+  }, [pendingPlayCard, phase, playCard, playSound]);
 
   const handleCloseTrashModal = useCallback(() => {
     setTrashModalOpen(null);
@@ -2774,6 +2829,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             blockerCards={validBlockers}
             selectedCard={selectedCard}
             selectedDon={selectedDon}
+            pendingPlayCard={pendingPlayCard}
             donAttachTargets={donAttachTargets}
             activationDonTargets={activationDonTargets}
             activationTargets={activationTargets}
@@ -2789,6 +2845,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             onCardHover={handleCardHover}
             onCardClick={handleCardClick}
             onTrashClick={handlePlayerTrashClick}
+            onCharacterZoneClick={handleCharacterZoneClick}
             visibleLifeCount={hideLifeZone ? 0 : visibleLifeCount.player}
             visibleDonCount={visibleDonCount.player}
             hideLifeZone={hideLifeZone}
@@ -2815,6 +2872,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             playableCards={playableCards}
             selectedCard={selectedCard}
             pinnedCard={pinnedCard}
+            pendingPlayCard={pendingPlayCard}
             activateEffectSelectedTargets={activateEffectSelectedTargets}
             handSelectMode={phase === GamePhase.HAND_SELECT_STEP && currentHandSelectEffect?.playerId === playerId}
             handSelectSelectedCards={handSelectSelectedCards}

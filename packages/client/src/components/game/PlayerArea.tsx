@@ -42,6 +42,7 @@ interface PlayerAreaProps {
   blockerCards?: Set<string>;
   selectedCard?: GameCardType | null;
   selectedDon?: GameCardType | null;
+  pendingPlayCard?: GameCardType | null;  // Character card selected from hand waiting to be placed
   donAttachTargets?: Set<string>;
   activationDonTargets?: Set<string>;  // DON cards valid for activation ability selection
   activationTargets?: Set<string>;      // Characters/Leader valid for activation ability target
@@ -59,6 +60,7 @@ interface PlayerAreaProps {
   onDonClick?: (don: GameCardType) => void;
   onDeckClick?: () => void;
   onTrashClick?: () => void;
+  onCharacterZoneClick?: () => void;  // Called when character zone is clicked (for placing pending cards)
   visibleLifeCount?: number;
   visibleDonCount?: number;  // Control how many DON cards to show (for animation)
   hideLifeZone?: boolean;
@@ -93,6 +95,8 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
   // onDonClick - reserved for future use
   onDeckClick,
   onTrashClick,
+  onCharacterZoneClick,
+  pendingPlayCard,
   visibleLifeCount,
   visibleDonCount,
   hideLifeZone = false,
@@ -318,7 +322,10 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
       {/* Main center area: Characters, Cost Area, Trash */}
       <div className="player-area__center">
         {/* Character Area */}
-        <div className="zone zone--characters">
+        <div
+          className={`zone zone--characters ${!isOpponent && pendingPlayCard ? 'zone--drop-target' : ''}`}
+          onClick={!isOpponent && pendingPlayCard && onCharacterZoneClick ? onCharacterZoneClick : undefined}
+        >
           <span className="zone__label zone__label--inside">Characters</span>
           {characters.map(card => {
             const cardDef = cardDefinitions.get(card.cardId);
@@ -435,6 +442,7 @@ interface HandZoneProps {
   playableCards?: Set<string>;
   selectedCard?: GameCardType | null;
   pinnedCard?: GameCardType | null;  // For combat phase card selection highlighting
+  pendingPlayCard?: GameCardType | null;  // Character card selected for placement
   activateEffectSelectedTargets?: string[];  // Cards selected for activate effect
   handSelectMode?: boolean;                  // Whether hand select mode is active (discard, etc.)
   handSelectSelectedCards?: Set<string>;     // Cards selected for hand select effect
@@ -450,6 +458,7 @@ export const HandZone: React.FC<HandZoneProps> = ({
   playableCards = new Set(),
   selectedCard,
   pinnedCard,
+  pendingPlayCard,
   activateEffectSelectedTargets = [],
   handSelectMode = false,
   handSelectSelectedCards = new Set(),
@@ -470,23 +479,30 @@ export const HandZone: React.FC<HandZoneProps> = ({
           const isRested = card.state === CardState.RESTED;
           const isHandSelectTarget = !isOpponent && handSelectMode;
           const isHandSelectSelected = handSelectSelectedCards.has(card.id);
+          const isPendingPlay = !isOpponent && pendingPlayCard?.id === card.id;
 
           // Determine click handler based on mode
           const handleClick = handSelectMode && onHandSelectCardClick
             ? () => onHandSelectCardClick(card)
             : onCardClick;
 
+          const wrapperClasses = [
+            'hand-zone__card-wrapper',
+            isRested && 'hand-zone__card-wrapper--rested',
+            isPendingPlay && 'hand-zone__card-wrapper--pending-play'
+          ].filter(Boolean).join(' ');
+
           return (
             <div
               key={card.id}
-              className={`hand-zone__card-wrapper ${isRested ? 'hand-zone__card-wrapper--rested' : ''}`}
+              className={wrapperClasses}
             >
               <GameCard
                 card={card}
                 cardDef={isOpponent ? undefined : cardDefinitions.get(card.cardId)}
                 faceUp={!isOpponent}
-                isPlayable={!isOpponent && !handSelectMode && playableCards.has(card.id)}
-                isSelected={!isOpponent && (selectedCard?.id === card.id || pinnedCard?.id === card.id || activateEffectSelectedTargets.includes(card.id))}
+                isPlayable={!isOpponent && !handSelectMode && !isPendingPlay && playableCards.has(card.id)}
+                isSelected={!isOpponent && (selectedCard?.id === card.id || pinnedCard?.id === card.id || activateEffectSelectedTargets.includes(card.id) || isPendingPlay)}
                 isEventEffectTarget={isHandSelectTarget && !isHandSelectSelected}
                 isEventEffectSelected={isHandSelectSelected}
                 hasCostModified={!isOpponent && card.modifiedCost !== undefined}
