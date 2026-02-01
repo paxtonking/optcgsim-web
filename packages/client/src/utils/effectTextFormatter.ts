@@ -96,17 +96,33 @@ export function parseEffectText(effectText: string | null | undefined, triggerTe
   // Extract keywords first
   const foundKeywords: string[] = [];
   for (const keyword of KEYWORDS) {
-    // Match keyword with optional brackets, period, and parenthetical explanation
-    // Handles: "Blocker", "[Blocker]", "Blocker (explanation)", "[Blocker] (explanation)"
-    const keywordPattern = new RegExp(
-      `\\[?${keyword}\\]?\\.?\\s*(?:\\([^)]*\\))?\\s*`,
-      'gi'
-    );
-    if (keywordPattern.test(remainingText)) {
+    // Check if keyword exists in text
+    const keywordCheckPattern = new RegExp(`\\[?${keyword}\\]?`, 'gi');
+    if (keywordCheckPattern.test(remainingText)) {
       foundKeywords.push(keyword);
-      // Reset lastIndex and replace
-      keywordPattern.lastIndex = 0;
-      remainingText = remainingText.replace(keywordPattern, '').trim();
+
+      // For "gains [Keyword]" patterns, keep the keyword name but remove brackets and explanation
+      // e.g., "gains [Rush]. (This card can attack...)" -> "gains Rush."
+      const gainsPattern = new RegExp(
+        `(gains\\s*)\\[${keyword}\\]\\.?\\s*(?:\\([^)]*\\))?`,
+        'gi'
+      );
+      remainingText = remainingText.replace(gainsPattern, `$1${keyword}.`);
+
+      // For standalone keywords at start or with brackets, remove entirely with explanation
+      // e.g., "[Rush] (This card can attack...)" at the beginning
+      const standalonePattern = new RegExp(
+        `^\\[${keyword}\\]\\.?\\s*(?:\\([^)]*\\))?\\s*`,
+        'gi'
+      );
+      remainingText = remainingText.replace(standalonePattern, '').trim();
+
+      // Also handle standalone keyword without brackets at start
+      const standaloneNoBracketPattern = new RegExp(
+        `^${keyword}\\.?\\s*(?:\\([^)]*\\))?\\s*`,
+        'gi'
+      );
+      remainingText = remainingText.replace(standaloneNoBracketPattern, '').trim();
     }
   }
 
