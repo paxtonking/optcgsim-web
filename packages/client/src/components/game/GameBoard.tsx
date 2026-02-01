@@ -1707,6 +1707,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   // Check if selected card can attack
   const selectedCardCanAttack = useMemo(() => {
     if (!selectedCard || !isMyTurn || phase !== GamePhase.MAIN_PHASE) return false;
+    // First player cannot attack on turn 1 (One Piece TCG rule)
+    if (turn === 1 && playerId === gameState?.firstPlayerId) return false;
     // Card must be active (not rested) and hasn't attacked yet
     if (selectedCard.state === CardState.RESTED || selectedCard.hasAttacked) return false;
     // Characters played this turn need Rush to attack (summoning sickness)
@@ -1715,7 +1717,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       if (!selectedCard.keywords?.includes('Rush')) return false;
     }
     return true;
-  }, [selectedCard, isMyTurn, phase, turn]);
+  }, [selectedCard, isMyTurn, phase, turn, playerId, gameState?.firstPlayerId]);
 
   // Calculate valid attack targets
   const targetableCards = useMemo(() => {
