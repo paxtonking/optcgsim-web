@@ -201,7 +201,7 @@ export const AnimatingCard: React.FC<AnimatingCardProps> = ({
               /* Regular card - try to load image with fallback */
               <>
                 <img
-                  src={`/api/images/cards/${card.cardId}.png`}
+                  src={`${import.meta.env.VITE_API_URL || ''}/api/images/cards/${card.cardId}.png`}
                   alt={card.cardId}
                   style={{
                     width: '100%',

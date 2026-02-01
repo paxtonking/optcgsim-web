@@ -118,16 +118,18 @@ export function useGameState(playerId: string | null): UseGameStateReturn {
 
   const getCardImageUrl = useCallback((cardId: string) => {
     const def = cardDefinitions.get(cardId);
+    // Use API URL from environment if set (for production where frontend and backend are separate)
+    const apiBase = import.meta.env.VITE_API_URL || '';
     if (def?.imageUrl) {
       // Use proxy to avoid CORS - extract filename from URL
       const filename = def.imageUrl.split('/').pop();
       // Use different proxy based on the source domain
       if (def.imageUrl.includes('onepiece-cardgame.com')) {
-        return `/api/images/official/${filename}`;
+        return `${apiBase}/api/images/official/${filename}`;
       }
-      return `/api/images/cards/${filename}`;
+      return `${apiBase}/api/images/cards/${filename}`;
     }
-    return `/api/images/cards/${cardId}.png`;
+    return `${apiBase}/api/images/cards/${cardId}.png`;
   }, [cardDefinitions]);
 
   const canPlayCard = useCallback((card: GameCard): boolean => {

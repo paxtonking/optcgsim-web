@@ -91,15 +91,17 @@ export const GameCard: React.FC<GameCardProps> = ({
     if (isDon || card.cardId === 'DON') {
       return '/assets/cardbacks/CardFrontDon.png';
     }
+    // Use API URL from environment if set (for production where frontend and backend are separate)
+    const apiBase = import.meta.env.VITE_API_URL || '';
     if (cardDef?.imageUrl) {
       const filename = cardDef.imageUrl.split('/').pop();
       // Use different proxy based on the source domain
       if (cardDef.imageUrl.includes('onepiece-cardgame.com')) {
-        return `/api/images/official/${filename}`;
+        return `${apiBase}/api/images/official/${filename}`;
       }
-      return `/api/images/cards/${filename}`;
+      return `${apiBase}/api/images/cards/${filename}`;
     }
-    return `/api/images/cards/${card.cardId}.png`;
+    return `${apiBase}/api/images/cards/${card.cardId}.png`;
   };
   const imageUrl = getImageUrl();
 
