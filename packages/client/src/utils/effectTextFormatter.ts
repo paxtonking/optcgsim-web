@@ -196,6 +196,28 @@ export function parseEffectText(effectText: string | null | undefined, triggerTe
     }
   }
 
+  // Check if trigger just activates the Main effect (e.g., "Activate this card's [Main] effect")
+  const triggerActivatesMain = /Activate this card's \[?Main\]? effect/i;
+  let mainTriggerCombined = false;
+
+  // Check in effect text for trigger that activates main
+  for (let i = 0; i < markers.length; i++) {
+    const marker = markers[i];
+    if (marker.category === 'trigger') {
+      const startIndex = marker.index + marker.length;
+      const endIndex = markers[i + 1]?.index ?? remainingText.length;
+      const triggerTextContent = remainingText.substring(startIndex, endIndex).trim();
+      if (triggerActivatesMain.test(triggerTextContent)) {
+        mainTriggerCombined = true;
+      }
+    }
+  }
+
+  // Also check the separate triggerText parameter
+  if (triggerText && triggerActivatesMain.test(triggerText)) {
+    mainTriggerCombined = true;
+  }
+
   // Extract text for each marker
   for (let i = 0; i < markers.length; i++) {
     const marker = markers[i];
@@ -211,6 +233,16 @@ export function parseEffectText(effectText: string | null | undefined, triggerTe
       text = text.replace(/^\[Once Per Turn\]\s*/i, '').trim();
     }
 
+    // Skip trigger section if it just activates Main (we'll combine with Main label)
+    if (marker.category === 'trigger' && mainTriggerCombined) {
+      continue;
+    }
+
+    // Add "/ Trigger" to Main label if trigger activates this card's Main effect
+    if (marker.category === 'main' && mainTriggerCombined) {
+      label = 'Main / Trigger';
+    }
+
     if (text) {
       effects.push({
         type: marker.category,
@@ -221,8 +253,8 @@ export function parseEffectText(effectText: string | null | undefined, triggerTe
     }
   }
 
-  // Add trigger as separate effect if provided
-  if (triggerText) {
+  // Add trigger as separate effect if provided (but not if it just activates Main)
+  if (triggerText && !mainTriggerCombined) {
     effects.push({
       type: 'trigger',
       label: 'Trigger',
