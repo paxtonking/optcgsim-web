@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useLobbyChatStore } from '../stores/lobbyChatStore';
+import { useLobbyChatStore } from '../stores/chatStore';
 import { useAuthStore } from '../stores/authStore';
 import { QUICK_MESSAGES, CHARACTER_EMOTES } from '@optcgsim/shared';
 
