@@ -144,8 +144,10 @@ export class EffectTextParser {
     // Triggers: [On Play], [When Attacking], [Counter], [Trigger], [Main], [Activate: Main], etc.
     // Keywords: [Rush], [Blocker], [Double Attack], [Banish]
     // DON: [DON!! x1], [DON!! x2], etc.
-    // Other: [Once Per Turn], [Opponent's Turn], [Your Turn], [On K.O.], [End of Turn]
-    const triggerBracketPattern = /\[(?:On Play\]\/\[When Attacking|Main\]\/\[Counter|On Play|When Attacking|On Attack|On Block|Counter|Trigger|Activate:\s*Main|Main|End of (?:Your )?Turn|Your Turn|Opponent'?s?\s*Turn|On K\.?O\.?|When K\.?O\.?'?d|On Your Opponent'?s?\s*Attack|Once Per Turn|DON!!\s*x?\d*|Rush|Blocker|Double Attack|Banish)\]/gi;
+    // Other: [Opponent's Turn], [Your Turn], [On K.O.], [End of Turn]
+    // NOTE: [Once Per Turn] is NOT included as it's a modifier, not a standalone trigger
+    // It should stay with the preceding trigger like [Activate: Main] [Once Per Turn]
+    const triggerBracketPattern = /\[(?:On Play\]\/\[When Attacking|Main\]\/\[Counter|On Play|When Attacking|On Attack|On Block|Counter|Trigger|Activate:\s*Main|Main|End of (?:Your )?Turn|Your Turn|Opponent'?s?\s*Turn|On K\.?O\.?|When K\.?O\.?'?d|On Your Opponent'?s?\s*Attack|DON!!\s*x?\d*|Rush|Blocker|Double Attack|Banish)\]/gi;
 
     // Find all trigger positions
     const triggers: Array<{ index: number; match: string }> = [];
