@@ -428,6 +428,9 @@ export class AIGameManager {
       return;
     }
 
+    // Update socket ID in case user reconnected with a new socket
+    game.humanSocketId = socket.id;
+
     const state = game.stateManager.getState();
 
     // Validate it's the player's turn (not AI's)
@@ -862,6 +865,8 @@ export class AIGameManager {
         console.log('[AIGameManager] User mismatch. Expected:', game.humanPlayerId, 'Got:', socket.userId);
         return null;
       }
+      // Update socket ID in case user reconnected with a new socket
+      game.humanSocketId = socket.id;
       console.log('[AIGameManager] Returning game state from active games');
       return game.stateManager.sanitizeStateForPlayer(game.humanPlayerId);
     }
@@ -873,6 +878,8 @@ export class AIGameManager {
         console.log('[AIGameManager] User mismatch in pending. Expected:', pendingGame.humanPlayerId, 'Got:', socket.userId);
         return null;
       }
+      // Update socket ID in case user reconnected with a new socket
+      pendingGame.humanSocketId = socket.id;
       console.log('[AIGameManager] Game is in pending state (first choice phase)');
       // Return a minimal state indicating we're in first choice phase
       // The client should show the FirstChoiceModal based on the LOBBY_START event

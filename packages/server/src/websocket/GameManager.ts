@@ -527,6 +527,13 @@ export class GameManager {
       return callback({ success: false, error: 'Game not found' });
     }
 
+    // Update socket ID in case user reconnected with a new socket
+    if (socket.userId === game.player1Id) {
+      game.player1SocketId = socket.id;
+    } else if (socket.userId === game.player2Id) {
+      game.player2SocketId = socket.id;
+    }
+
     const state = game.stateManager.getState();
 
     // Validate it's the player's turn
@@ -643,6 +650,13 @@ export class GameManager {
     // Only players can get game state (no spectators)
     if (socket.userId !== game.player1Id && socket.userId !== game.player2Id) {
       return null;
+    }
+
+    // Update socket ID in case user reconnected with a new socket
+    if (socket.userId === game.player1Id) {
+      game.player1SocketId = socket.id;
+    } else if (socket.userId === game.player2Id) {
+      game.player2SocketId = socket.id;
     }
 
     // Return sanitized state to prevent cheating
