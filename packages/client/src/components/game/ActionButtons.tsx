@@ -17,6 +17,11 @@ interface ActionButtonsProps {
   onActivateTrigger?: () => void;
   onPassTrigger?: () => void;
   mulliganAvailable?: boolean;
+  // Attack mode props (for cards with abilities)
+  canAttack?: boolean;
+  isAttackMode?: boolean;
+  onAttack?: () => void;
+  onCancelAttack?: () => void;
 }
 
 export const ActionButtons: React.FC<ActionButtonsProps> = ({
@@ -33,7 +38,11 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
   onPassBlocker: _onPassBlocker,
   onActivateTrigger,
   onPassTrigger,
-  mulliganAvailable: _mulliganAvailable = true
+  mulliganAvailable: _mulliganAvailable = true,
+  canAttack = false,
+  isAttackMode = false,
+  onAttack,
+  onCancelAttack,
 }) => {
   // Note: These props are kept for interface compatibility but are handled elsewhere
   // Combat actions are handled by CombatModal, mulligan actions by MulliganModal
@@ -104,6 +113,24 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
   // Main phase buttons
   return (
     <div className="action-buttons">
+      {/* Attack button for cards with abilities */}
+      {canAttack && !isAttackMode && (
+        <button
+          className="action-btn action-btn--attack"
+          onClick={onAttack}
+        >
+          Attack
+        </button>
+      )}
+      {/* Cancel attack button when in attack mode */}
+      {isAttackMode && (
+        <button
+          className="action-btn action-btn--pass"
+          onClick={onCancelAttack}
+        >
+          Cancel Attack
+        </button>
+      )}
       <button
         className="action-btn action-btn--end"
         onClick={onEndTurn}

@@ -1135,6 +1135,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     selectedDonId?: string;
   } | null>(null);
 
+  // Track attack mode for cards with abilities (requires explicit Attack button click)
+  const [isAttackMode, setIsAttackMode] = useState(false);
+
   // Clear pinned card when phase changes away from combat/main, or when turn changes
   useEffect(() => {
     const isValidPinPhase = phase === GamePhase.BLOCKER_STEP ||
@@ -1149,12 +1152,14 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   useEffect(() => {
     setPinnedCard(null);
     setActivationMode(null);
+    setIsAttackMode(false);
   }, [turn]);
 
-  // Clear activation mode when phase changes away from main phase
+  // Clear activation mode and attack mode when phase changes away from main phase
   useEffect(() => {
     if (phase !== GamePhase.MAIN_PHASE) {
       setActivationMode(null);
+      setIsAttackMode(false);
     }
   }, [phase]);
 
@@ -1719,10 +1724,21 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     return true;
   }, [selectedCard, isMyTurn, phase, turn, playerId, gameState?.firstPlayerId]);
 
+  // Check if selected card has abilities (for attack button flow)
+  const selectedCardHasAbilities = useMemo(() => {
+    if (!selectedCard) return false;
+    const def = cardDefinitions.get(selectedCard.cardId);
+    return !!(def?.effect && def.effect.trim().length > 0);
+  }, [selectedCard, cardDefinitions]);
+
   // Calculate valid attack targets
   const targetableCards = useMemo(() => {
     const targets = new Set<string>();
     if (!opponent || !selectedCardCanAttack) return targets;
+
+    // Cards with abilities require attack mode to be active (Attack button clicked)
+    // Cards without abilities can attack immediately (current behavior)
+    if (selectedCardHasAbilities && !isAttackMode) return targets;
 
     // Leader is always targetable
     if (opponent.leaderCard) {
@@ -1737,7 +1753,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     });
 
     return targets;
-  }, [opponent, selectedCardCanAttack]);
+  }, [opponent, selectedCardCanAttack, selectedCardHasAbilities, isAttackMode]);
 
   // Calculate valid blockers during BLOCKER_STEP
   const validBlockers = useMemo(() => {
@@ -2177,6 +2193,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       setTimeout(() => {
         setAttackAnimation(null);
         declareAttack(selectedCard.id, card.id, targetType);
+        setIsAttackMode(false);
         setSelectedCard(null);
         setPinnedCard(null);
       }, 500);
@@ -2188,12 +2205,14 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     if (selectedCard?.id === card.id) {
       // Clicking same card - deselect and unpin
       setSelectedCard(null);
+      setIsAttackMode(false);
       if (phase === GamePhase.MAIN_PHASE) {
         setPinnedCard(null);
       }
     } else if (card.owner === playerId && (card.zone === CardZone.FIELD || card.zone === CardZone.LEADER || card.zone === CardZone.STAGE)) {
       // Allow selecting field characters, leader, or stage for abilities
       setSelectedDon(null); // Clear any selected DON
+      setIsAttackMode(false); // Clear attack mode when selecting a different card
 
       // Stage cards can be pinned but not selected for attacking
       if (card.zone === CardZone.STAGE) {
@@ -2741,6 +2760,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             onPassBlocker={passBlocker}
             onActivateTrigger={() => activateTrigger('')}
             onPassTrigger={passTrigger}
+            canAttack={selectedCardCanAttack && selectedCardHasAbilities}
+            isAttackMode={isAttackMode}
+            onAttack={() => setIsAttackMode(true)}
+            onCancelAttack={() => setIsAttackMode(false)}
           />
         )}
       </div>
@@ -2848,8 +2871,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         </div>
       )}
 
-      {/* Attack prompt - shown when a card is selected that can attack */}
-      {selectedCardCanAttack && selectedCard && (
+      {/* Attack prompt - shown when targets should be highlighted
+          For cards with abilities: only after Attack button is clicked (isAttackMode)
+          For cards without abilities: immediately when card is selected */}
+      {selectedCardCanAttack && selectedCard && (!selectedCardHasAbilities || isAttackMode) && (
         <div className="attack-prompt">
           <div className="attack-prompt__content">
             <span className="attack-prompt__icon">⚔️</span>
