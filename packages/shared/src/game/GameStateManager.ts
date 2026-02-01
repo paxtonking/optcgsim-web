@@ -85,7 +85,7 @@ export class GameStateManager {
       donField: [],
       stage: null,
       isActive: false,
-      turnCount: 1
+      turnCount: 0  // Start at 0 so after first startTurn increment it becomes 1
     };
   }
 

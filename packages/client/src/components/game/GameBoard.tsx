@@ -2760,7 +2760,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
         {/* Center: Turn Info */}
         <div className="game-board__header-center">
-          <span className="game-board__turn">Turn {myPlayer?.turnCount || 0}</span>
+          <span className="game-board__turn">Turn {turn || 1}</span>
           <span className="game-board__phase">{getPhaseDisplay(phase)}</span>
           <span className={`game-board__turn-indicator ${isMyTurn ? 'game-board__turn-indicator--your-turn' : 'game-board__turn-indicator--waiting'}`}>
             {isMyTurn ? 'Your Turn' : "Opponent's Turn"}
