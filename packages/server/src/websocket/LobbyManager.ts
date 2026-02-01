@@ -80,6 +80,7 @@ export class LobbyManager {
   createLobby(
     socket: AuthenticatedSocket,
     settings: Partial<LobbySettings>,
+    deckId: string,
     callback: (response: { success: boolean; lobby?: LobbyData; error?: string }) => void
   ) {
     // Check if already in a lobby
@@ -107,6 +108,7 @@ export class LobbyManager {
           id: socket.userId!,
           username: socket.username!,
           socketId: socket.id,
+          deckId,
           ready: false,
         },
       ],
@@ -123,6 +125,7 @@ export class LobbyManager {
   joinLobby(
     socket: AuthenticatedSocket,
     code: string,
+    deckId: string,
     callback: (response: { success: boolean; lobby?: LobbyData; error?: string }) => void
   ) {
     // Check if already in a lobby
@@ -156,6 +159,7 @@ export class LobbyManager {
       id: socket.userId!,
       username: socket.username!,
       socketId: socket.id,
+      deckId,
       ready: false,
     });
     targetLobby.guestId = socket.userId!;

@@ -157,16 +157,18 @@ export function setupWebSocket(io: SocketServer) {
     });
 
     // Lobby events
-    socket.on(WS_EVENTS.LOBBY_CREATE, (settings, callback) => {
-      lobbyManager.createLobby(socket, settings, callback);
+    socket.on(WS_EVENTS.LOBBY_CREATE, (data, callback) => {
+      const { deckId, ...settings } = data;
+      lobbyManager.createLobby(socket, settings, deckId, callback);
     });
 
     // Rate limited: 5 attempts per minute (prevents lobby code brute-forcing)
-    socket.on(WS_EVENTS.LOBBY_JOIN, (code, callback) => {
+    socket.on(WS_EVENTS.LOBBY_JOIN, (data, callback) => {
+      const { code, deckId } = data;
       if (!rateLimiter.isAllowed(`${socket.userId}:lobby-join`, 5, 60000)) {
         return callback?.({ success: false, error: 'Too many attempts. Please wait.' });
       }
-      lobbyManager.joinLobby(socket, code, callback);
+      lobbyManager.joinLobby(socket, code, deckId, callback);
     });
 
     socket.on(WS_EVENTS.LOBBY_LEAVE, () => {
