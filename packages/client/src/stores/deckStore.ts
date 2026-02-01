@@ -507,8 +507,9 @@ export const useDeckStore = create<DeckStore>()(
               // Skip comment-only lines
               if (trimmed.startsWith('//')) continue;
 
-              // Parse card entry: "count cardId" or "count cardId // name"
-              const match = trimmed.match(/^(\d+)\s+([A-Z0-9-]+)/i);
+              // Parse card entry: "count cardId", "countxcardId", or "count cardId // name"
+              // Supports formats: "4 OP13-086", "4xOP13-086", "4x OP13-086"
+              const match = trimmed.match(/^(\d+)[x\s]+([A-Z0-9-]+)/i);
               if (match) {
                 const count = parseInt(match[1], 10);
                 const cardId = match[2].toUpperCase();
@@ -517,6 +518,20 @@ export const useDeckStore = create<DeckStore>()(
                   leaderId = cardId;
                 } else {
                   cardEntries.push({ id: cardId, count });
+                }
+              }
+            }
+
+            // Auto-detect leader if not specified via section header
+            // Check if any card in the list is a LEADER type
+            if (!leaderId && cardEntries.length > 0) {
+              for (let i = 0; i < cardEntries.length; i++) {
+                const card = cardLookup(cardEntries[i].id);
+                if (card && card.type === 'LEADER') {
+                  leaderId = cardEntries[i].id;
+                  // Remove leader from main deck entries
+                  cardEntries.splice(i, 1);
+                  break;
                 }
               }
             }

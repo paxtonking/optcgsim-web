@@ -207,7 +207,7 @@ export function DeckPanel() {
                   setImportText(e.target.value);
                   setImportError(null);
                 }}
-                placeholder={`// Deck Name\n\n// Leader\n1 ST01-001 // Monkey D. Luffy\n\n// Main Deck\n4 ST01-004 // Usopp\n4 ST01-005 // Karoo\n...`}
+                placeholder={`Supported formats:\n\n4xOP13-086\n4xST01-004\n...\n\nOR\n\n// Leader\n1 ST01-001\n\n// Main Deck\n4 ST01-004\n...`}
                 className="w-full h-48 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
               />
 
