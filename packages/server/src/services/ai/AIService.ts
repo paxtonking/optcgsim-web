@@ -57,6 +57,13 @@ export class AIService {
     const player = gameState.players[this.playerId];
     if (!player) return null;
 
+    // PRIORITY: Check for pending effects that need resolution BEFORE phase handling
+    // These can exist in any phase and must be resolved first
+    const pendingEffectAction = this.handlePendingEffects(gameState, player);
+    if (pendingEffectAction) {
+      return pendingEffectAction;
+    }
+
     // Pre-game setup phase
     if (gameState.phase === GamePhase.PRE_GAME_SETUP) {
       return this.decidePreGameSetup(gameState, player);
@@ -104,6 +111,207 @@ export class AIService {
       default:
         return null;
     }
+  }
+
+  /**
+   * Handle any pending effects that need resolution
+   * Returns an action if there's a pending effect to handle, null otherwise
+   */
+  private handlePendingEffects(gameState: GameState, player: PlayerState): AIDecision | null {
+    // Check for pending ACTIVATE_MAIN effects (stage abilities, etc.)
+    if (gameState.pendingActivateEffects?.length) {
+      const myEffect = gameState.pendingActivateEffects.find(e => e.playerId === this.playerId);
+      if (myEffect) {
+        return this.getActivateEffectAction(gameState, player, myEffect);
+      }
+    }
+
+    // Check for pending event effects
+    if (gameState.pendingEventEffects?.length) {
+      const myEffect = gameState.pendingEventEffects.find(e => e.playerId === this.playerId);
+      if (myEffect) {
+        return this.getEventEffectAction(gameState, player, myEffect);
+      }
+    }
+
+    // Check for pending counter effects
+    if (gameState.pendingCounterEffects?.length) {
+      const myEffect = gameState.pendingCounterEffects.find(e => e.playerId === this.playerId);
+      if (myEffect) {
+        return this.getCounterEffectAction(gameState, player, myEffect);
+      }
+    }
+
+    // Check for pending deck reveal effects
+    if (gameState.pendingDeckRevealEffect && gameState.pendingDeckRevealEffect.playerId === this.playerId) {
+      return this.getDeckRevealAction(gameState, player, gameState.pendingDeckRevealEffect);
+    }
+
+    // Check for pending hand select effects
+    if (gameState.pendingHandSelectEffect && gameState.pendingHandSelectEffect.playerId === this.playerId) {
+      return this.getHandSelectAction(gameState, player, gameState.pendingHandSelectEffect);
+    }
+
+    // Check for pending additional cost decision
+    if (gameState.pendingAdditionalCost && gameState.pendingAdditionalCost.playerId === this.playerId) {
+      return this.getAdditionalCostAction(gameState, player, gameState.pendingAdditionalCost);
+    }
+
+    return null;
+  }
+
+  /**
+   * Handle ACTIVATE_MAIN effect resolution
+   */
+  private getActivateEffectAction(_gameState: GameState, _player: PlayerState, pendingEffect: any): AIDecision {
+    console.log('[AI] Handling pending ACTIVATE effect:', pendingEffect.id);
+
+    // If effect has valid targets, select the first one
+    if (pendingEffect.validTargets && pendingEffect.validTargets.length > 0) {
+      const selectedTargets = this.strategy.selectEffectTargets(
+        pendingEffect.validTargets,
+        _gameState,
+        pendingEffect.description || 'activate'
+      );
+      return {
+        action: ActionType.RESOLVE_ACTIVATE_EFFECT,
+        data: { effectId: pendingEffect.id, selectedTargets },
+      };
+    }
+
+    // No valid targets or optional effect - skip
+    return {
+      action: ActionType.SKIP_ACTIVATE_EFFECT,
+      data: { effectId: pendingEffect.id },
+    };
+  }
+
+  /**
+   * Handle event effect resolution
+   */
+  private getEventEffectAction(_gameState: GameState, _player: PlayerState, pendingEffect: any): AIDecision {
+    console.log('[AI] Handling pending EVENT effect:', pendingEffect.id);
+
+    if (pendingEffect.validTargets && pendingEffect.validTargets.length > 0) {
+      const selectedTargets = this.strategy.selectEffectTargets(
+        pendingEffect.validTargets,
+        _gameState,
+        pendingEffect.description || 'event'
+      );
+      return {
+        action: ActionType.RESOLVE_EVENT_EFFECT,
+        data: { effectId: pendingEffect.id, selectedTargets },
+      };
+    }
+
+    return {
+      action: ActionType.SKIP_EVENT_EFFECT,
+      data: { effectId: pendingEffect.id },
+    };
+  }
+
+  /**
+   * Handle counter effect resolution
+   */
+  private getCounterEffectAction(_gameState: GameState, _player: PlayerState, pendingEffect: any): AIDecision {
+    console.log('[AI] Handling pending COUNTER effect:', pendingEffect.id);
+
+    if (pendingEffect.validTargets && pendingEffect.validTargets.length > 0) {
+      const selectedTargets = this.strategy.selectEffectTargets(
+        pendingEffect.validTargets,
+        _gameState,
+        pendingEffect.description || 'counter'
+      );
+      return {
+        action: ActionType.RESOLVE_COUNTER_EFFECT,
+        data: { effectId: pendingEffect.id, selectedTargets },
+      };
+    }
+
+    return {
+      action: ActionType.SKIP_COUNTER_EFFECT,
+      data: { effectId: pendingEffect.id },
+    };
+  }
+
+  /**
+   * Handle deck reveal effect resolution
+   */
+  private getDeckRevealAction(_gameState: GameState, _player: PlayerState, pendingEffect: any): AIDecision {
+    console.log('[AI] Handling pending DECK_REVEAL effect');
+
+    // If there are selectable cards, pick the first valid ones
+    // selectableCardIds contains cards matching the filter (e.g., trait filter)
+    if (pendingEffect.selectableCardIds && pendingEffect.selectableCardIds.length > 0) {
+      // Select up to maxSelections (or at least minSelections)
+      const selectCount = Math.min(
+        pendingEffect.maxSelections || 1,
+        pendingEffect.selectableCardIds.length
+      );
+      const selectedCards = pendingEffect.selectableCardIds.slice(0, selectCount);
+
+      return {
+        action: ActionType.RESOLVE_DECK_REVEAL,
+        data: { selectedCardIds: selectedCards },
+      };
+    }
+
+    // No selectable cards or optional effect - skip
+    return {
+      action: ActionType.SKIP_DECK_REVEAL,
+      data: {},
+    };
+  }
+
+  /**
+   * Handle hand select effect resolution (discard, etc.)
+   */
+  private getHandSelectAction(_gameState: GameState, player: PlayerState, pendingEffect: any): AIDecision {
+    console.log('[AI] Handling pending HAND_SELECT effect');
+
+    // Select cards from hand based on requirement
+    const hand = player.hand;
+    const selectCount = pendingEffect.minSelections || 1;
+
+    if (hand.length > 0 && selectCount > 0) {
+      // For discard effects, select the lowest value cards
+      // Simple heuristic: pick cards with lowest cost first
+      const sortedHand = [...hand].sort((a, b) => (a.cost || 0) - (b.cost || 0));
+      const selectedCards = sortedHand.slice(0, Math.min(selectCount, hand.length)).map(c => c.id);
+
+      return {
+        action: ActionType.RESOLVE_HAND_SELECT,
+        data: { selectedCardIds: selectedCards },
+      };
+    }
+
+    // Can't fulfill requirement or optional - skip
+    if (pendingEffect.canSkip) {
+      return {
+        action: ActionType.SKIP_HAND_SELECT,
+        data: {},
+      };
+    }
+
+    // Forced to select but no cards - return empty selection
+    return {
+      action: ActionType.RESOLVE_HAND_SELECT,
+      data: { selectedCardIds: [] },
+    };
+  }
+
+  /**
+   * Handle additional cost decision
+   */
+  private getAdditionalCostAction(_gameState: GameState, _player: PlayerState, _pendingCost: any): AIDecision {
+    console.log('[AI] Handling pending ADDITIONAL_COST');
+
+    // Simple heuristic: skip optional costs (conservative play)
+    // A smarter AI could evaluate whether the cost is worth it
+    return {
+      action: ActionType.SKIP_ADDITIONAL_COST,
+      data: {},
+    };
   }
 
   /**

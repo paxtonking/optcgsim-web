@@ -2736,6 +2736,9 @@ export class GameStateManager {
       case ActionType.RESOLVE_COUNTER_EFFECT:
         return this.resolveCounterEffect(action.playerId, action.data.effectId, action.data.selectedTargets);
 
+      case ActionType.SKIP_COUNTER_EFFECT:
+        return this.skipCounterEffect(action.playerId, action.data.effectId);
+
       case ActionType.RESOLVE_DECK_REVEAL:
         return this.resolveDeckReveal(action.playerId, action.data.selectedCardIds);
 
@@ -3285,6 +3288,26 @@ export class GameStateManager {
       }
     }
 
+    this.clearCounterEffectState();
+
+    // Continue with combat resolution
+    this.resolveCombat();
+    return true;
+  }
+
+  /**
+   * Skip a counter effect (optional effects or no valid targets)
+   */
+  public skipCounterEffect(playerId: string, effectId: string): boolean {
+    console.log('[skipCounterEffect] Called:', { playerId, effectId });
+
+    const pendingEffect = this.state.pendingCounterEffects?.find(e => e.id === effectId);
+    if (!pendingEffect || pendingEffect.playerId !== playerId) {
+      console.log('[skipCounterEffect] No matching pending effect');
+      return false;
+    }
+
+    // Clear the counter effect state
     this.clearCounterEffectState();
 
     // Continue with combat resolution

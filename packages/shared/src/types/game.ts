@@ -351,6 +351,7 @@ export enum ActionType {
   PAY_ADDITIONAL_COST = 'PAY_ADDITIONAL_COST',     // Pay optional additional cost
   SKIP_ADDITIONAL_COST = 'SKIP_ADDITIONAL_COST',   // Skip optional additional cost
   RESOLVE_COUNTER_EFFECT = 'RESOLVE_COUNTER_EFFECT', // Resolve counter effect with targets
+  SKIP_COUNTER_EFFECT = 'SKIP_COUNTER_EFFECT',       // Skip counter effect (optional)
 
   // Deck reveal actions (Look at X cards effects)
   RESOLVE_DECK_REVEAL = 'RESOLVE_DECK_REVEAL',     // Player confirms card selection from revealed cards
