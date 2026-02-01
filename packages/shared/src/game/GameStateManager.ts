@@ -84,7 +84,8 @@ export class GameStateManager {
       donDeck: DEFAULT_GAME_CONFIG.maxDon,
       donField: [],
       stage: null,
-      isActive: false
+      isActive: false,
+      turnCount: 0
     };
   }
 
@@ -2349,6 +2350,7 @@ export class GameStateManager {
     this.state.turn++;
     this.state.phase = GamePhase.UNTAP_PHASE;
     player.isActive = true;
+    player.turnCount++;
 
     // Cleanup expired effects from previous turn
     this.effectEngine.cleanupExpiredEffects(this.state);

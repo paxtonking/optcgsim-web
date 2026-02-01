@@ -119,6 +119,7 @@ export interface PlayerState {
   donField: GameCard[]; // DON! on field
   stage: GameCard | null; // Stage card on field (only 1 per player)
   isActive: boolean;   // Is it this player's turn?
+  turnCount: number;   // Number of turns this player has taken
 }
 
 export interface CombatInfo {
