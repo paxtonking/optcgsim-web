@@ -548,9 +548,23 @@ export class GameManager {
       timestamp: Date.now(),
     };
 
+    console.log('[DEBUG ATTACK SERVER] Processing action:', {
+      type: processedAction.type,
+      playerId: processedAction.playerId,
+      data: processedAction.data,
+      currentPhase: state.phase,
+      activePlayerId: state.activePlayerId
+    });
+
     // Apply action using GameStateManager
     const success = game.stateManager.processAction(processedAction);
-    
+
+    console.log('[DEBUG ATTACK SERVER] Action result:', {
+      success,
+      type: processedAction.type,
+      newPhase: game.stateManager.getState().phase
+    });
+
     if (!success) {
       return callback({ success: false, error: 'Invalid action' });
     }

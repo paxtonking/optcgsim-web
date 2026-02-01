@@ -2307,6 +2307,13 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
       setTimeout(() => {
         setAttackAnimation(null);
+        console.log('[DEBUG ATTACK] Declaring attack:', {
+          attackerId: selectedCard.id,
+          targetId: card.id,
+          targetType,
+          selectedCardZone: selectedCard.zone,
+          targetCardZone: card.zone
+        });
         declareAttack(selectedCard.id, card.id, targetType);
         setIsAttackMode(false);
         setSelectedCard(null);
@@ -2342,7 +2349,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         }
       }
     }
-  }, [phase, isDefender, validBlockers, selectBlocker, playableCards, selectedCard, targetableCards, playCard, declareAttack, setSelectedCard, playerId, opponent, isMyTurn, selectedDon, attachDon, showErrorBanner, turn, pinnedCard, activationMode, activationDonTargets, activationTargets, activateAbility]);
+  }, [phase, isDefender, validBlockers, selectBlocker, playableCards, selectedCard, targetableCards, playCard, declareAttack, setSelectedCard, playerId, opponent, isMyTurn, selectedDon, attachDon, showErrorBanner, turn, pinnedCard, activationMode, activationDonTargets, activationTargets, activateAbility, pendingPlayCard, getTargetZone]);
 
   // Card hover handler
   const handleCardHover = useCallback((card: GameCardType | null) => {

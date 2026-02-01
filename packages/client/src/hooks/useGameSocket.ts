@@ -152,7 +152,9 @@ export function useGameSocket({
   }, [sendAction, createAction]);
 
   const declareAttack = useCallback((attackerId: string, targetId: string, targetType: 'leader' | 'character') => {
-    sendAction(createAction(ActionType.DECLARE_ATTACK, { attackerId, targetId, targetType }));
+    const action = createAction(ActionType.DECLARE_ATTACK, { attackerId, targetId, targetType });
+    console.log('[DEBUG ATTACK] Sending declareAttack action:', action);
+    sendAction(action);
   }, [sendAction, createAction]);
 
   const resolveAttackEffect = useCallback((effectId: string, selectedTargets: string[]) => {

@@ -1474,12 +1474,21 @@ export class GameStateManager {
 
   // Combat methods
   public declareAttack(attackerId: string, targetId: string, targetType: 'leader' | 'character'): boolean {
+    console.log('[DEBUG ATTACK GSM] declareAttack called:', { attackerId, targetId, targetType });
     const attacker = this.findCard(attackerId);
-    if (!attacker || attacker.state !== CardState.ACTIVE) return false;
+    if (!attacker) {
+      console.log('[DEBUG ATTACK GSM] Attacker not found');
+      return false;
+    }
+    if (attacker.state !== CardState.ACTIVE) {
+      console.log('[DEBUG ATTACK GSM] Attacker not ACTIVE:', attacker.state);
+      return false;
+    }
 
     // Neither player can attack on their first personal turn (One Piece TCG rule)
     const attackerPlayer = this.state.players[attacker.owner];
     if (attackerPlayer && attackerPlayer.turnCount === 1) {
+      console.log('[DEBUG ATTACK GSM] First turn - cannot attack');
       return false;
     }
 
@@ -1555,9 +1564,18 @@ export class GameStateManager {
     if (this.effectEngine.isUnblockable(attacker)) {
       // Skip blocker step entirely, go to counter step
       this.state.phase = GamePhase.COUNTER_STEP;
+      console.log('[DEBUG ATTACK GSM] Attack declared - going to COUNTER_STEP (unblockable)');
     } else {
       this.state.phase = GamePhase.BLOCKER_STEP;
+      console.log('[DEBUG ATTACK GSM] Attack declared - going to BLOCKER_STEP');
     }
+
+    console.log('[DEBUG ATTACK GSM] Combat state:', {
+      attackerId: this.state.currentCombat.attackerId,
+      targetId: this.state.currentCombat.targetId,
+      attackPower: this.state.currentCombat.attackPower,
+      newPhase: this.state.phase
+    });
 
     return true;
   }
