@@ -5,6 +5,7 @@ import { useLobbyStore } from '../stores/lobbyStore';
 import { socketService } from '../services/socket';
 import { ChatPanel } from '../components/ChatPanel';
 import { GameBoard } from '../components/game/GameBoard';
+import { usePreventZoom } from '../hooks/usePreventZoom';
 
 export default function GamePage() {
   const { id } = useParams();
@@ -13,6 +14,9 @@ export default function GamePage() {
   const { user } = useAuthStore();
 
   const isAIGame = searchParams.get('ai') === 'true';
+
+  // Prevent browser zoom during gameplay
+  usePreventZoom();
 
   useEffect(() => {
     if (!id || !user) {
@@ -35,7 +39,10 @@ export default function GamePage() {
   }
 
   return (
-    <div className="h-screen bg-background flex flex-col">
+    <div
+      className="h-screen bg-background flex flex-col"
+      style={{ touchAction: 'none' }}
+    >
       {/* Main content: game board + chat sidebar */}
       <div className="flex-1 flex overflow-hidden">
         {/* Game container */}

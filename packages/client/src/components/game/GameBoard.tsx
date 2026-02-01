@@ -2336,13 +2336,6 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     }
   }, [selectedDon, selectedCard, setSelectedCard, pinnedCard, phase, activationMode]);
 
-  // Prevent ctrl+scroll zoom on desktop
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-    }
-  }, []);
-
   // Trash click handlers
   const handlePlayerTrashClick = useCallback(() => {
     if (myPlayer && myPlayer.trash.length > 0) {
@@ -2582,7 +2575,6 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     <div
       className={`game-board ${isAnimationBlocked ? 'game-board--blocked' : ''}`}
       onClick={handleBackgroundClick}
-      onWheel={handleWheel}
     >
       {/* Blocking overlay during animations */}
       {isAnimationBlocked && <div className="game-board__blocking-overlay" />}

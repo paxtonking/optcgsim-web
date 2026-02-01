@@ -13,6 +13,37 @@
   overflow: hidden;
   /* Prevent accidental zoom gestures (pinch-to-zoom, double-tap zoom) */
   touch-action: manipulation;
+  /* Improve rendering stability by containing layout calculations */
+  contain: layout style;
+}
+
+/* ===================================
+   FIXED POSITION ELEMENTS - Containment
+   Improve rendering stability for overlays
+   =================================== */
+
+.trash-modal-overlay,
+.settings-modal-overlay,
+.pre-game-setup-overlay,
+.deck-reveal-modal,
+.combat-modal-overlay {
+  /* Contain layout calculations to prevent thrashing */
+  contain: layout paint;
+  /* Hint to browser for GPU acceleration */
+  will-change: opacity;
+}
+
+.attack-prompt,
+.counter-notification,
+.error-banner,
+.info-banner,
+.life-damage-indicator,
+.hand-select-panel,
+.refresh-phase-banner {
+  /* Contain layout for notification elements */
+  contain: layout;
+  /* GPU acceleration for animations */
+  will-change: transform, opacity;
 }
 
 .game-board__header {
