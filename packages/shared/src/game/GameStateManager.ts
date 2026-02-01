@@ -2799,6 +2799,11 @@ export class GameStateManager {
       return false;
     }
 
+    // Debug: log all effects and their triggers
+    console.log('[ActivateAbility] Effects count:', cardDef.effects.length);
+    console.log('[ActivateAbility] Effects triggers:', cardDef.effects.map(e => ({ id: e.id, trigger: e.trigger, triggerType: typeof e.trigger })));
+    console.log('[ActivateAbility] Looking for:', EffectTrigger.ACTIVATE_MAIN, 'type:', typeof EffectTrigger.ACTIVATE_MAIN);
+
     const activateEffect = cardDef.effects.find(e => e.trigger === EffectTrigger.ACTIVATE_MAIN);
     console.log('[ActivateAbility] Activate effect found:', activateEffect ? 'YES' : 'NO');
     if (!activateEffect) {
