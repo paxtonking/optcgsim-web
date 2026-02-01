@@ -108,30 +108,6 @@ export class AIService {
       case GamePhase.ATTACK_EFFECT_STEP:
         return this.getAttackEffectAction(gameState, player);
 
-      // Effect resolution phases - handled by handlePendingEffects above
-      // If we reach here, it means there's no pending effect for the AI to resolve
-      // This can happen if the effect was already resolved or doesn't require AI input
-      case GamePhase.EVENT_EFFECT_STEP:
-      case GamePhase.ADDITIONAL_COST_STEP:
-      case GamePhase.DECK_REVEAL_STEP:
-      case GamePhase.HAND_SELECT_STEP:
-        console.log(`[AI] In ${gameState.phase} but no pending effect found, waiting...`);
-        // Check if there's any pending effect we might have missed
-        if (gameState.pendingEventEffects?.length) {
-          const myEffect = gameState.pendingEventEffects.find(e => e.playerId === this.playerId);
-          if (myEffect) return this.getEventEffectAction(gameState, player, myEffect);
-        }
-        if (gameState.pendingDeckRevealEffect?.playerId === this.playerId) {
-          return this.getDeckRevealAction(gameState, player, gameState.pendingDeckRevealEffect);
-        }
-        if (gameState.pendingHandSelectEffect?.playerId === this.playerId) {
-          return this.getHandSelectAction(gameState, player, gameState.pendingHandSelectEffect);
-        }
-        if (gameState.pendingAdditionalCost?.playerId === this.playerId) {
-          return this.getAdditionalCostAction(gameState, player, gameState.pendingAdditionalCost);
-        }
-        return null;
-
       case GamePhase.TRIGGER_STEP:
         // Trigger step - AI should pass if no trigger to activate
         // Use TRIGGER_LIFE with no effectId to pass the trigger
