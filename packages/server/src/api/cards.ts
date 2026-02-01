@@ -76,7 +76,7 @@ cardsRouter.get('/', async (req, res, next) => {
       };
     }
 
-    const [cards, total] = await Promise.all([
+    const [rawCards, total] = await Promise.all([
       prisma.card.findMany({
         where,
         orderBy: [
@@ -88,6 +88,14 @@ cardsRouter.get('/', async (req, res, next) => {
       }),
       prisma.card.count({ where }),
     ]);
+
+    // Transform to match client Card type (effect instead of effectText)
+    const cards = rawCards.map(card => ({
+      ...card,
+      effect: card.effectText,
+      setName: card.setCode, // Client expects setName
+      rarity: '', // Not in DB but client expects it
+    }));
 
     res.json({ cards, total, limit, offset });
   } catch (error) {
@@ -120,7 +128,13 @@ cardsRouter.get('/:id', async (req, res, next) => {
       throw new AppError('Card not found', 404);
     }
 
-    res.json(card);
+    // Transform to match client Card type
+    res.json({
+      ...card,
+      effect: card.effectText,
+      setName: card.setCode,
+      rarity: '',
+    });
   } catch (error) {
     next(error);
   }
@@ -129,13 +143,21 @@ cardsRouter.get('/:id', async (req, res, next) => {
 // Get all leaders
 cardsRouter.get('/type/leaders', async (_req, res, next) => {
   try {
-    const leaders = await prisma.card.findMany({
+    const rawLeaders = await prisma.card.findMany({
       where: { type: 'LEADER' },
       orderBy: [
         { setCode: 'asc' },
         { cardNumber: 'asc' },
       ],
     });
+
+    // Transform to match client Card type
+    const leaders = rawLeaders.map(card => ({
+      ...card,
+      effect: card.effectText,
+      setName: card.setCode,
+      rarity: '',
+    }));
 
     res.json(leaders);
   } catch (error) {
