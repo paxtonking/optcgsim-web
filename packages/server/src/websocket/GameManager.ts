@@ -512,15 +512,29 @@ export class GameManager {
     }
 
     const deckCards = deck.cards as any[];
-    
-    // Load actual card data
+
+    // Load actual card data (including leader)
     const cardIds = deckCards.map(c => c.cardId);
+    // Add leader to the card IDs to load
+    if (deck.leaderId && !cardIds.includes(deck.leaderId)) {
+      cardIds.push(deck.leaderId);
+    }
+
     const cards = await prisma.card.findMany({
       where: { id: { in: cardIds } }
     });
 
-    // Map cards with quantities
+    // Start with the leader card
     const fullDeck: any[] = [];
+    const leaderCard = cards.find((c: any) => c.id === deck.leaderId);
+    if (leaderCard) {
+      fullDeck.push({
+        ...leaderCard,
+        instanceId: `${leaderCard.id}-leader`
+      });
+    }
+
+    // Map deck cards with quantities
     deckCards.forEach(deckCard => {
       const card = cards.find((c: any) => c.id === deckCard.cardId);
       if (card) {
