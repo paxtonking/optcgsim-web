@@ -542,6 +542,13 @@ export class GameManager {
     action: GameAction,
     callback?: (response: { success: boolean; error?: string }) => void
   ) {
+    // Validate action object
+    if (!action || !action.type) {
+      console.log(`[GameManager] handleAction: Invalid action received - type: ${action?.type}`);
+      if (callback) callback({ success: false, error: 'Invalid action: missing type' });
+      return;
+    }
+
     const gameId = this.playerToGame.get(socket.userId!);
     if (!gameId) {
       console.log(`[GameManager] handleAction: User ${socket.userId} not in a game`);

@@ -246,9 +246,7 @@ export function setupWebSocket(io: SocketServer) {
       socket.emit('game:error', { error: 'Game not found or access denied' });
     });
 
-    socket.on(WS_EVENTS.GAME_ACTION, (action, callback) => {
-      gameManager.handleAction(socket, action, callback);
-    });
+    // NOTE: game:action handler is at line ~206, do not duplicate here
 
     // Rate limited: 1 message per second
     socket.on(WS_EVENTS.GAME_CHAT, (message) => {
