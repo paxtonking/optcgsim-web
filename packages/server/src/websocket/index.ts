@@ -1,6 +1,6 @@
 import type { Server as SocketServer, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
-import { WS_EVENTS } from '@optcgsim/shared';
+import { WS_EVENTS, GamePhase } from '@optcgsim/shared';
 import { prisma } from '../services/prisma.js';
 import { LobbyManager } from './LobbyManager.js';
 import { GameManager } from './GameManager.js';
@@ -205,12 +205,37 @@ export function setupWebSocket(io: SocketServer) {
     
     socket.on('game:getState', (data) => {
       const gameId = data.gameId;
+
+      // Check for active game first
       const state = gameManager.getGameState(socket, gameId);
       if (state) {
+        // Ensure socket is in the game room (for chat, etc.)
+        socket.join(`game:${gameId}`);
         socket.emit('game:state', { gameState: state });
-      } else {
-        socket.emit('game:error', { error: 'Game not found or access denied' });
+        return;
       }
+
+      // Check for RPS pending game (player reconnecting during RPS phase)
+      const rpsState = gameManager.getRPSState(socket, gameId);
+      if (rpsState) {
+        // Socket already joined in getRPSState
+        // Re-emit the appropriate event based on phase
+        if (rpsState.phase === 'FIRST_CHOICE') {
+          socket.emit(WS_EVENTS.FIRST_CHOICE, {
+            gameId,
+            winnerId: rpsState.winnerId,
+          });
+        } else {
+          socket.emit('lobby:start', {
+            gameId,
+            phase: GamePhase.RPS_PHASE,
+            rpsState: rpsState.rpsState,
+          });
+        }
+        return;
+      }
+
+      socket.emit('game:error', { error: 'Game not found or access denied' });
     });
 
     socket.on(WS_EVENTS.GAME_ACTION, (action, callback) => {

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFriendsStore } from '../stores/friendsStore';
 import { useLobbyStore } from '../stores/lobbyStore';
+import { useDeckStore } from '../stores/deckStore';
 import { toast } from '../stores/toastStore';
 
 type Tab = 'friends' | 'requests' | 'search';
@@ -13,6 +14,7 @@ export function FriendsPanel() {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [isSyncingDeck, setIsSyncingDeck] = useState(false);
 
   const {
     friends,
@@ -36,6 +38,7 @@ export function FriendsPanel() {
   } = useFriendsStore();
 
   const { selectedDeckId } = useLobbyStore();
+  const { getServerDeckId, saveDeckToServer } = useDeckStore();
 
   // Load friends and requests on mount
   useEffect(() => {
@@ -86,7 +89,25 @@ export function FriendsPanel() {
 
   const handleChallenge = async (friendId: string) => {
     setActionError(null);
-    const result = await sendChallenge(friendId, selectedDeckId || undefined);
+
+    if (!selectedDeckId) {
+      setActionError('Please select a deck first');
+      return;
+    }
+
+    // Convert local deck ID to server deck ID
+    let serverDeckId = getServerDeckId(selectedDeckId);
+    if (!serverDeckId) {
+      setIsSyncingDeck(true);
+      serverDeckId = await saveDeckToServer(selectedDeckId);
+      setIsSyncingDeck(false);
+      if (!serverDeckId) {
+        setActionError('Failed to sync deck to server. Please check deck validity.');
+        return;
+      }
+    }
+
+    const result = await sendChallenge(friendId, serverDeckId);
     if (result.success) {
       toast.success('Challenge sent!');
     } else {
@@ -96,7 +117,25 @@ export function FriendsPanel() {
 
   const handleAcceptChallenge = async () => {
     if (!pendingChallenge) return;
-    const result = await acceptChallenge(pendingChallenge.challengeId, selectedDeckId || undefined);
+
+    if (!selectedDeckId) {
+      setActionError('Please select a deck to accept the challenge');
+      return;
+    }
+
+    // Convert local deck ID to server deck ID
+    let serverDeckId = getServerDeckId(selectedDeckId);
+    if (!serverDeckId) {
+      setIsSyncingDeck(true);
+      serverDeckId = await saveDeckToServer(selectedDeckId);
+      setIsSyncingDeck(false);
+      if (!serverDeckId) {
+        setActionError('Failed to sync deck to server. Please check deck validity.');
+        return;
+      }
+    }
+
+    const result = await acceptChallenge(pendingChallenge.challengeId, serverDeckId);
     if (result.success) {
       // Navigate to lobby - the lobby update will handle game start
       navigate('/lobby');
@@ -128,10 +167,10 @@ export function FriendsPanel() {
           <div className="flex gap-2">
             <button
               onClick={handleAcceptChallenge}
-              disabled={!selectedDeckId}
+              disabled={!selectedDeckId || isSyncingDeck}
               className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded transition-colors disabled:opacity-50"
             >
-              Accept
+              {isSyncingDeck ? 'Syncing...' : 'Accept'}
             </button>
             <button
               onClick={handleDeclineChallenge}
@@ -231,11 +270,11 @@ export function FriendsPanel() {
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleChallenge(friend.friendId)}
-                      disabled={!selectedDeckId}
+                      disabled={!selectedDeckId || isSyncingDeck}
                       className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors disabled:opacity-50"
                       title={!selectedDeckId ? 'Select a deck first' : 'Challenge to a game'}
                     >
-                      Challenge
+                      {isSyncingDeck ? 'Syncing...' : 'Challenge'}
                     </button>
                     <button
                       onClick={() => removeFriend(friend.friendId)}

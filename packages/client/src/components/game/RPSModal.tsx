@@ -34,13 +34,22 @@ export const RPSModal: React.FC<RPSModalProps> = ({
   const [hasChosen, setHasChosen] = useState(false);
 
   // Reset state when modal opens or round changes
+  // Also detect if player already made their choice (reconnection scenario)
   useEffect(() => {
     if (isOpen) {
-      setSelectedChoice(null);
-      setHasChosen(false);
-      setTimeLeft(timeoutSeconds);
+      // Check if player already chose (sanitized state only shows their own choice)
+      const existingChoice = rpsState?.player1Choice || rpsState?.player2Choice;
+      if (existingChoice) {
+        // Player reconnected after making their choice
+        setSelectedChoice(existingChoice);
+        setHasChosen(true);
+      } else {
+        setSelectedChoice(null);
+        setHasChosen(false);
+        setTimeLeft(timeoutSeconds);
+      }
     }
-  }, [isOpen, rpsState?.roundNumber, timeoutSeconds]);
+  }, [isOpen, rpsState?.roundNumber, rpsState?.player1Choice, rpsState?.player2Choice, timeoutSeconds]);
 
   // Countdown timer
   useEffect(() => {

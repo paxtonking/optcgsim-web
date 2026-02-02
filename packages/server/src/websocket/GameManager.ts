@@ -677,6 +677,58 @@ export class GameManager {
     return game.stateManager.sanitizeStateForPlayer(socket.userId!);
   }
 
+  /**
+   * Get RPS pending game state for a player (used for reconnection during RPS phase)
+   * Returns sanitized RPS state - only shows player's own choice, not opponent's
+   */
+  getRPSState(socket: AuthenticatedSocket, gameId: string): {
+    gameId: string;
+    phase: 'RPS_PHASE' | 'FIRST_CHOICE';
+    rpsState?: RPSState;
+    winnerId?: string;
+  } | null {
+    const pending = this.rpsPendingGames.get(gameId);
+    if (!pending) return null;
+
+    // Only players can get RPS state
+    if (socket.userId !== pending.player1Id && socket.userId !== pending.player2Id) {
+      return null;
+    }
+
+    // Update socket ID in case user reconnected with a new socket
+    if (socket.userId === pending.player1Id) {
+      pending.player1SocketId = socket.id;
+    } else if (socket.userId === pending.player2Id) {
+      pending.player2SocketId = socket.id;
+    }
+
+    // Ensure socket joins game room
+    socket.join(`game:${gameId}`);
+
+    // Check if we're in first choice phase (RPS winner has been determined)
+    if (pending.rpsWinnerId) {
+      return {
+        gameId,
+        phase: 'FIRST_CHOICE',
+        winnerId: pending.rpsWinnerId,
+      };
+    }
+
+    // Still in RPS choosing phase - return sanitized state (only player's own choice)
+    const isPlayer1 = socket.userId === pending.player1Id;
+    return {
+      gameId,
+      phase: 'RPS_PHASE',
+      rpsState: {
+        player1Id: pending.player1Id,
+        player2Id: pending.player2Id,
+        roundNumber: pending.roundNumber,
+        player1Choice: isPlayer1 ? pending.player1Choice : undefined,
+        player2Choice: isPlayer1 ? undefined : pending.player2Choice,
+      },
+    };
+  }
+
   handleDisconnect(_socket: AuthenticatedSocket) {
     // Handle player disconnect - give them time to reconnect
     // In production, start a reconnection timer

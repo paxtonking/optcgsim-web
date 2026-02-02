@@ -15,7 +15,9 @@ import { RPSResultModal } from './RPSResultModal';
 import { FirstChoiceModal } from './FirstChoiceModal';
 import { PreGameSetup } from './PreGameSetup';
 import { DeckRevealModal } from './DeckRevealModal';
+import { ChatPopup } from './ChatPopup';
 import { useLobbyStore } from '../../stores/lobbyStore';
+import { useChatStore } from '../../stores/chatStore';
 import { getSocket } from '../../services/socket';
 import { EffectToastContainer } from './EffectToast';
 import { EffectAnimationLayer, EffectAnimationAPI } from './EffectAnimation';
@@ -24,6 +26,7 @@ import './GameBoard.css';
 import './RPSModal.css';
 import './EffectToast.css';
 import './EffectAnimation.css';
+import './ChatPopup.css';
 
 // Animation types
 type DealingPhase = 'idle' | 'dealing-hand' | 'waiting-mulligan' | 'dealing-life' | 'complete';
@@ -105,6 +108,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
   // Settings modal state
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Chat popup state
+  const [chatOpen, setChatOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const { messages } = useChatStore();
+  const prevMessageCountRef = useRef(0);
 
   // Track previous turn for turn start sound
   const previousTurnRef = useRef<number | null>(null);
@@ -248,6 +257,19 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     previousTurnRef.current = turn;
     previousIsMyTurnRef.current = isMyTurn;
   }, [turn, isMyTurn, playSound]);
+
+  // Track unread messages when chat is closed
+  useEffect(() => {
+    if (chatOpen) {
+      // Reset unread count when chat is opened
+      setUnreadCount(0);
+      prevMessageCountRef.current = messages.length;
+    } else if (messages.length > prevMessageCountRef.current) {
+      // New messages arrived while chat is closed
+      setUnreadCount(prev => prev + (messages.length - prevMessageCountRef.current));
+      prevMessageCountRef.current = messages.length;
+    }
+  }, [messages.length, chatOpen]);
 
   // Play victory/defeat sound on game over
   useEffect(() => {
@@ -2770,6 +2792,18 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         {/* Right: Controls */}
         <div className="game-board__header-right">
           <button
+            className="chat-button"
+            onClick={() => setChatOpen(true)}
+            title="Chat"
+          >
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            {unreadCount > 0 && (
+              <span className="chat-button__badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
+            )}
+          </button>
+          <button
             className="settings-button"
             onClick={() => setSettingsOpen(true)}
             title="Settings"
@@ -3380,6 +3414,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         onClose={() => setSettingsOpen(false)}
         isMuted={isMuted}
         onToggleMute={toggleMute}
+      />
+
+      {/* Chat popup */}
+      <ChatPopup
+        isOpen={chatOpen}
+        onClose={() => setChatOpen(false)}
       />
 
       {/* Trash preview modal */}
