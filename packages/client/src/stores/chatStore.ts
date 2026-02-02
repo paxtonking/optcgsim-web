@@ -36,6 +36,7 @@ export const useChatStore = create<GameChatState>((set, get) => ({
   sendMessage: (message: string) => {
     if (!message.trim()) return;
     const socket = connectSocket();
+    console.log('[ChatStore] Sending message:', message.trim());
     socket.emit(WS_EVENTS.GAME_CHAT, message.trim());
   },
 
@@ -63,6 +64,7 @@ export const useChatStore = create<GameChatState>((set, get) => ({
 
   setupChatListeners: () => {
     const socket = connectSocket();
+    console.log('[ChatStore] Setting up chat listeners');
 
     const handleChatMessage = (data: {
       senderId: string;
@@ -70,6 +72,7 @@ export const useChatStore = create<GameChatState>((set, get) => ({
       message: string;
       timestamp: number;
     }) => {
+      console.log('[ChatStore] Received chat message:', data);
       const chatMessage: ChatMessage = {
         id: `${data.senderId}-${data.timestamp}`,
         senderId: data.senderId,
@@ -79,12 +82,15 @@ export const useChatStore = create<GameChatState>((set, get) => ({
         isSystem: false,
       };
       get().addMessage(chatMessage);
+      console.log('[ChatStore] Message added, total messages:', get().messages.length);
     };
 
     socket.on(WS_EVENTS.GAME_CHAT, handleChatMessage);
     set({ isConnected: true });
+    console.log('[ChatStore] Chat listeners active');
 
     return () => {
+      console.log('[ChatStore] Cleaning up chat listeners');
       socket.off(WS_EVENTS.GAME_CHAT, handleChatMessage);
       set({ isConnected: false });
     };

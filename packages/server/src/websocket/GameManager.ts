@@ -153,9 +153,16 @@ export class GameManager {
     this.playerToGame.set(player1.id, gameId);
     this.playerToGame.set(player2.id, gameId);
 
+    console.log(`[GameManager] Created RPS pending game: ${gameId}`);
+    console.log(`[GameManager] Player1: ${player1.id} (socket: ${player1.socketId})`);
+    console.log(`[GameManager] Player2: ${player2.id} (socket: ${player2.socketId})`);
+    console.log(`[GameManager] rpsPendingGames count after add: ${this.rpsPendingGames.size}`);
+
     // Join game room
     const player1Socket = this.io.sockets.sockets.get(player1.socketId);
     const player2Socket = this.io.sockets.sockets.get(player2.socketId);
+
+    console.log(`[GameManager] Player sockets found: P1=${!!player1Socket}, P2=${!!player2Socket}`);
 
     player1Socket?.join(`game:${gameId}`);
     player2Socket?.join(`game:${gameId}`);
@@ -185,9 +192,22 @@ export class GameManager {
    * Handle RPS choice from a player
    */
   handleRPSChoice(socket: AuthenticatedSocket, gameId: string, choice: RPSChoice) {
+    console.log(`[GameManager] handleRPSChoice called - gameId: ${gameId}, userId: ${socket.userId}, choice: ${choice}`);
     const pending = this.rpsPendingGames.get(gameId);
     if (!pending) {
       console.log(`[GameManager] RPS choice received but no pending game found: ${gameId}`);
+      console.log(`[GameManager] Current rpsPendingGames count: ${this.rpsPendingGames.size}`);
+      console.log(`[GameManager] Current games count: ${this.games.size}`);
+      // Check if game moved to active games (RPS already completed)
+      const activeGame = this.games.get(gameId);
+      if (activeGame) {
+        console.log(`[GameManager] Game ${gameId} already in active games - RPS phase completed`);
+        socket.emit('game:error', { error: 'RPS phase already completed. Please refresh.' });
+      } else {
+        console.log(`[GameManager] Game ${gameId} not found anywhere - server may have restarted`);
+        // Notify the client that the game was not found (likely server restart)
+        socket.emit('game:error', { error: 'Game not found. The game may have ended or the server was restarted.' });
+      }
       return;
     }
 

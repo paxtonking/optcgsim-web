@@ -271,14 +271,16 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     }
   }, [messages.length, chatOpen]);
 
-  // Set up chat listeners at GameBoard level (always active during game)
+  // Set up chat listeners at GameBoard level (only for multiplayer games)
   useEffect(() => {
+    if (isAIGame) return; // No chat for AI games
+
     const cleanup = useChatStore.getState().setupChatListeners();
     return () => {
       cleanup();
       useChatStore.getState().clearMessages();
     };
-  }, []);
+  }, [isAIGame]);
 
   // Play victory/defeat sound on game over
   useEffect(() => {
@@ -312,7 +314,16 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   // Handle errors
   const handleError = useCallback((error: string) => {
     console.error('[GameBoard] Error:', error);
-  }, []);
+    // Show error to user
+    showErrorBanner(error);
+
+    // If game not found, navigate back to lobby after delay
+    if (error.includes('Game not found') || error.includes('not found')) {
+      setTimeout(() => {
+        onLeave();
+      }, 3000);
+    }
+  }, [showErrorBanner, onLeave]);
 
   // Get descriptive message for game over reason
   const getReasonMessage = useCallback((isWinner: boolean, reason: string): string => {
@@ -2806,18 +2817,21 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
         {/* Right: Controls */}
         <div className="game-board__header-right">
-          <button
-            className="chat-button"
-            onClick={() => setChatOpen(true)}
-            title="Chat"
-          >
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-            {unreadCount > 0 && (
-              <span className="chat-button__badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
-            )}
-          </button>
+          {/* Chat button - only show for multiplayer games */}
+          {!isAIGame && (
+            <button
+              className="chat-button"
+              onClick={() => setChatOpen(true)}
+              title="Chat"
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              {unreadCount > 0 && (
+                <span className="chat-button__badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
+              )}
+            </button>
+          )}
           <button
             className="settings-button"
             onClick={() => setSettingsOpen(true)}

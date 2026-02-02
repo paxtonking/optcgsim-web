@@ -180,9 +180,13 @@ export function setupWebSocket(io: SocketServer) {
     });
 
     socket.on(WS_EVENTS.LOBBY_START, () => {
+      console.log(`[WebSocket] LOBBY_START received from user ${socket.userId}`);
       const lobby = lobbyManager.getLobbyByPlayer(socket.userId!);
       if (lobby) {
+        console.log(`[WebSocket] Found lobby ${lobby.id} for user, calling startGame`);
         gameManager.startGame(lobby, socket);
+      } else {
+        console.log(`[WebSocket] No lobby found for user ${socket.userId}`);
       }
     });
 
