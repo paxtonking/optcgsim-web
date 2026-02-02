@@ -18,7 +18,6 @@ import { BaseStrategy } from './strategies/BaseStrategy.js';
 import { EasyStrategy } from './strategies/EasyStrategy.js';
 import { MediumStrategy } from './strategies/MediumStrategy.js';
 import { HardStrategy } from './strategies/HardStrategy.js';
-import { cardLoaderService } from '../CardLoaderService.js';
 
 export class AIService {
   private playerId: string;
@@ -516,13 +515,20 @@ export class AIService {
    * Get characters ready to attack
    */
   private getReadyAttackers(player: PlayerState, currentTurn: number): any[] {
+    // First turn rule: neither player can attack on their first personal turn
+    if (player.turnCount === 1) {
+      return [];
+    }
+
     return player.field.filter(card => {
       if (card.state !== CardState.ACTIVE) return false;
       if (card.hasAttacked) return false;
 
+      // Check if can attack (Rush or not played this turn)
       if (card.turnPlayed === currentTurn) {
-        const cardDef = cardLoaderService.getCard(card.cardId);
-        if (!cardDef?.keywords?.includes('Rush')) return false;
+        // Use runtime keywords (card.keywords) not static card definition
+        // This respects conditional Rush that may not be active
+        if (!card.keywords?.includes('Rush')) return false;
       }
 
       return true;

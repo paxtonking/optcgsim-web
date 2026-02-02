@@ -61,14 +61,20 @@ export abstract class BaseStrategy {
    * Get characters ready to attack
    */
   protected getReadyAttackers(player: PlayerState, currentTurn: number): GameCard[] {
+    // First turn rule: neither player can attack on their first personal turn
+    if (player.turnCount === 1) {
+      return [];
+    }
+
     return player.field.filter(card => {
       if (card.state !== CardState.ACTIVE) return false;
       if (card.hasAttacked) return false;
 
       // Check if can attack (Rush or not played this turn)
       if (card.turnPlayed === currentTurn) {
-        const cardDef = cardLoaderService.getCard(card.cardId);
-        if (!cardDef?.keywords?.includes('Rush')) return false;
+        // Use runtime keywords (card.keywords) not static card definition
+        // This respects conditional Rush that may not be active
+        if (!card.keywords?.includes('Rush')) return false;
       }
 
       return true;
