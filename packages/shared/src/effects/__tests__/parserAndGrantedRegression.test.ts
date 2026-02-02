@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { EffectEngine, TriggerEvent } from '../EffectEngine';
 import { effectTextParser } from '../parser/EffectTextParser';
-import { EffectTrigger } from '../types';
-import { ActionType, CardZone, GamePhase } from '../../types/game';
+import { EffectTrigger, EffectType, TargetType } from '../types';
+import { ActionType, CardState, CardZone, GamePhase } from '../../types/game';
 import { GameStateManager } from '../../game/GameStateManager';
 import {
   createMockCard,
@@ -263,5 +263,286 @@ describe('Gameplay guard regressions', () => {
     });
 
     expect(success).toBe(false);
+  });
+});
+
+describe('Continuous and gameplay regression fixes', () => {
+  const buildLeader = (id: string, cardId: string, owner: string) =>
+    createMockCard({
+      id,
+      cardId,
+      owner,
+      zone: CardZone.LEADER,
+      state: CardState.ACTIVE,
+    });
+
+  const buildDeckCard = (id: string, owner: string) =>
+    createMockCard({
+      id,
+      cardId: 'FILL',
+      owner,
+      zone: CardZone.DECK,
+      state: CardState.ACTIVE,
+    });
+
+  it('removes OPPONENT_TURN continuous keywords when turn passes back', () => {
+    const manager = new GameStateManager('game-cont-keyword', 'player1', 'player2');
+    manager.loadCardDefinitions([
+      createMockCardDefinition({ id: 'L1', type: 'LEADER', cost: 0, power: 5000, counter: null, effects: [] }),
+      createMockCardDefinition({ id: 'L2', type: 'LEADER', cost: 0, power: 5000, counter: null, effects: [] }),
+      createMockCardDefinition({
+        id: 'OPP-KEYWORD',
+        effects: [{
+          id: 'opp-keyword',
+          trigger: EffectTrigger.OPPONENT_TURN,
+          description: 'During opponent turn gain Blocker.',
+          effects: [{
+            type: EffectType.GRANT_KEYWORD,
+            target: { type: TargetType.SELF },
+            keyword: 'Blocker',
+          }],
+        }],
+      }),
+      createMockCardDefinition({ id: 'FILL', effects: [] }),
+    ]);
+
+    const state = manager.getState();
+    state.players.player1.leaderCard = buildLeader('p1-leader', 'L1', 'player1');
+    state.players.player2.leaderCard = buildLeader('p2-leader', 'L2', 'player2');
+    state.players.player1.field = [
+      createMockCard({
+        id: 'p1-source',
+        cardId: 'OPP-KEYWORD',
+        owner: 'player1',
+        zone: CardZone.FIELD,
+        state: CardState.ACTIVE,
+      }),
+    ];
+    state.players.player1.deck = [buildDeckCard('p1-d1', 'player1'), buildDeckCard('p1-d2', 'player1')];
+    state.players.player2.deck = [buildDeckCard('p2-d1', 'player2'), buildDeckCard('p2-d2', 'player2')];
+
+    manager.startTurn('player1');
+    manager.endTurn('player1'); // Auto-starts player2
+    expect(state.players.player1.field[0].continuousKeywords ?? []).toContain('Blocker');
+
+    manager.endTurn('player2'); // Auto-starts player1
+    expect(state.players.player1.field[0].continuousKeywords ?? []).not.toContain('Blocker');
+  });
+
+  it('removes OPPONENT_TURN continuous immunities when turn passes back', () => {
+    const manager = new GameStateManager('game-cont-immunity', 'player1', 'player2');
+    manager.loadCardDefinitions([
+      createMockCardDefinition({ id: 'L1', type: 'LEADER', cost: 0, power: 5000, counter: null, effects: [] }),
+      createMockCardDefinition({ id: 'L2', type: 'LEADER', cost: 0, power: 5000, counter: null, effects: [] }),
+      createMockCardDefinition({
+        id: 'OPP-IMMUNE',
+        effects: [{
+          id: 'opp-immune',
+          trigger: EffectTrigger.OPPONENT_TURN,
+          description: 'During opponent turn cannot be KOed by effects.',
+          effects: [{
+            type: EffectType.IMMUNE_KO,
+            target: { type: TargetType.SELF },
+            immuneFrom: 'EFFECTS',
+          }],
+        }],
+      }),
+      createMockCardDefinition({ id: 'FILL', effects: [] }),
+    ]);
+
+    const state = manager.getState();
+    state.players.player1.leaderCard = buildLeader('p1-leader', 'L1', 'player1');
+    state.players.player2.leaderCard = buildLeader('p2-leader', 'L2', 'player2');
+    state.players.player1.field = [
+      createMockCard({
+        id: 'p1-source',
+        cardId: 'OPP-IMMUNE',
+        owner: 'player1',
+        zone: CardZone.FIELD,
+        state: CardState.ACTIVE,
+      }),
+    ];
+    state.players.player1.deck = [buildDeckCard('p1-d1', 'player1'), buildDeckCard('p1-d2', 'player1')];
+    state.players.player2.deck = [buildDeckCard('p2-d1', 'player2'), buildDeckCard('p2-d2', 'player2')];
+
+    manager.startTurn('player1');
+    manager.endTurn('player1'); // Auto-starts player2
+    expect(state.players.player1.field[0].immunities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'KO',
+          duration: 'STAGE_CONTINUOUS',
+        }),
+      ])
+    );
+
+    manager.endTurn('player2'); // Auto-starts player1
+    expect(state.players.player1.field[0].immunities ?? []).toHaveLength(0);
+  });
+
+  it('stacks multiple continuous DEBUFF_COST sources', () => {
+    const manager = new GameStateManager('game-cost-stack', 'player1', 'player2');
+    const debuffEffect = {
+      id: 'debuff',
+      trigger: EffectTrigger.YOUR_TURN,
+      description: 'Give opponent character -1 cost.',
+      effects: [{
+        type: EffectType.DEBUFF_COST,
+        value: 1,
+        target: {
+          type: TargetType.OPPONENT_CHARACTER,
+          filters: [{ property: 'TYPE', value: ['CHARACTER'] }],
+        },
+      }],
+    };
+
+    manager.loadCardDefinitions([
+      createMockCardDefinition({ id: 'L1', type: 'LEADER', cost: 0, power: 5000, counter: null, effects: [] }),
+      createMockCardDefinition({ id: 'L2', type: 'LEADER', cost: 0, power: 5000, counter: null, effects: [] }),
+      createMockCardDefinition({ id: 'SRC-1', effects: [{ ...debuffEffect, id: 'debuff-1' }] }),
+      createMockCardDefinition({ id: 'SRC-2', effects: [{ ...debuffEffect, id: 'debuff-2' }] }),
+      createMockCardDefinition({ id: 'TARGET', cost: 5, effects: [] }),
+      createMockCardDefinition({ id: 'FILL', effects: [] }),
+    ]);
+
+    const state = manager.getState();
+    state.players.player1.leaderCard = buildLeader('p1-leader', 'L1', 'player1');
+    state.players.player2.leaderCard = buildLeader('p2-leader', 'L2', 'player2');
+    state.players.player1.field = [
+      createMockCard({ id: 'source-1', cardId: 'SRC-1', owner: 'player1', zone: CardZone.FIELD, state: CardState.ACTIVE }),
+      createMockCard({ id: 'source-2', cardId: 'SRC-2', owner: 'player1', zone: CardZone.FIELD, state: CardState.ACTIVE }),
+    ];
+    state.players.player2.field = [
+      createMockCard({ id: 'target', cardId: 'TARGET', owner: 'player2', zone: CardZone.FIELD, state: CardState.ACTIVE }),
+    ];
+    state.players.player1.deck = [buildDeckCard('p1-d1', 'player1')];
+    state.players.player2.deck = [buildDeckCard('p2-d1', 'player2')];
+
+    manager.startTurn('player1');
+    expect(state.players.player2.field[0].modifiedCost).toBe(3);
+  });
+
+  it('applies continuous GRANT_KEYWORD to leader targets', () => {
+    const manager = new GameStateManager('game-leader-keyword', 'player1', 'player2');
+    manager.loadCardDefinitions([
+      createMockCardDefinition({ id: 'L1', type: 'LEADER', cost: 0, power: 5000, counter: null, effects: [] }),
+      createMockCardDefinition({ id: 'L2', type: 'LEADER', cost: 0, power: 5000, counter: null, effects: [] }),
+      createMockCardDefinition({
+        id: 'LEADER-GRANTER',
+        effects: [{
+          id: 'grant-da',
+          trigger: EffectTrigger.YOUR_TURN,
+          description: 'Your leader gains Double Attack.',
+          effects: [{
+            type: EffectType.GRANT_KEYWORD,
+            keyword: 'Double Attack',
+            target: { type: TargetType.YOUR_LEADER },
+          }],
+        }],
+      }),
+      createMockCardDefinition({ id: 'FILL', effects: [] }),
+    ]);
+
+    const state = manager.getState();
+    state.players.player1.leaderCard = buildLeader('p1-leader', 'L1', 'player1');
+    state.players.player2.leaderCard = buildLeader('p2-leader', 'L2', 'player2');
+    state.players.player1.field = [
+      createMockCard({
+        id: 'granter',
+        cardId: 'LEADER-GRANTER',
+        owner: 'player1',
+        zone: CardZone.FIELD,
+        state: CardState.ACTIVE,
+      }),
+    ];
+    state.players.player1.deck = [buildDeckCard('p1-d1', 'player1')];
+    state.players.player2.deck = [buildDeckCard('p2-d1', 'player2')];
+
+    manager.startTurn('player1');
+    const leader = state.players.player1.leaderCard!;
+    expect(leader.continuousKeywords ?? []).toContain('Double Attack');
+    expect(manager.getEffectEngine().hasDoubleAttack(leader)).toBe(true);
+  });
+
+  it.each([EffectType.RETURN_TO_HAND, EffectType.SEND_TO_DECK_BOTTOM])(
+    'detaches attached DON when applying %s',
+    effectType => {
+      const manager = new GameStateManager(`game-${effectType}`, 'player1', 'player2');
+      const state = manager.getState();
+      const target = createMockCard({
+        id: 'target',
+        cardId: 'TARGET',
+        owner: 'player2',
+        zone: CardZone.FIELD,
+        state: CardState.ACTIVE,
+      });
+      const attachedDon = createMockCard({
+        id: 'don-1',
+        cardId: 'DON',
+        owner: 'player2',
+        zone: CardZone.DON_FIELD,
+        state: CardState.ATTACHED,
+        attachedTo: target.id,
+      });
+
+      state.players.player2.field = [target];
+      state.players.player2.hand = [];
+      state.players.player2.deck = [];
+      state.players.player2.donField = [attachedDon];
+
+      (manager as any).executeEffectAction(
+        { type: effectType },
+        { gameState: state, sourceCard: createMockCard({ id: 'source' }), sourcePlayer: state.players.player1 },
+        [target.id]
+      );
+
+      expect(state.players.player2.donField[0].attachedTo).toBeUndefined();
+      expect(state.players.player2.donField[0].state).toBe(CardState.ACTIVE);
+      if (effectType === EffectType.RETURN_TO_HAND) {
+        expect(state.players.player2.hand.some(card => card.id === target.id)).toBe(true);
+      } else {
+        expect(state.players.player2.deck.some(card => card.id === target.id)).toBe(true);
+      }
+    }
+  );
+
+  it('rejects declareAttack when CANT_ATTACK restriction is active', () => {
+    const manager = new GameStateManager('game-cant-attack', 'player1', 'player2');
+    const state = manager.getState();
+
+    state.turn = 4;
+    state.phase = GamePhase.MAIN_PHASE;
+    state.activePlayerId = 'player1';
+    state.players.player1.turnCount = 2;
+    state.players.player2.turnCount = 2;
+
+    state.players.player1.leaderCard = buildLeader('p1-leader', 'L1', 'player1');
+    state.players.player2.leaderCard = buildLeader('p2-leader', 'L2', 'player2');
+
+    state.players.player1.field = [
+      createMockCard({
+        id: 'attacker',
+        cardId: 'ATTACKER',
+        owner: 'player1',
+        zone: CardZone.FIELD,
+        state: CardState.ACTIVE,
+        restrictions: [{
+          type: 'CANT_ATTACK',
+          until: 'END_OF_TURN',
+          turnApplied: state.turn,
+        }],
+      }),
+    ];
+    state.players.player2.field = [
+      createMockCard({
+        id: 'defender',
+        cardId: 'DEFENDER',
+        owner: 'player2',
+        zone: CardZone.FIELD,
+        state: CardState.RESTED,
+      }),
+    ];
+
+    expect(manager.declareAttack('attacker', 'defender', 'character')).toBe(false);
   });
 });

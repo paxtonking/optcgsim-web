@@ -15,6 +15,7 @@ import {
   PendingAdditionalCost,
   PendingDeckRevealEffect,
   PendingHandSelectEffect,
+  CardRestriction,
 } from '../types/game';
 
 import {
@@ -1025,50 +1026,58 @@ export class GameStateManager {
    * Clear all stage-based modifications (called at end of turn)
    */
   private clearStageModifications(playerId: string): void {
+    this.resetContinuousEffectState(playerId);
+  }
+
+  /**
+   * Clear continuous-effect-only state from a card so it can be recalculated.
+   */
+  private resetContinuousCardState(card: GameCard): void {
+    card.hasRushVsCharacters = undefined;
+    card.modifiedCost = undefined;
+    card.continuousKeywords = undefined;
+
+    if (card.originalBasePower !== undefined) {
+      card.basePower = card.originalBasePower;
+      card.originalBasePower = undefined;
+    }
+
+    if (card.immunities) {
+      card.immunities = card.immunities.filter(i => i.duration !== 'STAGE_CONTINUOUS');
+      if (card.immunities.length === 0) {
+        card.immunities = undefined;
+      }
+    }
+
+    if (card.restrictions) {
+      card.restrictions = card.restrictions.filter(r => r.source !== 'STAGE_CONTINUOUS');
+      if (card.restrictions.length === 0) {
+        card.restrictions = undefined;
+      }
+    }
+  }
+
+  /**
+   * Reset stage/continuous-derived state for one player before reapplying effects.
+   */
+  private resetContinuousEffectState(playerId: string): void {
     const player = this.state.players[playerId];
     if (!player) return;
 
-    // Clear hand cost modifications
     for (const card of player.hand) {
       card.modifiedCost = undefined;
     }
 
-    // Clear field power buffs from stage effects
     this.clearStagePowerBuffs(playerId);
 
-    // Clear rush vs characters flag, base power modifications, temporary keywords, and immunities
     for (const card of player.field) {
-      card.hasRushVsCharacters = undefined;
-      // Reset base power from [Your Turn] SET_BASE_POWER effects
-      if (card.originalBasePower !== undefined) {
-        card.basePower = card.originalBasePower;
-        card.originalBasePower = undefined;
-      }
-      // Clear temporary keywords granted by continuous effects
-      card.temporaryKeywords = undefined;
-      // Clear continuous immunities (keep permanent ones)
-      if (card.immunities) {
-        card.immunities = card.immunities.filter(i => i.source === 'PERMANENT');
-        if (card.immunities.length === 0) {
-          card.immunities = undefined;
-        }
-      }
-      // Clear field cost modifications from opponent debuffs
-      card.modifiedCost = undefined;
+      this.resetContinuousCardState(card);
     }
 
-    // Clear leader temporary keywords and immunities
     if (player.leaderCard) {
-      player.leaderCard.temporaryKeywords = undefined;
-      if (player.leaderCard.immunities) {
-        player.leaderCard.immunities = player.leaderCard.immunities.filter(i => i.source === 'PERMANENT');
-        if (player.leaderCard.immunities.length === 0) {
-          player.leaderCard.immunities = undefined;
-        }
-      }
+      this.resetContinuousCardState(player.leaderCard);
     }
 
-    // Clear stage active effect flag
     if (player.stage) {
       player.stage.hasActiveEffect = false;
     }
@@ -1110,23 +1119,13 @@ export class GameStateManager {
 
     // Determine if it's this player's turn
     const isMyTurn = this.state.activePlayerId === playerId;
+    const opponentId = Object.keys(this.state.players).find(id => id !== playerId);
+    const opponent = opponentId ? this.state.players[opponentId] : undefined;
 
-    // Clear previous modifications first
-    for (const card of player.hand) {
-      card.modifiedCost = undefined;
-    }
-    this.clearStagePowerBuffs(playerId);
-    for (const card of player.field) {
-      card.hasRushVsCharacters = undefined;
-      // Reset base power modifications from previous turn
-      if (card.originalBasePower !== undefined) {
-        card.basePower = card.originalBasePower;
-        card.originalBasePower = undefined;
-      }
-    }
-
-    if (player.stage) {
-      player.stage.hasActiveEffect = false;
+    // Always recalculate continuous effects from a clean baseline for both players.
+    this.resetContinuousEffectState(playerId);
+    if (opponentId) {
+      this.resetContinuousEffectState(opponentId);
     }
 
     // Check own stage effects
@@ -1191,29 +1190,17 @@ export class GameStateManager {
 
     // Process opponent's continuous effects that apply when it's OUR turn
     // (their OPPONENT_TURN effects activate when it's our turn)
-    const opponentId = Object.keys(this.state.players).find(id => id !== playerId);
-    if (opponentId) {
-      const opponent = this.state.players[opponentId];
-
-      // Clear opponent's field modifications that need recalculation
-      for (const card of opponent.hand) {
-        card.modifiedCost = undefined;
-      }
-      this.clearStagePowerBuffs(opponentId);
-      for (const card of opponent.field) {
-        card.hasRushVsCharacters = undefined;
-        if (card.originalBasePower !== undefined) {
-          card.basePower = card.originalBasePower;
-          card.originalBasePower = undefined;
-        }
-      }
-
+    if (opponentId && opponent) {
       // Process opponent's STAGE with OPPONENT_TURN effects (when it's our turn)
-      if (opponent?.stage) {
+      if (opponent.stage) {
         const stageDef = this.effectEngine.getCardDefinition(opponent.stage.cardId);
         if (stageDef?.effects) {
           for (const effect of stageDef.effects) {
-            if (effect.trigger === EffectTrigger.OPPONENT_TURN && isMyTurn) {
+            const shouldApply =
+              effect.trigger === EffectTrigger.PASSIVE ||
+              (effect.trigger === EffectTrigger.OPPONENT_TURN && isMyTurn);
+
+            if (shouldApply) {
               this.applySingleStageEffect(opponent, effect, opponent.stage.id);
               if (opponent.stage) {
                 opponent.stage.hasActiveEffect = true;
@@ -1635,9 +1622,10 @@ export class GameStateManager {
       }
 
       if (matches) {
-        // Apply cost debuff (reduce cost, but not below 0)
-        const originalCost = cardDef.cost ?? 0;
-        card.modifiedCost = Math.max(0, originalCost - costReduction);
+        // Apply cost debuff cumulatively (multiple continuous sources can stack).
+        const baseCost = cardDef.cost ?? 0;
+        const currentModified = card.modifiedCost ?? baseCost;
+        card.modifiedCost = Math.max(0, currentModified - costReduction);
         hadEffect = true;
       }
     }
@@ -1728,33 +1716,14 @@ export class GameStateManager {
     let hadEffect = false;
     const filters = action.target?.filters || [];
     const keyword = action.keyword || '';
+    const targetType = action.target?.type;
 
     if (!keyword) return false;
 
-    // Check if targeting self
-    const targetType = action.target?.type;
-    if (targetType === TargetType.SELF) {
-      // Find the source card and grant keyword to it
-      const sourceCard = player.field.find(c => c.id === sourceCardId) ||
-                         (player.leaderCard?.id === sourceCardId ? player.leaderCard : null);
-      if (sourceCard) {
-        if (!sourceCard.temporaryKeywords) {
-          sourceCard.temporaryKeywords = [];
-        }
-        if (!sourceCard.temporaryKeywords.includes(keyword)) {
-          sourceCard.temporaryKeywords.push(keyword);
-          hadEffect = true;
-        }
-      }
-      return hadEffect;
-    }
-
-    // Apply to matching cards on field
-    for (const card of player.field) {
+    const matchesFilters = (card: GameCard): boolean => {
       const cardDef = this.effectEngine.getCardDefinition(card.cardId);
-      if (!cardDef) continue;
+      if (!cardDef) return false;
 
-      // Check filters
       let matches = true;
       for (const filter of filters) {
         if (filter.property === 'TRAIT') {
@@ -1771,17 +1740,81 @@ export class GameStateManager {
             break;
           }
         }
+        if (filter.property === 'NAME') {
+          const names = filter.value as string[];
+          if (!names.some(n => cardDef.name?.includes(n.replace(/[.\[\]]/g, '')))) {
+            matches = false;
+            break;
+          }
+        }
       }
+      return matches;
+    };
 
-      if (matches) {
-        if (!card.temporaryKeywords) {
-          card.temporaryKeywords = [];
-        }
-        if (!card.temporaryKeywords.includes(keyword)) {
-          card.temporaryKeywords.push(keyword);
-          hadEffect = true;
-        }
+    const addKeyword = (card: GameCard): void => {
+      if (!matchesFilters(card)) return;
+
+      if (!card.continuousKeywords) {
+        card.continuousKeywords = [];
       }
+      if (!card.continuousKeywords.includes(keyword)) {
+        card.continuousKeywords.push(keyword);
+        hadEffect = true;
+      }
+    };
+
+    const opponentId = Object.keys(this.state.players).find(id => id !== player.id);
+    const opponent = opponentId ? this.state.players[opponentId] : undefined;
+
+    if (targetType === TargetType.SELF) {
+      const sourceCard = player.field.find(c => c.id === sourceCardId) ||
+        (player.leaderCard?.id === sourceCardId ? player.leaderCard : null);
+      if (sourceCard) {
+        addKeyword(sourceCard);
+      }
+      return hadEffect;
+    }
+
+    const applyToField = (field: GameCard[]) => {
+      for (const card of field) {
+        addKeyword(card);
+      }
+    };
+
+    switch (targetType) {
+      case TargetType.YOUR_LEADER:
+        if (player.leaderCard) addKeyword(player.leaderCard);
+        break;
+      case TargetType.YOUR_CHARACTER:
+      case TargetType.YOUR_FIELD:
+        applyToField(player.field);
+        break;
+      case TargetType.YOUR_LEADER_OR_CHARACTER:
+        if (player.leaderCard) addKeyword(player.leaderCard);
+        applyToField(player.field);
+        break;
+      case TargetType.OPPONENT_LEADER:
+        if (opponent?.leaderCard) addKeyword(opponent.leaderCard);
+        break;
+      case TargetType.OPPONENT_CHARACTER:
+      case TargetType.OPPONENT_FIELD:
+        if (opponent) applyToField(opponent.field);
+        break;
+      case TargetType.OPPONENT_LEADER_OR_CHARACTER:
+        if (opponent?.leaderCard) addKeyword(opponent.leaderCard);
+        if (opponent) applyToField(opponent.field);
+        break;
+      case TargetType.ANY_LEADER:
+        if (player.leaderCard) addKeyword(player.leaderCard);
+        if (opponent?.leaderCard) addKeyword(opponent.leaderCard);
+        break;
+      case TargetType.ANY_CHARACTER:
+      case TargetType.ALL_CHARACTERS:
+        applyToField(player.field);
+        if (opponent) applyToField(opponent.field);
+        break;
+      default:
+        applyToField(player.field);
     }
 
     return hadEffect;
@@ -1809,10 +1842,12 @@ export class GameStateManager {
           sourceCard.immunities = [];
         }
         // Add KO immunity if not already present
-        if (!sourceCard.immunities.some(i => i.type === 'KO')) {
+        if (!sourceCard.immunities.some(i => i.type === 'KO' && i.duration === 'STAGE_CONTINUOUS' && i.sourceCardId === sourceCardId)) {
           sourceCard.immunities.push({
             type: 'KO',
             source: action.immuneFrom || 'EFFECTS',
+            duration: 'STAGE_CONTINUOUS',
+            sourceCardId,
           });
           hadEffect = true;
         }
@@ -1848,10 +1883,12 @@ export class GameStateManager {
         if (!card.immunities) {
           card.immunities = [];
         }
-        if (!card.immunities.some(i => i.type === 'KO')) {
+        if (!card.immunities.some(i => i.type === 'KO' && i.duration === 'STAGE_CONTINUOUS' && i.sourceCardId === sourceCardId)) {
           card.immunities.push({
             type: 'KO',
             source: action.immuneFrom || 'EFFECTS',
+            duration: 'STAGE_CONTINUOUS',
+            sourceCardId,
           });
           hadEffect = true;
         }
@@ -1875,16 +1912,19 @@ export class GameStateManager {
 
     // If targeting self, apply to source card
     if (targetType === TargetType.SELF) {
-      const sourceCard = player.field.find(c => c.id === sourceCardId);
+      const sourceCard = player.field.find(c => c.id === sourceCardId) ||
+        (player.leaderCard?.id === sourceCardId ? player.leaderCard : null);
       if (sourceCard) {
         if (!sourceCard.restrictions) {
           sourceCard.restrictions = [];
         }
-        if (!sourceCard.restrictions.some(r => r.type === 'CANT_ATTACK')) {
+        if (!sourceCard.restrictions.some(r => r.type === 'CANT_ATTACK' && r.source === 'STAGE_CONTINUOUS' && r.sourceCardId === sourceCardId)) {
           sourceCard.restrictions.push({
             type: 'CANT_ATTACK',
             until: 'END_OF_TURN',
             turnApplied: this.state.turn,
+            source: 'STAGE_CONTINUOUS',
+            sourceCardId,
           });
           hadEffect = true;
         }
@@ -2027,6 +2067,47 @@ export class GameStateManager {
     return true;
   }
 
+  private isAttackRestrictionActive(restriction: CardRestriction): boolean {
+    if (restriction.until === 'PERMANENT') {
+      return true;
+    }
+
+    if (restriction.until === 'END_OF_TURN') {
+      return restriction.turnApplied === this.state.turn;
+    }
+
+    if (restriction.until === 'END_OF_OPPONENT_TURN') {
+      return this.state.turn === restriction.turnApplied || this.state.turn === restriction.turnApplied + 1;
+    }
+
+    return false;
+  }
+
+  private hasActiveCantAttackRestriction(card: GameCard): boolean {
+    if (!card.restrictions || card.restrictions.length === 0) {
+      return false;
+    }
+
+    let restricted = false;
+    card.restrictions = card.restrictions.filter(restriction => {
+      if (restriction.type !== 'CANT_ATTACK') {
+        return true;
+      }
+
+      const isActive = this.isAttackRestrictionActive(restriction);
+      if (isActive) {
+        restricted = true;
+      }
+      return isActive;
+    });
+
+    if (card.restrictions.length === 0) {
+      card.restrictions = undefined;
+    }
+
+    return restricted;
+  }
+
   // Combat methods
   public declareAttack(attackerId: string, targetId: string, targetType: 'leader' | 'character'): boolean {
     console.log('[DEBUG ATTACK GSM] declareAttack called:', { attackerId, targetId, targetType });
@@ -2051,6 +2132,11 @@ export class GameStateManager {
 
     if (attacker.state !== CardState.ACTIVE) {
       console.log('[DEBUG ATTACK GSM] Attacker not ACTIVE:', attacker.state);
+      return false;
+    }
+
+    if (this.hasActiveCantAttackRestriction(attacker)) {
+      console.log('[DEBUG ATTACK GSM] Attacker has active CANT_ATTACK restriction');
       return false;
     }
 
@@ -2959,14 +3045,20 @@ export class GameStateManager {
       };
       this.processTriggers(trashAllyTrigger);
 
-      // Detach any DON! attached to this card
-      player.donField.forEach(don => {
-        if (don.attachedTo === cardId) {
-          don.attachedTo = undefined;
-          don.state = CardState.ACTIVE;
-        }
-      });
+      this.detachDonFromCard(cardId, player.id);
     }
+  }
+
+  private detachDonFromCard(cardId: string, ownerId: string): void {
+    const owner = this.state.players[ownerId];
+    if (!owner) return;
+
+    owner.donField.forEach(don => {
+      if (don.attachedTo === cardId) {
+        don.attachedTo = undefined;
+        don.state = CardState.ACTIVE;
+      }
+    });
   }
 
   // Turn management
@@ -4763,6 +4855,8 @@ export class GameStateManager {
           if (targetCard) {
             const owner = this.state.players[targetCard.owner];
             if (owner) {
+              this.detachDonFromCard(targetId, owner.id);
+
               // Remove from current zone
               if (targetCard.zone === CardZone.FIELD) {
                 const index = owner.field.findIndex(c => c.id === targetId);
@@ -4817,6 +4911,8 @@ export class GameStateManager {
           if (targetCard) {
             const owner = this.state.players[targetCard.owner];
             if (owner) {
+              this.detachDonFromCard(targetId, owner.id);
+
               // Remove from current zone
               if (targetCard.zone === CardZone.FIELD) {
                 const index = owner.field.findIndex(c => c.id === targetId);

@@ -79,6 +79,7 @@ export interface GameCard {
   modifiedCost?: number; // Cost after stage/continuous effects (undefined = no modification)
   keywords?: string[]; // Active keywords (Rush, Blocker, etc.)
   temporaryKeywords?: string[]; // Keywords granted by effects (cleared after battle)
+  continuousKeywords?: string[]; // Keywords granted by continuous effects (recalculated)
   turnPlayed?: number; // Turn this was played
   hasAttacked?: boolean;
   position?: number;   // Position in zone (for ordering)
@@ -107,12 +108,16 @@ export interface CardRestriction {
   type: 'CANT_ATTACK' | 'CANT_BLOCK' | 'CANT_BE_TARGETED';
   until: 'END_OF_TURN' | 'END_OF_OPPONENT_TURN' | 'PERMANENT';
   turnApplied: number;
+  source?: 'STAGE_CONTINUOUS' | 'EFFECT';
+  sourceCardId?: string;
 }
 
 // Card immunity (e.g., IMMUNE_KO)
 export interface CardImmunity {
   type: 'KO' | 'EFFECTS' | 'COMBAT';
   source?: string; // e.g., 'OPPONENT_CHARACTERS', 'ALL'
+  sourceCardId?: string;
+  duration?: 'PERMANENT' | 'STAGE_CONTINUOUS';
   condition?: any; // Additional condition for immunity
 }
 

@@ -2557,8 +2557,11 @@ export class EffectEngine {
   // ============================================
 
   public hasKeyword(card: GameCard, keyword: string): boolean {
-    if (!card.keywords) return false;
-    return card.keywords.includes(keyword);
+    return Boolean(
+      card.keywords?.includes(keyword) ||
+      card.temporaryKeywords?.includes(keyword) ||
+      card.continuousKeywords?.includes(keyword)
+    );
   }
 
   public canAttackOnPlayTurn(card: GameCard, currentTurn: number): boolean {
