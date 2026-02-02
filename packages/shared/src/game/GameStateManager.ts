@@ -1036,13 +1036,35 @@ export class GameStateManager {
     // Clear field power buffs from stage effects
     this.clearStagePowerBuffs(playerId);
 
-    // Clear rush vs characters flag and reset base power modifications
+    // Clear rush vs characters flag, base power modifications, temporary keywords, and immunities
     for (const card of player.field) {
       card.hasRushVsCharacters = undefined;
       // Reset base power from [Your Turn] SET_BASE_POWER effects
       if (card.originalBasePower !== undefined) {
         card.basePower = card.originalBasePower;
         card.originalBasePower = undefined;
+      }
+      // Clear temporary keywords granted by continuous effects
+      card.temporaryKeywords = undefined;
+      // Clear continuous immunities (keep permanent ones)
+      if (card.immunities) {
+        card.immunities = card.immunities.filter(i => i.source === 'PERMANENT');
+        if (card.immunities.length === 0) {
+          card.immunities = undefined;
+        }
+      }
+      // Clear field cost modifications from opponent debuffs
+      card.modifiedCost = undefined;
+    }
+
+    // Clear leader temporary keywords and immunities
+    if (player.leaderCard) {
+      player.leaderCard.temporaryKeywords = undefined;
+      if (player.leaderCard.immunities) {
+        player.leaderCard.immunities = player.leaderCard.immunities.filter(i => i.source === 'PERMANENT');
+        if (player.leaderCard.immunities.length === 0) {
+          player.leaderCard.immunities = undefined;
+        }
       }
     }
 
@@ -1130,47 +1152,106 @@ export class GameStateManager {
       }
     }
 
-    // Process CHARACTER cards on field with [Your Turn] effects
-    if (isMyTurn) {
-      for (const card of player.field) {
-        const cardDef = this.effectEngine.getCardDefinition(card.cardId);
-        if (!cardDef?.effects) continue;
+    // Process CHARACTER cards on field with continuous effects (YOUR_TURN, PASSIVE)
+    for (const card of player.field) {
+      const cardDef = this.effectEngine.getCardDefinition(card.cardId);
+      if (!cardDef?.effects) continue;
 
-        for (const effect of cardDef.effects) {
-          // Only process YOUR_TURN continuous effects (not triggered abilities)
-          if (effect.trigger === EffectTrigger.YOUR_TURN) {
-            this.applySingleStageEffect(player, effect, card.id);
-          }
+      for (const effect of cardDef.effects) {
+        const trigger = effect.trigger;
+        // Process YOUR_TURN when it's player's turn, PASSIVE always, OPPONENT_TURN when not player's turn
+        const shouldApply =
+          trigger === EffectTrigger.PASSIVE ||
+          (trigger === EffectTrigger.YOUR_TURN && isMyTurn) ||
+          (trigger === EffectTrigger.OPPONENT_TURN && !isMyTurn);
+
+        if (shouldApply) {
+          this.applySingleStageEffect(player, effect, card.id);
         }
       }
+    }
 
-      // Process LEADER card with [Your Turn] effects
-      if (player.leaderCard) {
-        const leaderDef = this.effectEngine.getCardDefinition(player.leaderCard.cardId);
-        if (leaderDef?.effects) {
-          for (const effect of leaderDef.effects) {
-            if (effect.trigger === EffectTrigger.YOUR_TURN) {
-              this.applySingleStageEffect(player, effect, player.leaderCard.id);
-            }
+    // Process LEADER card with continuous effects (YOUR_TURN, PASSIVE, OPPONENT_TURN)
+    if (player.leaderCard) {
+      const leaderDef = this.effectEngine.getCardDefinition(player.leaderCard.cardId);
+      if (leaderDef?.effects) {
+        for (const effect of leaderDef.effects) {
+          const trigger = effect.trigger;
+          const shouldApply =
+            trigger === EffectTrigger.PASSIVE ||
+            (trigger === EffectTrigger.YOUR_TURN && isMyTurn) ||
+            (trigger === EffectTrigger.OPPONENT_TURN && !isMyTurn);
+
+          if (shouldApply) {
+            this.applySingleStageEffect(player, effect, player.leaderCard.id);
           }
         }
       }
     }
 
-    // Also check opponent's stage for effects that affect them on our turn
+    // Process opponent's continuous effects that apply when it's OUR turn
+    // (their OPPONENT_TURN effects activate when it's our turn)
     const opponentId = Object.keys(this.state.players).find(id => id !== playerId);
     if (opponentId) {
       const opponent = this.state.players[opponentId];
+
+      // Clear opponent's field modifications that need recalculation
+      for (const card of opponent.hand) {
+        card.modifiedCost = undefined;
+      }
+      this.clearStagePowerBuffs(opponentId);
+      for (const card of opponent.field) {
+        card.hasRushVsCharacters = undefined;
+        if (card.originalBasePower !== undefined) {
+          card.basePower = card.originalBasePower;
+          card.originalBasePower = undefined;
+        }
+      }
+
+      // Process opponent's STAGE with OPPONENT_TURN effects (when it's our turn)
       if (opponent?.stage) {
         const stageDef = this.effectEngine.getCardDefinition(opponent.stage.cardId);
         if (stageDef?.effects) {
           for (const effect of stageDef.effects) {
-            // Opponent's "opponent turn" effects apply when it's OUR turn
             if (effect.trigger === EffectTrigger.OPPONENT_TURN && isMyTurn) {
               this.applySingleStageEffect(opponent, effect, opponent.stage.id);
               if (opponent.stage) {
                 opponent.stage.hasActiveEffect = true;
               }
+            }
+          }
+        }
+      }
+
+      // Process opponent's CHARACTER cards with OPPONENT_TURN effects (when it's our turn)
+      for (const card of opponent.field) {
+        const cardDef = this.effectEngine.getCardDefinition(card.cardId);
+        if (!cardDef?.effects) continue;
+
+        for (const effect of cardDef.effects) {
+          // Opponent's OPPONENT_TURN effects apply when it's OUR turn
+          // Also check PASSIVE for opponent's cards
+          const shouldApply =
+            effect.trigger === EffectTrigger.PASSIVE ||
+            (effect.trigger === EffectTrigger.OPPONENT_TURN && isMyTurn);
+
+          if (shouldApply) {
+            this.applySingleStageEffect(opponent, effect, card.id);
+          }
+        }
+      }
+
+      // Process opponent's LEADER with OPPONENT_TURN effects (when it's our turn)
+      if (opponent.leaderCard) {
+        const leaderDef = this.effectEngine.getCardDefinition(opponent.leaderCard.cardId);
+        if (leaderDef?.effects) {
+          for (const effect of leaderDef.effects) {
+            const shouldApply =
+              effect.trigger === EffectTrigger.PASSIVE ||
+              (effect.trigger === EffectTrigger.OPPONENT_TURN && isMyTurn);
+
+            if (shouldApply) {
+              this.applySingleStageEffect(opponent, effect, opponent.leaderCard.id);
             }
           }
         }
@@ -1246,6 +1327,51 @@ export class GameStateManager {
 
         case EffectType.SET_BASE_POWER:
           hadEffect = this.applySetBasePower(player, action, sourceCardId) || hadEffect;
+          break;
+
+        case EffectType.DEBUFF_COST:
+          // Apply cost debuff - can target own or opponent's cards
+          if (action.target?.type === TargetType.OPPONENT_FIELD ||
+              action.target?.type === TargetType.OPPONENT_CHARACTER ||
+              action.target?.type === TargetType.ALL_CHARACTERS) {
+            const opponentId = Object.keys(this.state.players).find(id => id !== player.id);
+            if (opponentId) {
+              const opponent = this.state.players[opponentId];
+              hadEffect = this.applyFieldCostDebuff(opponent, action, sourceCardId) || hadEffect;
+            }
+          } else {
+            hadEffect = this.applyFieldCostDebuff(player, action, sourceCardId) || hadEffect;
+          }
+          break;
+
+        case EffectType.DEBUFF_POWER:
+          // Apply power debuff - can target own or opponent's cards
+          if (action.target?.type === TargetType.OPPONENT_FIELD ||
+              action.target?.type === TargetType.OPPONENT_CHARACTER ||
+              action.target?.type === TargetType.ALL_CHARACTERS) {
+            const opponentId = Object.keys(this.state.players).find(id => id !== player.id);
+            if (opponentId) {
+              const opponent = this.state.players[opponentId];
+              hadEffect = this.applyFieldPowerDebuff(opponent, action, sourceCardId) || hadEffect;
+            }
+          } else {
+            hadEffect = this.applyFieldPowerDebuff(player, action, sourceCardId) || hadEffect;
+          }
+          break;
+
+        case EffectType.GRANT_KEYWORD:
+          // Grant keyword to matching cards (e.g., Double Attack, Rush, Banish)
+          hadEffect = this.applyGrantKeyword(player, action, sourceCardId) || hadEffect;
+          break;
+
+        case EffectType.IMMUNE_KO:
+          // Grant KO immunity to matching cards
+          hadEffect = this.applyKOImmunity(player, action, sourceCardId) || hadEffect;
+          break;
+
+        case EffectType.CANT_ATTACK:
+          // Apply attack restriction
+          hadEffect = this.applyAttackRestriction(player, action, sourceCardId) || hadEffect;
           break;
       }
     }
@@ -1466,6 +1592,302 @@ export class GameStateManager {
         // Set the new base power
         card.basePower = newBasePower;
         hadEffect = true;
+      }
+    }
+
+    return hadEffect;
+  }
+
+  /**
+   * Apply cost debuff to cards on a player's field
+   * Used for continuous effects like "[Your Turn] Give all opponent's Characters -5 cost"
+   */
+  private applyFieldCostDebuff(
+    player: PlayerState,
+    action: EffectAction,
+    _sourceCardId: string
+  ): boolean {
+    let hadEffect = false;
+    const filters = action.target?.filters || [];
+    const costReduction = action.value || 0;
+
+    for (const card of player.field) {
+      const cardDef = this.effectEngine.getCardDefinition(card.cardId);
+      if (!cardDef) continue;
+
+      // Check filters
+      let matches = true;
+      for (const filter of filters) {
+        if (filter.property === 'TRAIT') {
+          const traits = filter.value as string[];
+          if (!traits.some(t => cardDef.traits?.includes(t))) {
+            matches = false;
+            break;
+          }
+        }
+        if (filter.property === 'TYPE') {
+          const types = filter.value as string[];
+          if (!types.includes(cardDef.type)) {
+            matches = false;
+            break;
+          }
+        }
+      }
+
+      if (matches) {
+        // Apply cost debuff (reduce cost, but not below 0)
+        const originalCost = cardDef.cost ?? 0;
+        card.modifiedCost = Math.max(0, originalCost - costReduction);
+        hadEffect = true;
+      }
+    }
+
+    return hadEffect;
+  }
+
+  /**
+   * Apply power debuff to cards on a player's field
+   * Used for continuous effects like "[Your Turn] Give all opponent's Characters -1000 power"
+   */
+  private applyFieldPowerDebuff(
+    player: PlayerState,
+    action: EffectAction,
+    sourceCardId: string
+  ): boolean {
+    let hadEffect = false;
+    const filters = action.target?.filters || [];
+    const powerDebuff = -(action.value || 0); // Negative value for debuff
+
+    for (const card of player.field) {
+      const cardDef = this.effectEngine.getCardDefinition(card.cardId);
+      if (!cardDef) continue;
+
+      // Check filters
+      let matches = true;
+      for (const filter of filters) {
+        if (filter.property === 'TRAIT') {
+          const traits = filter.value as string[];
+          if (!traits.some(t => cardDef.traits?.includes(t))) {
+            matches = false;
+            break;
+          }
+        }
+        if (filter.property === 'TYPE') {
+          const types = filter.value as string[];
+          if (!types.includes(cardDef.type)) {
+            matches = false;
+            break;
+          }
+        }
+      }
+
+      if (matches) {
+        // Add power debuff as a STAGE_CONTINUOUS buff (will be cleared at turn end)
+        if (!card.powerBuffs) {
+          card.powerBuffs = [];
+        }
+        card.powerBuffs.push({
+          id: `continuous-debuff-${sourceCardId}-${card.id}`,
+          sourceCardId: sourceCardId,
+          value: powerDebuff,
+          duration: 'STAGE_CONTINUOUS',
+        });
+        hadEffect = true;
+      }
+    }
+
+    // Also apply to leader if targeting leader or all
+    if (action.target?.type === TargetType.OPPONENT_LEADER_OR_CHARACTER ||
+        action.target?.type === TargetType.OPPONENT_LEADER) {
+      if (player.leaderCard) {
+        if (!player.leaderCard.powerBuffs) {
+          player.leaderCard.powerBuffs = [];
+        }
+        player.leaderCard.powerBuffs.push({
+          id: `continuous-debuff-${sourceCardId}-leader`,
+          sourceCardId: sourceCardId,
+          value: powerDebuff,
+          duration: 'STAGE_CONTINUOUS',
+        });
+        hadEffect = true;
+      }
+    }
+
+    return hadEffect;
+  }
+
+  /**
+   * Apply keyword grant to cards on a player's field
+   * Used for continuous effects like "[Your Turn] This Character gains [Double Attack]"
+   */
+  private applyGrantKeyword(
+    player: PlayerState,
+    action: EffectAction,
+    sourceCardId: string
+  ): boolean {
+    let hadEffect = false;
+    const filters = action.target?.filters || [];
+    const keyword = action.keyword || '';
+
+    if (!keyword) return false;
+
+    // Check if targeting self
+    const targetType = action.target?.type;
+    if (targetType === TargetType.SELF) {
+      // Find the source card and grant keyword to it
+      const sourceCard = player.field.find(c => c.id === sourceCardId) ||
+                         (player.leaderCard?.id === sourceCardId ? player.leaderCard : null);
+      if (sourceCard) {
+        if (!sourceCard.temporaryKeywords) {
+          sourceCard.temporaryKeywords = [];
+        }
+        if (!sourceCard.temporaryKeywords.includes(keyword)) {
+          sourceCard.temporaryKeywords.push(keyword);
+          hadEffect = true;
+        }
+      }
+      return hadEffect;
+    }
+
+    // Apply to matching cards on field
+    for (const card of player.field) {
+      const cardDef = this.effectEngine.getCardDefinition(card.cardId);
+      if (!cardDef) continue;
+
+      // Check filters
+      let matches = true;
+      for (const filter of filters) {
+        if (filter.property === 'TRAIT') {
+          const traits = filter.value as string[];
+          if (!traits.some(t => cardDef.traits?.includes(t))) {
+            matches = false;
+            break;
+          }
+        }
+        if (filter.property === 'TYPE') {
+          const types = filter.value as string[];
+          if (!types.includes(cardDef.type)) {
+            matches = false;
+            break;
+          }
+        }
+      }
+
+      if (matches) {
+        if (!card.temporaryKeywords) {
+          card.temporaryKeywords = [];
+        }
+        if (!card.temporaryKeywords.includes(keyword)) {
+          card.temporaryKeywords.push(keyword);
+          hadEffect = true;
+        }
+      }
+    }
+
+    return hadEffect;
+  }
+
+  /**
+   * Apply KO immunity to cards on a player's field
+   * Used for continuous effects like "[Opponent's Turn] cannot be K.O.'d by effects"
+   */
+  private applyKOImmunity(
+    player: PlayerState,
+    action: EffectAction,
+    sourceCardId: string
+  ): boolean {
+    let hadEffect = false;
+    const filters = action.target?.filters || [];
+    const targetType = action.target?.type;
+
+    // If targeting self, apply to source card
+    if (targetType === TargetType.SELF) {
+      const sourceCard = player.field.find(c => c.id === sourceCardId) ||
+                         (player.leaderCard?.id === sourceCardId ? player.leaderCard : null);
+      if (sourceCard) {
+        if (!sourceCard.immunities) {
+          sourceCard.immunities = [];
+        }
+        // Add KO immunity if not already present
+        if (!sourceCard.immunities.some(i => i.type === 'KO')) {
+          sourceCard.immunities.push({
+            type: 'KO',
+            source: action.immuneFrom || 'EFFECTS',
+          });
+          hadEffect = true;
+        }
+      }
+      return hadEffect;
+    }
+
+    // Apply to matching cards on field
+    for (const card of player.field) {
+      const cardDef = this.effectEngine.getCardDefinition(card.cardId);
+      if (!cardDef) continue;
+
+      // Check filters
+      let matches = true;
+      for (const filter of filters) {
+        if (filter.property === 'TRAIT') {
+          const traits = filter.value as string[];
+          if (!traits.some(t => cardDef.traits?.includes(t))) {
+            matches = false;
+            break;
+          }
+        }
+        if (filter.property === 'COST') {
+          const costValue = filter.value as number;
+          if (cardDef.cost !== costValue) {
+            matches = false;
+            break;
+          }
+        }
+      }
+
+      if (matches) {
+        if (!card.immunities) {
+          card.immunities = [];
+        }
+        if (!card.immunities.some(i => i.type === 'KO')) {
+          card.immunities.push({
+            type: 'KO',
+            source: action.immuneFrom || 'EFFECTS',
+          });
+          hadEffect = true;
+        }
+      }
+    }
+
+    return hadEffect;
+  }
+
+  /**
+   * Apply attack restriction to cards
+   * Used for continuous effects that restrict what can be attacked
+   */
+  private applyAttackRestriction(
+    player: PlayerState,
+    action: EffectAction,
+    sourceCardId: string
+  ): boolean {
+    let hadEffect = false;
+    const targetType = action.target?.type;
+
+    // If targeting self, apply to source card
+    if (targetType === TargetType.SELF) {
+      const sourceCard = player.field.find(c => c.id === sourceCardId);
+      if (sourceCard) {
+        if (!sourceCard.restrictions) {
+          sourceCard.restrictions = [];
+        }
+        if (!sourceCard.restrictions.some(r => r.type === 'CANT_ATTACK')) {
+          sourceCard.restrictions.push({
+            type: 'CANT_ATTACK',
+            until: 'END_OF_TURN',
+            turnApplied: this.state.turn,
+          });
+          hadEffect = true;
+        }
       }
     }
 
@@ -4313,9 +4735,129 @@ export class GameStateManager {
         }
         break;
       }
-      // Add more effect types as needed
+
+      case EffectType.DEBUFF_POWER: {
+        // Apply power debuff to targets
+        const debuffValue = -(action.value || 0);
+        for (const targetId of targetIds) {
+          const targetCard = this.findCard(targetId);
+          if (targetCard) {
+            if (!targetCard.powerBuffs) {
+              targetCard.powerBuffs = [];
+            }
+            targetCard.powerBuffs.push({
+              id: `event-debuff-${Date.now()}`,
+              sourceCardId: context.sourceCard.id,
+              value: debuffValue,
+              duration: action.duration === 'UNTIL_END_OF_BATTLE' ? 'THIS_BATTLE' : 'THIS_TURN',
+            });
+          }
+        }
+        break;
+      }
+
+      case EffectType.RETURN_TO_HAND: {
+        // Return target cards to owner's hand
+        for (const targetId of targetIds) {
+          const targetCard = this.findCard(targetId);
+          if (targetCard) {
+            const owner = this.state.players[targetCard.owner];
+            if (owner) {
+              // Remove from current zone
+              if (targetCard.zone === CardZone.FIELD) {
+                const index = owner.field.findIndex(c => c.id === targetId);
+                if (index !== -1) {
+                  owner.field.splice(index, 1);
+                }
+              } else if (targetCard.zone === CardZone.STAGE && owner.stage?.id === targetId) {
+                owner.stage = null;
+              }
+
+              // Add to hand
+              targetCard.zone = CardZone.HAND;
+              targetCard.state = CardState.ACTIVE;
+              owner.hand.push(targetCard);
+              console.log('[executeEffectAction] Returned to hand:', targetCard.cardId);
+            }
+          }
+        }
+        break;
+      }
+
+      case EffectType.REST_CHARACTER: {
+        // Rest target characters
+        for (const targetId of targetIds) {
+          const targetCard = this.findCard(targetId);
+          if (targetCard && targetCard.zone === CardZone.FIELD) {
+            targetCard.state = CardState.RESTED;
+            console.log('[executeEffectAction] Rested:', targetCard.cardId);
+          }
+        }
+        break;
+      }
+
+      case EffectType.DRAW_CARDS: {
+        // Draw cards for the effect owner
+        const drawCount = action.value || 1;
+        for (let i = 0; i < drawCount; i++) {
+          if (context.sourcePlayer.deck.length > 0) {
+            const drawnCard = context.sourcePlayer.deck.shift()!;
+            drawnCard.zone = CardZone.HAND;
+            context.sourcePlayer.hand.push(drawnCard);
+          }
+        }
+        console.log('[executeEffectAction] Drew', drawCount, 'cards');
+        break;
+      }
+
+      case EffectType.SEND_TO_DECK_BOTTOM: {
+        // Send target cards to bottom of owner's deck
+        for (const targetId of targetIds) {
+          const targetCard = this.findCard(targetId);
+          if (targetCard) {
+            const owner = this.state.players[targetCard.owner];
+            if (owner) {
+              // Remove from current zone
+              if (targetCard.zone === CardZone.FIELD) {
+                const index = owner.field.findIndex(c => c.id === targetId);
+                if (index !== -1) {
+                  owner.field.splice(index, 1);
+                }
+              }
+
+              // Add to bottom of deck
+              targetCard.zone = CardZone.DECK;
+              targetCard.state = CardState.ACTIVE;
+              owner.deck.push(targetCard);
+              console.log('[executeEffectAction] Sent to deck bottom:', targetCard.cardId);
+            }
+          }
+        }
+        break;
+      }
+
+      case EffectType.ATTACH_DON: {
+        // Attach DON to target card
+        for (const targetId of targetIds) {
+          const targetCard = this.findCard(targetId);
+          if (targetCard) {
+            const player = context.sourcePlayer;
+            // Find an active DON to attach
+            const donToAttach = player.donField.find(d => d.state === CardState.ACTIVE && !d.attachedTo);
+            if (donToAttach) {
+              donToAttach.attachedTo = targetId;
+              donToAttach.state = CardState.ATTACHED;
+              console.log('[executeEffectAction] Attached DON to:', targetCard.cardId);
+            }
+          }
+        }
+        break;
+      }
+
       default:
+        // Log unhandled effect types for debugging
         console.log('[executeEffectAction] Unhandled effect type:', action.type);
+        console.log('[executeEffectAction] Action details:', JSON.stringify(action, null, 2));
     }
   }
 
