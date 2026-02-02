@@ -205,12 +205,14 @@ export function setupWebSocket(io: SocketServer) {
     
     socket.on('game:getState', (data) => {
       const gameId = data.gameId;
+      console.log(`[WebSocket] game:getState called for game ${gameId} by user ${socket.userId} (socket ${socket.id})`);
 
       // Check for active game first
       const state = gameManager.getGameState(socket, gameId);
       if (state) {
         // Ensure socket is in the game room (for chat, etc.)
         socket.join(`game:${gameId}`);
+        console.log(`[WebSocket] Found active game, sending state. Phase: ${state.phase}`);
         socket.emit('game:state', { gameState: state });
         return;
       }
@@ -219,6 +221,7 @@ export function setupWebSocket(io: SocketServer) {
       const rpsState = gameManager.getRPSState(socket, gameId);
       if (rpsState) {
         // Socket already joined in getRPSState
+        console.log(`[WebSocket] Found RPS pending game, phase: ${rpsState.phase}`);
         // Re-emit the appropriate event based on phase
         if (rpsState.phase === 'FIRST_CHOICE') {
           socket.emit(WS_EVENTS.FIRST_CHOICE, {
@@ -235,6 +238,7 @@ export function setupWebSocket(io: SocketServer) {
         return;
       }
 
+      console.log(`[WebSocket] Game ${gameId} not found for user ${socket.userId}`);
       socket.emit('game:error', { error: 'Game not found or access denied' });
     });
 

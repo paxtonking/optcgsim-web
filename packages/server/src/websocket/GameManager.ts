@@ -454,6 +454,7 @@ export class GameManager {
     const loserGoesFirst = firstPlayerId === loserId;
 
     // Broadcast final game start with first player info
+    console.log(`[GameManager] Emitting first:decided to room game:${gameId}`);
     this.io.to(`game:${gameId}`).emit(WS_EVENTS.FIRST_DECIDED, {
       gameId,
       firstPlayerId,
@@ -462,15 +463,19 @@ export class GameManager {
     });
 
     // Send sanitized game state to each player individually (anti-cheat)
+    console.log(`[GameManager] Looking for sockets - P1: ${game.player1SocketId}, P2: ${game.player2SocketId}`);
     const player1Socket = this.io.sockets.sockets.get(game.player1SocketId);
     const player2Socket = this.io.sockets.sockets.get(game.player2SocketId);
+    console.log(`[GameManager] Found sockets - P1: ${!!player1Socket}, P2: ${!!player2Socket}`);
 
     if (player1Socket) {
+      console.log(`[GameManager] Sending game:state to player 1`);
       player1Socket.emit('game:state', {
         gameState: stateManager.sanitizeStateForPlayer(game.player1Id),
       });
     }
     if (player2Socket) {
+      console.log(`[GameManager] Sending game:state to player 2`);
       player2Socket.emit('game:state', {
         gameState: stateManager.sanitizeStateForPlayer(game.player2Id),
       });
@@ -599,8 +604,13 @@ export class GameManager {
 
   handleChat(socket: AuthenticatedSocket, message: string) {
     const gameId = this.playerToGame.get(socket.userId!);
-    if (!gameId) return;
+    console.log(`[GameManager] handleChat from user ${socket.userId}, gameId: ${gameId || 'NOT FOUND'}`);
+    if (!gameId) {
+      console.log(`[GameManager] User ${socket.userId} not in playerToGame map`);
+      return;
+    }
 
+    console.log(`[GameManager] Broadcasting chat to room game:${gameId}`);
     this.io.to(`game:${gameId}`).emit(WS_EVENTS.GAME_CHAT, {
       senderId: socket.userId,
       senderUsername: socket.username,
@@ -697,12 +707,15 @@ export class GameManager {
 
     // Update socket ID in case user reconnected with a new socket
     if (socket.userId === pending.player1Id) {
+      console.log(`[GameManager] getRPSState: Updating P1 socket from ${pending.player1SocketId} to ${socket.id}`);
       pending.player1SocketId = socket.id;
     } else if (socket.userId === pending.player2Id) {
+      console.log(`[GameManager] getRPSState: Updating P2 socket from ${pending.player2SocketId} to ${socket.id}`);
       pending.player2SocketId = socket.id;
     }
 
     // Ensure socket joins game room
+    console.log(`[GameManager] getRPSState: Socket ${socket.id} joining room game:${gameId}`);
     socket.join(`game:${gameId}`);
 
     // Check if we're in first choice phase (RPS winner has been determined)
