@@ -85,7 +85,8 @@ export class GameStateManager {
       donField: [],
       stage: null,
       isActive: false,
-      turnCount: 0  // Start at 0 so after first startTurn increment it becomes 1
+      turnCount: 0,  // Start at 0 so after first startTurn increment it becomes 1
+      extraTurns: 0,
     };
   }
 
@@ -2533,14 +2534,11 @@ export class GameStateManager {
     // Clear THIS_TURN power buffs from all cards (for both players)
     this.clearTurnBuffs();
 
-    // Check for ExtraTurn marker - if player has it, they take another turn instead
-    const hasExtraTurn = player.leaderCard?.temporaryKeywords?.includes('ExtraTurn');
-    if (hasExtraTurn && player.leaderCard) {
-      // Remove the ExtraTurn marker
-      player.leaderCard.temporaryKeywords = player.leaderCard.temporaryKeywords?.filter(
-        k => k !== 'ExtraTurn'
-      );
-      console.log('[GameStateManager] Player', playerId, 'takes an extra turn!');
+    // Check for queued extra turn.
+    const queuedExtraTurns = player.extraTurns ?? 0;
+    if (queuedExtraTurns > 0) {
+      player.extraTurns = queuedExtraTurns - 1;
+      console.log('[GameStateManager] Player', playerId, 'takes an extra turn. Remaining:', player.extraTurns);
       // Start another turn for the same player
       this.startTurn(playerId);
       return;

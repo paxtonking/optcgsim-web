@@ -588,7 +588,7 @@ describe('Stub Effect Types Tests', () => {
 
       const result = engine.resolveEffect(definition.effects[0], context);
       expect(result.success).toBe(true);
-      expect(player.leaderCard.temporaryKeywords).toContain('ExtraTurn');
+      expect(player.extraTurns).toBe(1);
     });
   });
 });

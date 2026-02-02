@@ -448,22 +448,24 @@ export class EffectTextParser {
    */
   private convertFilter(parsed: ParsedFilter): TargetFilter {
     // Map our parser operators to the effect system operators
-    let operator: 'EQUALS' | 'OR_MORE' | 'OR_LESS' | 'CONTAINS' | 'NOT_CONTAINS';
+    let operator: TargetFilter['operator'];
     switch (parsed.operator) {
       case 'EQUALS': operator = 'EQUALS'; break;
       case 'OR_MORE': operator = 'OR_MORE'; break;
       case 'OR_LESS': operator = 'OR_LESS'; break;
       case 'CONTAINS': operator = 'CONTAINS'; break;
-      case 'NOT': operator = 'NOT_CONTAINS'; break;
+      case 'NOT': operator = 'NOT'; break;
+      case 'NOT_EQUALS': operator = 'NOT_EQUALS'; break;
       default: operator = 'EQUALS';
     }
 
     // Map property names
-    let property: 'COST' | 'POWER' | 'COLOR' | 'TRAIT' | 'TYPE' | 'NAME' | 'STATE';
+    let property: TargetFilter['property'];
     switch (parsed.property) {
       case 'COST': property = 'COST'; break;
-      case 'POWER':
-      case 'BASE_POWER': property = 'POWER'; break;
+      case 'BASE_COST': property = 'BASE_COST'; break;
+      case 'POWER': property = 'POWER'; break;
+      case 'BASE_POWER': property = 'BASE_POWER'; break;
       case 'COLOR': property = 'COLOR'; break;
       case 'TRAIT': property = 'TRAIT'; break;
       case 'TYPE': property = 'TYPE'; break;

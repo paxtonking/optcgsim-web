@@ -833,15 +833,15 @@ interface FilterPattern {
 export const FILTER_PATTERNS: FilterPattern[] = [
   // Cost filters
   {
-    pattern: /(?:with )?(?:a )?cost of (\d+) or less/i,
+    pattern: /(?:with )?(?:a )?(?<!base\s)cost of (\d+) or less/i,
     buildFilter: (m) => ({ property: 'COST', operator: 'OR_LESS', value: parseInt(m[1]) })
   },
   {
-    pattern: /(?:with )?(?:a )?cost of (\d+) or more/i,
+    pattern: /(?:with )?(?:a )?(?<!base\s)cost of (\d+) or more/i,
     buildFilter: (m) => ({ property: 'COST', operator: 'OR_MORE', value: parseInt(m[1]) })
   },
   {
-    pattern: /(?:with )?(?:a )?cost of (\d+)(?!\s*or)/i,
+    pattern: /(?:with )?(?:a )?(?<!base\s)cost of (\d+)(?!\s*or)/i,
     buildFilter: (m) => ({ property: 'COST', operator: 'EQUALS', value: parseInt(m[1]) })
   },
 
@@ -861,7 +861,7 @@ export const FILTER_PATTERNS: FilterPattern[] = [
 
   // Power filters
   {
-    pattern: /(?:with )?(\d+)\s*(?:base )?power or less/i,
+    pattern: /(?:with )?(\d+)\s*power or less/i,
     buildFilter: (m) => ({ property: 'POWER', operator: 'OR_LESS', value: parseInt(m[1]) })
   },
   {
@@ -869,7 +869,7 @@ export const FILTER_PATTERNS: FilterPattern[] = [
     buildFilter: (m) => ({ property: 'BASE_POWER', operator: 'OR_LESS', value: parseInt(m[1]) })
   },
   {
-    pattern: /(?:with )?(\d+)\s*(?:base )?power or more/i,
+    pattern: /(?:with )?(\d+)\s*power or more/i,
     buildFilter: (m) => ({ property: 'POWER', operator: 'OR_MORE', value: parseInt(m[1]) })
   },
   {

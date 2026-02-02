@@ -34,6 +34,8 @@ export function createMockPlayer(
     donField: overrides.donField ?? [],
     stage: null,
     isActive: overrides.isActive ?? (id === 'player1'),
+    turnCount: overrides.turnCount ?? 0,
+    extraTurns: overrides.extraTurns ?? 0,
   };
 }
 

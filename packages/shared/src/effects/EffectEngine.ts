@@ -19,6 +19,7 @@ import {
   GameState,
   PlayerState,
   GameCard,
+  GrantedEffect,
   CardZone,
   CardState,
   GamePhase,
@@ -289,37 +290,78 @@ export class EffectEngine {
     // Also check granted effects on the card
     if (card.grantedEffects && card.grantedEffects.length > 0) {
       card.grantedEffects.forEach(grantedEffect => {
-        // Check if the granted effect's trigger matches the event
-        if (grantedEffect.trigger === event.type ||
-            (grantedEffect.trigger === 'PASSIVE' && event.type === EffectTrigger.ON_ATTACK)) {
-          // Create a synthetic effect definition for the granted effect
-          const syntheticEffect: CardEffectDefinition = {
-            id: grantedEffect.id,
-            trigger: grantedEffect.trigger as EffectTrigger,
-            effects: [{
-              type: grantedEffect.effectType as EffectType,
-              value: grantedEffect.value,
-              target: { type: TargetType.SELF },
-            }],
-            description: `Granted effect from ${grantedEffect.sourceCardId}`,
-          };
+        if (!this.isGrantedEffectActive(grantedEffect, gameState)) return;
 
-          const pendingEffect = {
-            id: `pending-granted-${++this.effectIdCounter}`,
-            sourceCardId: card.id,
-            playerId: player.id,
-            effect: syntheticEffect,
-            trigger: event.type,
-            requiresChoice: false,
-            priority: 0,
-          };
-          console.log(`[EffectEngine] Creating PendingEffect for granted effect - card: ${card.cardId}, grantedType: ${grantedEffect.effectType}`);
-          triggered.push(pendingEffect);
-        }
+        // Create a synthetic effect definition for granted effect trigger matching.
+        const syntheticEffect: CardEffectDefinition = {
+          id: grantedEffect.id,
+          trigger: grantedEffect.trigger as EffectTrigger,
+          effects: [{
+            type: grantedEffect.effectType as EffectType,
+            value: grantedEffect.value,
+            target: { type: TargetType.SELF },
+          }],
+          description: `Granted effect from ${grantedEffect.sourceCardId}`,
+        };
+
+        if (!this.doesGrantedTriggerMatch(syntheticEffect, event, card, player, gameState)) return;
+
+        const pendingEffect = {
+          id: `pending-granted-${++this.effectIdCounter}`,
+          sourceCardId: card.id,
+          playerId: player.id,
+          effect: syntheticEffect,
+          trigger: event.type,
+          requiresChoice: false,
+          priority: 0,
+        };
+        console.log(`[EffectEngine] Creating PendingEffect for granted effect - card: ${card.cardId}, grantedType: ${grantedEffect.effectType}`);
+        triggered.push(pendingEffect);
       });
     }
 
     return triggered;
+  }
+
+  private doesGrantedTriggerMatch(
+    syntheticEffect: CardEffectDefinition,
+    event: TriggerEvent,
+    sourceCard: GameCard,
+    player: PlayerState,
+    gameState: GameState
+  ): boolean {
+    const normalizedEffect: CardEffectDefinition = syntheticEffect.trigger === EffectTrigger.PASSIVE
+      ? { ...syntheticEffect, trigger: EffectTrigger.ON_ATTACK }
+      : syntheticEffect;
+
+    if (!this.doesTriggerMatch(normalizedEffect, event, sourceCard, player, gameState)) {
+      return false;
+    }
+
+    // Granted ON_ATTACK/PASSIVE effects should only fire for the card that is attacking.
+    if (event.type === EffectTrigger.ON_ATTACK && event.cardId !== sourceCard.id) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private isGrantedEffectActive(grantedEffect: GrantedEffect, gameState: GameState): boolean {
+    switch (grantedEffect.duration) {
+      case 'THIS_TURN':
+        return grantedEffect.turnGranted === gameState.turn;
+      case 'THIS_BATTLE':
+        return Boolean(gameState.currentCombat) && grantedEffect.turnGranted === gameState.turn;
+      case 'WHILE_ON_FIELD': {
+        const sourceCard = this.findCard(gameState, grantedEffect.sourceCardId);
+        return sourceCard?.zone === CardZone.FIELD ||
+          sourceCard?.zone === CardZone.LEADER ||
+          sourceCard?.zone === CardZone.STAGE;
+      }
+      case 'PERMANENT':
+      default:
+        return true;
+    }
   }
 
   private doesTriggerMatch(
@@ -2435,18 +2477,15 @@ export class EffectEngine {
       // TAKE_ANOTHER_TURN - Extra turn after current
       // ============================================
       case EffectType.TAKE_ANOTHER_TURN:
-        // Set a flag indicating the player gets an extra turn
-        // Store in temporaryKeywords on the player's leader as marker
-        if (sourcePlayer.leaderCard) {
-          if (!sourcePlayer.leaderCard.temporaryKeywords) sourcePlayer.leaderCard.temporaryKeywords = [];
-          sourcePlayer.leaderCard.temporaryKeywords.push('ExtraTurn');
-        }
+        // Queue an extra turn explicitly on player state.
+        // This avoids accidental removal by temporary keyword cleanup.
+        sourcePlayer.extraTurns = (sourcePlayer.extraTurns ?? 0) + 1;
         changes.push({
           type: 'EFFECT_APPLIED',
           playerId: sourcePlayer.id,
           value: 'EXTRA_TURN',
         });
-        console.log('[TAKE_ANOTHER_TURN] Player', sourcePlayer.id, 'will take another turn');
+        console.log('[TAKE_ANOTHER_TURN] Player', sourcePlayer.id, 'queued extra turns:', sourcePlayer.extraTurns);
         break;
 
       // ============================================

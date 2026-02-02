@@ -132,6 +132,7 @@ export interface PlayerState {
   stage: GameCard | null; // Stage card on field (only 1 per player)
   isActive: boolean;   // Is it this player's turn?
   turnCount: number;   // Number of turns this player has taken
+  extraTurns?: number; // Queued extra turns from TAKE_ANOTHER_TURN effects
 }
 
 export interface CombatInfo {
