@@ -32,6 +32,7 @@ interface LobbyStore {
   lobby: Lobby | null;
   lobbyStatus: LobbyStatus;
   lobbyError: string | null;
+  gameId: string | null;  // Game ID when lobby starts
 
   // Queue state
   queueStatus: QueueStatus;
@@ -76,6 +77,7 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
   lobby: null,
   lobbyStatus: 'idle',
   lobbyError: null,
+  gameId: null,
   queueStatus: 'idle',
   queueTime: 0,
   queueError: null,
@@ -254,14 +256,14 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
     set({ lobby, lobbyStatus: 'waiting' });
   },
 
-  handleLobbyStart: (_gameId) => {
-    set({ lobbyStatus: 'starting' });
-    // Navigation will be handled by the component
+  handleLobbyStart: (gameId) => {
+    set({ lobbyStatus: 'starting', gameId });
+    // Navigation will be handled by the component watching gameId
   },
 
-  handleQueueMatched: (_data) => {
-    set({ queueStatus: 'matched' });
-    // Navigation will be handled by the component
+  handleQueueMatched: (data) => {
+    set({ queueStatus: 'matched', gameId: data.gameId });
+    // Navigation will be handled by the component watching gameId
   },
 
   reset: () => {
@@ -269,6 +271,7 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
       lobby: null,
       lobbyStatus: 'idle',
       lobbyError: null,
+      gameId: null,
       queueStatus: 'idle',
       queueTime: 0,
       queueError: null,

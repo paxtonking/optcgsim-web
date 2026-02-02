@@ -88,14 +88,23 @@ function DeckSelector() {
 }
 
 function LobbyRoom() {
+  const navigate = useNavigate();
   const { user } = useAuthStore();
   const {
     lobby,
     lobbyStatus,
+    gameId,
     leaveLobby,
     setReady,
     startGame,
   } = useLobbyStore();
+
+  // Navigate to game when gameId is set (game is starting)
+  useEffect(() => {
+    if (gameId && lobbyStatus === 'starting') {
+      navigate(`/game/${gameId}`);
+    }
+  }, [gameId, lobbyStatus, navigate]);
 
   if (!lobby) return null;
 
@@ -286,14 +295,23 @@ function AIPanel() {
 }
 
 function QueuePanel() {
+  const navigate = useNavigate();
   const {
     queueStatus,
     queueTime,
     queueError,
+    gameId,
     joinQueue,
     leaveQueue,
     selectedDeckId,
   } = useLobbyStore();
+
+  // Navigate to game when matched
+  useEffect(() => {
+    if (queueStatus === 'matched' && gameId) {
+      navigate(`/game/${gameId}`);
+    }
+  }, [queueStatus, gameId, navigate]);
 
   if (queueStatus === 'searching') {
     return (
