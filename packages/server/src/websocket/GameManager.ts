@@ -540,16 +540,20 @@ export class GameManager {
   handleAction(
     socket: AuthenticatedSocket,
     action: GameAction,
-    callback: (response: { success: boolean; error?: string }) => void
+    callback?: (response: { success: boolean; error?: string }) => void
   ) {
     const gameId = this.playerToGame.get(socket.userId!);
     if (!gameId) {
-      return callback({ success: false, error: 'Not in a game' });
+      console.log(`[GameManager] handleAction: User ${socket.userId} not in a game`);
+      if (callback) callback({ success: false, error: 'Not in a game' });
+      return;
     }
 
     const game = this.games.get(gameId);
     if (!game) {
-      return callback({ success: false, error: 'Game not found' });
+      console.log(`[GameManager] handleAction: Game ${gameId} not found`);
+      if (callback) callback({ success: false, error: 'Game not found' });
+      return;
     }
 
     // Update socket ID in case user reconnected with a new socket
@@ -563,7 +567,8 @@ export class GameManager {
 
     // Validate it's the player's turn
     if (state.activePlayerId !== socket.userId) {
-      return callback({ success: false, error: 'Not your turn' });
+      if (callback) callback({ success: false, error: 'Not your turn' });
+      return;
     }
 
     // Process action
@@ -591,7 +596,8 @@ export class GameManager {
     });
 
     if (!success) {
-      return callback({ success: false, error: 'Invalid action' });
+      if (callback) callback({ success: false, error: 'Invalid action' });
+      return;
     }
 
     game.actionLog.push(processedAction);
@@ -601,7 +607,8 @@ export class GameManager {
     // Check for game end
     if (updatedState.phase === GamePhase.GAME_OVER && updatedState.winner) {
       this.endGame(gameId, updatedState.winner, 'normal');
-      return callback({ success: true });
+      if (callback) callback({ success: true });
+      return;
     }
 
     // Send sanitized state to each player individually (anti-cheat)
@@ -619,7 +626,7 @@ export class GameManager {
       });
     }
 
-    callback({ success: true });
+    if (callback) callback({ success: true });
   }
 
   handleChat(socket: AuthenticatedSocket, message: string) {
@@ -657,15 +664,17 @@ export class GameManager {
   handleReconnect(
     socket: AuthenticatedSocket,
     gameId: string,
-    callback: (response: { success: boolean; state?: GameState; error?: string }) => void
+    callback?: (response: { success: boolean; state?: GameState; error?: string }) => void
   ) {
     const game = this.games.get(gameId);
     if (!game) {
-      return callback({ success: false, error: 'Game not found' });
+      if (callback) callback({ success: false, error: 'Game not found' });
+      return;
     }
 
     if (socket.userId !== game.player1Id && socket.userId !== game.player2Id) {
-      return callback({ success: false, error: 'Not a player in this game' });
+      if (callback) callback({ success: false, error: 'Not a player in this game' });
+      return;
     }
 
     // Update socket ID
@@ -678,7 +687,7 @@ export class GameManager {
     this.playerToGame.set(socket.userId!, gameId);
     socket.join(`game:${gameId}`);
 
-    callback({ success: true, state: game.stateManager.sanitizeStateForPlayer(socket.userId!) });
+    if (callback) callback({ success: true, state: game.stateManager.sanitizeStateForPlayer(socket.userId!) });
   }
 
   // Spectator functionality removed for security (prevents information leakage)
