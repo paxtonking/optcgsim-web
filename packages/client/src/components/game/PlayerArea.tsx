@@ -153,10 +153,13 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
   };
 
   // Helper to calculate effective power (base + buffs + DON)
+  // DON bonus only applies on the card owner's turn (One Piece TCG rule)
   const getEffectivePower = (card: GameCardType, attachedDonCount: number): number => {
     const basePower = card.basePower ?? card.power ?? 0;
     const buffTotal = getBuffTotal(card);
-    const donBonus = attachedDonCount * 1000;
+    // DON bonus: player's cards get it on player's turn, opponent's cards get it on opponent's turn
+    const isOwnersTurn = isOpponent ? !isMyTurn : isMyTurn;
+    const donBonus = isOwnersTurn ? (attachedDonCount * 1000) : 0;
     return basePower + buffTotal + donBonus;
   };
 
