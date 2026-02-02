@@ -16,21 +16,10 @@ export function ChatPopup({ isOpen, onClose }: ChatPopupProps) {
   const emotePickerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { user } = useAuthStore();
-  const {
-    messages,
-    sendMessage,
-    clearMessages,
-    setupChatListeners,
-  } = useChatStore();
+  const { messages, sendMessage } = useChatStore();
 
-  // Setup chat listeners
-  useEffect(() => {
-    const cleanup = setupChatListeners();
-    return () => {
-      cleanup();
-      clearMessages();
-    };
-  }, [setupChatListeners, clearMessages]);
+  // Chat listeners are set up at GameBoard level, not here
+  // This component is UI-only: display messages and handle input
 
   // Focus input when modal opens
   useEffect(() => {

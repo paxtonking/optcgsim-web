@@ -3,7 +3,6 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useLobbyStore } from '../stores/lobbyStore';
 import { socketService } from '../services/socket';
-import { ChatPanel } from '../components/ChatPanel';
 import { GameBoard } from '../components/game/GameBoard';
 import { usePreventZoom } from '../hooks/usePreventZoom';
 
@@ -43,7 +42,7 @@ export default function GamePage() {
       className="h-screen bg-background flex flex-col"
       style={{ touchAction: 'none' }}
     >
-      {/* Main content: game board + chat sidebar */}
+      {/* Main content: game board */}
       <div className="flex-1 flex overflow-hidden">
         {/* Game container */}
         <div className="flex-1 relative">
@@ -54,11 +53,6 @@ export default function GamePage() {
             onLeave={handleLeave}
           />
         </div>
-
-        {/* Chat sidebar */}
-        {!isAIGame && (
-          <ChatPanel className="hidden lg:flex w-80 border-l border-gray-800 h-full" />
-        )}
       </div>
     </div>
   );

@@ -271,6 +271,15 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     }
   }, [messages.length, chatOpen]);
 
+  // Set up chat listeners at GameBoard level (always active during game)
+  useEffect(() => {
+    const cleanup = useChatStore.getState().setupChatListeners();
+    return () => {
+      cleanup();
+      useChatStore.getState().clearMessages();
+    };
+  }, []);
+
   // Play victory/defeat sound on game over
   useEffect(() => {
     if (gameOver) {
@@ -1338,6 +1347,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       setRpsPhase('none');
       setRpsState(null);
       setRpsWinnerId(null);
+
+      // Request updated game state now that RPS is complete
+      // The game has moved from rpsPendingGames to games map on the server
+      const getStateEvent = isAIGame ? 'ai:getState' : 'game:getState';
+      console.log('[GameBoard] Requesting game state after RPS completion');
+      socket.emit(getStateEvent, { gameId });
     };
 
     socket.on('rps:result', handleRPSResult);
@@ -1351,7 +1366,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       socket.off('first:choice', handleFirstChoice);
       socket.off('first:decided', handleFirstDecided);
     };
-  }, [gameId, playerId]);
+  }, [gameId, playerId, isAIGame]);
 
   // Handle RPS choice
   const handleRPSChoice = useCallback((choice: RPSChoice) => {
