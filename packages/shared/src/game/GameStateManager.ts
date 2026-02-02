@@ -394,8 +394,9 @@ export class GameStateManager {
     const activePlayer = this.state.players[this.state.activePlayerId];
     if (!activePlayer) return;
 
-    // Mark player as active
+    // Mark player as active and increment their turn count
     activePlayer.isActive = true;
+    activePlayer.turnCount++;
 
     // DON phase - first player only gets 1 DON on turn 1
     this.state.phase = GamePhase.DON_PHASE;
