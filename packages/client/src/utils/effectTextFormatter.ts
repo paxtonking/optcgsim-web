@@ -93,11 +93,11 @@ export function parseEffectText(effectText: string | null | undefined, triggerTe
   const effects: ParsedEffect[] = [];
   let remainingText = effectText.trim();
 
-  // Extract keywords first
+  // Extract keywords first - require brackets for proper keyword detection
   const foundKeywords: string[] = [];
   for (const keyword of KEYWORDS) {
-    // Check if keyword exists in text
-    const keywordCheckPattern = new RegExp(`\\[?${keyword}\\]?`, 'gi');
+    // Check if keyword exists in text - require brackets to avoid false positives
+    const keywordCheckPattern = new RegExp(`\\[${keyword}\\]`, 'gi');
     if (keywordCheckPattern.test(remainingText)) {
       foundKeywords.push(keyword);
 
@@ -116,13 +116,6 @@ export function parseEffectText(effectText: string | null | undefined, triggerTe
         'gi'
       );
       remainingText = remainingText.replace(standalonePattern, '').trim();
-
-      // Also handle standalone keyword without brackets at start
-      const standaloneNoBracketPattern = new RegExp(
-        `^${keyword}\\.?\\s*(?:\\([^)]*\\))?\\s*`,
-        'gi'
-      );
-      remainingText = remainingText.replace(standaloneNoBracketPattern, '').trim();
     }
   }
 
@@ -144,6 +137,11 @@ export function parseEffectText(effectText: string | null | undefined, triggerTe
     remainingText = remainingText.replace(/\s*\[Trigger\].*$/is, '').trim();
   }
 
+  // Remove embedded effect references that are not actual effect markers
+  // e.g., "Activate this card's [Main] effect" - the [Main] here is a reference, not a marker
+  remainingText = remainingText.replace(/this card's \[Main\] effect/gi, "this card's Main effect");
+  remainingText = remainingText.replace(/this card's \[Trigger\] effect/gi, "this card's Trigger effect");
+
   // Split by effect markers and categorize each section
   // First, find all effect marker positions
   const markers: Array<{ index: number; length: number; category: EffectCategory; label: string; icon?: string }> = [];
@@ -164,6 +162,19 @@ export function parseEffectText(effectText: string | null | undefined, triggerTe
 
   // Sort markers by position
   markers.sort((a, b) => a.index - b.index);
+
+  // Deduplicate markers - remove markers at the same position (keep the first/most specific one)
+  const deduplicatedMarkers = markers.filter((marker, index) => {
+    // Check if there's an earlier marker at the same position
+    for (let i = 0; i < index; i++) {
+      if (markers[i].index === marker.index) {
+        return false; // Skip this duplicate
+      }
+    }
+    return true;
+  });
+  markers.length = 0;
+  markers.push(...deduplicatedMarkers);
 
   // If no markers found, treat entire text as "other"
   if (markers.length === 0 && remainingText.trim()) {
