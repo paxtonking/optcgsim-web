@@ -2626,6 +2626,7 @@ export class EffectEngine {
     for (const cost of costs) {
       switch (cost.type) {
         case 'DON':
+        case 'REST_DON':
           for (let i = 0; i < (cost.count || 0); i++) {
             const don = context.sourcePlayer.donField.find(
               d => d.state === CardState.ACTIVE
@@ -2639,6 +2640,33 @@ export class EffectEngine {
               });
             }
           }
+          break;
+
+        case 'LIFE':
+          // Take damage (remove life cards)
+          for (let i = 0; i < (cost.count || 0); i++) {
+            if (context.sourcePlayer.lifeCards.length > 0) {
+              const lifeCard = context.sourcePlayer.lifeCards.pop()!;
+              lifeCard.zone = CardZone.HAND;
+              context.sourcePlayer.hand.push(lifeCard);
+              context.sourcePlayer.life = context.sourcePlayer.lifeCards.length;
+              changes.push({
+                type: 'LIFE_CHANGED',
+                playerId: context.sourcePlayer.id,
+                value: context.sourcePlayer.life,
+              });
+            }
+          }
+          break;
+
+        // Note: TRASH_CARD and TRASH_FROM_HAND costs that require player selection
+        // are handled by the HAND_SELECT_STEP flow in GameStateManager.
+        // This case handles auto-payment when selection is not needed.
+        case 'TRASH_CARD':
+        case 'TRASH_FROM_HAND':
+          // For costs requiring selection, this is handled by GameStateManager
+          // This branch is for auto-trash (e.g., random card) if ever needed
+          console.log('[payCosts] TRASH_CARD cost - should be handled by HAND_SELECT_STEP');
           break;
       }
     }

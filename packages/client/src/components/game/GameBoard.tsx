@@ -1714,12 +1714,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     }
   }, [phase]);
 
-  // Show info banner when entering PLAY_EFFECT_STEP (not for ATTACH_DON, which uses CardPreview)
-  useEffect(() => {
-    if (phase === GamePhase.PLAY_EFFECT_STEP && currentPlayEffect && currentPlayEffect.effectType !== 'ATTACH_DON') {
-      showInfoBanner(`On Play: ${currentPlayEffect.description}`);
-    }
-  }, [phase, currentPlayEffect, showInfoBanner]);
+  // Note: Removed info banner for PLAY_EFFECT_STEP - CardPreview box already shows effect info
 
   // =====================================================
   // EVENT EFFECT STEP - Event card [Main] effect resolution
