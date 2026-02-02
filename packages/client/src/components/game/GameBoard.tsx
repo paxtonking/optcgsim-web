@@ -129,8 +129,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   const previousDeckCountRef = useRef<{ player: number; opponent: number }>({ player: 0, opponent: 0 });
 
   // Discard animation state (hand to trash)
+  // Uses dedicated refs to avoid race conditions with hand draw and mill useEffects
   const [animatingDiscard, setAnimatingDiscard] = useState<AnimatingCardData[]>([]);
   const previousFieldCountRef = useRef<{ player: number; opponent: number }>({ player: 0, opponent: 0 });
+  const previousHandCountForDiscardRef = useRef<{ player: number; opponent: number }>({ player: 0, opponent: 0 });
+  const previousTrashCountForDiscardRef = useRef<{ player: number; opponent: number }>({ player: 0, opponent: 0 });
+  const previousDeckCountForDiscardRef = useRef<{ player: number; opponent: number }>({ player: 0, opponent: 0 });
 
   // Random playmat selection (assigned once per game session)
   const [playerPlaymat, opponentPlaymat] = useMemo(() => {
@@ -665,6 +669,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         previousTrashCountRef.current = { player: myPlayer.trash.length, opponent: opponent.trash.length };
         previousDeckCountRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
         previousFieldCountRef.current = { player: myPlayer.field.length, opponent: opponent.field.length };
+        // Initialize discard-specific refs
+        previousHandCountForDiscardRef.current = { player: myPlayer.hand.length, opponent: opponent.hand.length };
+        previousTrashCountForDiscardRef.current = { player: myPlayer.trash.length, opponent: opponent.trash.length };
+        previousDeckCountForDiscardRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
       }
     } else if (dealingPhase === 'dealing-life') {
       // Life dealing complete, game can proceed
@@ -681,6 +689,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         previousDeckCountRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
         // Initialize field count refs to prevent false discard animation triggers
         previousFieldCountRef.current = { player: myPlayer.field.length, opponent: opponent.field.length };
+        // Initialize discard-specific refs
+        previousHandCountForDiscardRef.current = { player: myPlayer.hand.length, opponent: opponent.hand.length };
+        previousTrashCountForDiscardRef.current = { player: myPlayer.trash.length, opponent: opponent.trash.length };
+        previousDeckCountForDiscardRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
         // DON counts: set to 0 so the animation useEffect will detect the initial DON and animate it
         // visibleDonCount stays at 0 so cards are hidden until animation completes
         previousDonCountRef.current = { player: 0, opponent: 0 };
@@ -716,6 +728,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         previousTrashCountRef.current = { player: myPlayer.trash.length, opponent: opponent.trash.length };
         previousDeckCountRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
         previousFieldCountRef.current = { player: myPlayer.field.length, opponent: opponent.field.length };
+        // Initialize discard-specific refs
+        previousHandCountForDiscardRef.current = { player: myPlayer.hand.length, opponent: opponent.hand.length };
+        previousTrashCountForDiscardRef.current = { player: myPlayer.trash.length, opponent: opponent.trash.length };
+        previousDeckCountForDiscardRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
       } else {
         // Small delay to let DOM render first
         animationTriggeredRef.current = true;
@@ -753,6 +769,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           previousDeckCountRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
           // Initialize field count refs to prevent false discard animations
           previousFieldCountRef.current = { player: myPlayer.field.length, opponent: opponent.field.length };
+          // Initialize discard-specific refs
+          previousHandCountForDiscardRef.current = { player: myPlayer.hand.length, opponent: opponent.hand.length };
+          previousTrashCountForDiscardRef.current = { player: myPlayer.trash.length, opponent: opponent.trash.length };
+          previousDeckCountForDiscardRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
         }
       }
     }
@@ -1219,12 +1239,13 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     const playerFieldCount = myPlayer.field.length;
     const opponentFieldCount = opponent.field.length;
 
-    const prevPlayerHandCount = previousHandCountRef.current.player;
-    const prevOpponentHandCount = previousHandCountRef.current.opponent;
-    const prevPlayerTrashCount = previousTrashCountRef.current.player;
-    const prevOpponentTrashCount = previousTrashCountRef.current.opponent;
-    const prevPlayerDeckCount = previousDeckCountRef.current.player;
-    const prevOpponentDeckCount = previousDeckCountRef.current.opponent;
+    // Use dedicated refs for discard detection to avoid race conditions with other useEffects
+    const prevPlayerHandCount = previousHandCountForDiscardRef.current.player;
+    const prevOpponentHandCount = previousHandCountForDiscardRef.current.opponent;
+    const prevPlayerTrashCount = previousTrashCountForDiscardRef.current.player;
+    const prevOpponentTrashCount = previousTrashCountForDiscardRef.current.opponent;
+    const prevPlayerDeckCount = previousDeckCountForDiscardRef.current.player;
+    const prevOpponentDeckCount = previousDeckCountForDiscardRef.current.opponent;
     const prevPlayerFieldCount = previousFieldCountRef.current.player;
     const prevOpponentFieldCount = previousFieldCountRef.current.opponent;
 
@@ -1257,7 +1278,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         for (let i = 0; i < playerDiscarded; i++) {
           const cardIndex = prevPlayerTrashCount + i;
           const card = myPlayer.trash[cardIndex];
-          if (card) {
+          // Validate card has required data (id and cardId for image loading)
+          if (card && card.id && card.cardId) {
             // Start from approximate center of previous hand
             const handCenterIndex = Math.floor(prevPlayerHandCount / 2);
             newAnimations.push({
@@ -1271,6 +1293,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               isOpponent: false,
               flipDuringFlight: false  // Already face-up
             });
+          } else if (card) {
+            console.warn('[GameBoard] Skipping discard animation for invalid card data:', card);
           }
         }
       }
@@ -1280,7 +1304,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         for (let i = 0; i < opponentDiscarded; i++) {
           const cardIndex = prevOpponentTrashCount + i;
           const card = opponent.trash[cardIndex];
-          if (card) {
+          // Validate card has required data (id and cardId for image loading)
+          if (card && card.id && card.cardId) {
             // Start from approximate center of previous hand
             const handCenterIndex = Math.floor(prevOpponentHandCount / 2);
             newAnimations.push({
@@ -1294,6 +1319,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               isOpponent: true,
               flipDuringFlight: true  // Flip to reveal the card as it goes to trash
             });
+          } else if (card) {
+            console.warn('[GameBoard] Skipping opponent discard animation for invalid card data:', card);
           }
         }
       }
@@ -1304,8 +1331,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       }
     }
 
-    // Update field count refs
+    // Update all dedicated refs for discard detection
     previousFieldCountRef.current = { player: playerFieldCount, opponent: opponentFieldCount };
+    previousHandCountForDiscardRef.current = { player: playerHandCount, opponent: opponentHandCount };
+    previousTrashCountForDiscardRef.current = { player: playerTrashCount, opponent: opponentTrashCount };
+    previousDeckCountForDiscardRef.current = { player: playerDeckCount, opponent: opponentDeckCount };
   }, [myPlayer, opponent, dealingPhase, getHandCardPosition, getTrashPosition]);
 
   // Handle discard animation completion
