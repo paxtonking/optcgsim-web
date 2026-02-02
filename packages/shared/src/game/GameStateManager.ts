@@ -1036,9 +1036,14 @@ export class GameStateManager {
     // Clear field power buffs from stage effects
     this.clearStagePowerBuffs(playerId);
 
-    // Clear rush vs characters flag
+    // Clear rush vs characters flag and reset base power modifications
     for (const card of player.field) {
       card.hasRushVsCharacters = undefined;
+      // Reset base power from [Your Turn] SET_BASE_POWER effects
+      if (card.originalBasePower !== undefined) {
+        card.basePower = card.originalBasePower;
+        card.originalBasePower = undefined;
+      }
     }
 
     // Clear stage active effect flag
@@ -1072,9 +1077,10 @@ export class GameStateManager {
   }
 
   /**
-   * Apply all stage continuous effects for a player
+   * Apply all continuous [Your Turn] effects for a player
    * Called at start of turn, after playing a stage, and when relevant conditions change
    * Effects are now loaded from the database via effectEngine.getCardDefinition()
+   * Processes STAGE, CHARACTER, and LEADER cards with YOUR_TURN/OPPONENT_TURN/PASSIVE triggers
    */
   private applyStageEffects(playerId: string): void {
     const player = this.state.players[playerId];
@@ -1090,6 +1096,11 @@ export class GameStateManager {
     this.clearStagePowerBuffs(playerId);
     for (const card of player.field) {
       card.hasRushVsCharacters = undefined;
+      // Reset base power modifications from previous turn
+      if (card.originalBasePower !== undefined) {
+        card.basePower = card.originalBasePower;
+        card.originalBasePower = undefined;
+      }
     }
 
     if (player.stage) {
@@ -1119,6 +1130,33 @@ export class GameStateManager {
       }
     }
 
+    // Process CHARACTER cards on field with [Your Turn] effects
+    if (isMyTurn) {
+      for (const card of player.field) {
+        const cardDef = this.effectEngine.getCardDefinition(card.cardId);
+        if (!cardDef?.effects) continue;
+
+        for (const effect of cardDef.effects) {
+          // Only process YOUR_TURN continuous effects (not triggered abilities)
+          if (effect.trigger === EffectTrigger.YOUR_TURN) {
+            this.applySingleStageEffect(player, effect, card.id);
+          }
+        }
+      }
+
+      // Process LEADER card with [Your Turn] effects
+      if (player.leaderCard) {
+        const leaderDef = this.effectEngine.getCardDefinition(player.leaderCard.cardId);
+        if (leaderDef?.effects) {
+          for (const effect of leaderDef.effects) {
+            if (effect.trigger === EffectTrigger.YOUR_TURN) {
+              this.applySingleStageEffect(player, effect, player.leaderCard.id);
+            }
+          }
+        }
+      }
+    }
+
     // Also check opponent's stage for effects that affect them on our turn
     const opponentId = Object.keys(this.state.players).find(id => id !== playerId);
     if (opponentId) {
@@ -1141,7 +1179,8 @@ export class GameStateManager {
   }
 
   /**
-   * Apply a single stage effect to a player's cards
+   * Apply a single continuous effect to a player's cards
+   * Works for STAGE, CHARACTER, and LEADER card effects
    * Returns true if any cards were affected
    */
   private applySingleStageEffect(
@@ -1151,11 +1190,22 @@ export class GameStateManager {
   ): boolean {
     let hadEffect = false;
 
+    // Find the source card (could be stage, character, or leader)
+    let sourceCard: GameCard | undefined | null = player.stage;
+    if (player.leaderCard?.id === sourceCardId) {
+      sourceCard = player.leaderCard;
+    } else {
+      const fieldCard = player.field.find(c => c.id === sourceCardId);
+      if (fieldCard) {
+        sourceCard = fieldCard;
+      }
+    }
+
     // Check conditions
-    if (effect.conditions) {
+    if (effect.conditions && sourceCard) {
       const context: EffectContext = {
         gameState: this.state,
-        sourceCard: player.stage!,
+        sourceCard: sourceCard,
         sourcePlayer: player,
       };
       for (const condition of effect.conditions) {
@@ -1192,6 +1242,10 @@ export class GameStateManager {
 
         case EffectType.GRANT_RUSH_VS_CHARACTERS:
           hadEffect = this.applyRushVsCharacters(player, action) || hadEffect;
+          break;
+
+        case EffectType.SET_BASE_POWER:
+          hadEffect = this.applySetBasePower(player, action, sourceCardId) || hadEffect;
           break;
       }
     }
@@ -1360,6 +1414,57 @@ export class GameStateManager {
 
       if (matches) {
         card.hasRushVsCharacters = true;
+        hadEffect = true;
+      }
+    }
+
+    return hadEffect;
+  }
+
+  /**
+   * Apply SET_BASE_POWER effect to matching cards on field
+   * Stores original power for cleanup at end of turn
+   */
+  private applySetBasePower(
+    player: PlayerState,
+    action: EffectAction,
+    _sourceCardId: string
+  ): boolean {
+    let hadEffect = false;
+    const filters = action.target?.filters || [];
+    const newBasePower = action.value || 0;
+
+    // Process field characters
+    for (const card of player.field) {
+      const cardDef = this.effectEngine.getCardDefinition(card.cardId);
+      if (!cardDef) continue;
+
+      // Check filters (e.g., TRAIT: "Five Elders")
+      let matches = true;
+      for (const filter of filters) {
+        if (filter.property === 'TRAIT') {
+          const traits = filter.value as string[];
+          if (!traits.some(t => cardDef.traits?.includes(t))) {
+            matches = false;
+            break;
+          }
+        }
+        if (filter.property === 'TYPE') {
+          const types = filter.value as string[];
+          if (!types.includes(cardDef.type)) {
+            matches = false;
+            break;
+          }
+        }
+      }
+
+      if (matches) {
+        // Store original power if not already stored
+        if (card.originalBasePower === undefined) {
+          card.originalBasePower = card.basePower ?? cardDef.power ?? 0;
+        }
+        // Set the new base power
+        card.basePower = newBasePower;
         hadEffect = true;
       }
     }

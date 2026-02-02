@@ -71,7 +71,8 @@ export interface GameCard {
   state: CardState;
   owner: string;       // Player ID
   attachedTo?: string; // ID of card this is attached to (for DON!)
-  basePower?: number;  // Original power from card definition (never changes)
+  basePower?: number;  // Current base power (can be modified by [Your Turn] effects like SET_BASE_POWER)
+  originalBasePower?: number; // Original power from card definition (for restoring after turn ends)
   power?: number;      // Current display power (for backwards compatibility)
   powerBuffs?: PowerBuff[]; // Active power modifications with duration tracking
   cost?: number;       // Current cost (can be modified by effects)
