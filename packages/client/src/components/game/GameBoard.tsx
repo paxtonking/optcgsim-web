@@ -1858,8 +1858,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   // Check if selected card can attack
   const selectedCardCanAttack = useMemo(() => {
     if (!selectedCard || !isMyTurn || phase !== GamePhase.MAIN_PHASE) return false;
-    // First player cannot attack on turn 1 (One Piece TCG rule)
-    if (turn === 1 && playerId === gameState?.firstPlayerId) return false;
+    // First player cannot attack on their first turn (One Piece TCG rule)
+    // Use player's turnCount instead of global turn
+    if (myPlayer?.turnCount === 1 && playerId === gameState?.firstPlayerId) return false;
     // Card must be active (not rested) and hasn't attacked yet
     if (selectedCard.state === CardState.RESTED || selectedCard.hasAttacked) return false;
     // Characters played this turn need Rush to attack (summoning sickness)
@@ -1868,7 +1869,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       if (!selectedCard.keywords?.includes('Rush')) return false;
     }
     return true;
-  }, [selectedCard, isMyTurn, phase, turn, playerId, gameState?.firstPlayerId]);
+  }, [selectedCard, isMyTurn, phase, turn, playerId, gameState?.firstPlayerId, myPlayer?.turnCount]);
 
   // Check if selected card has abilities (for attack button flow)
   const selectedCardHasAbilities = useMemo(() => {
@@ -2808,7 +2809,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
         {/* Center: Turn Info */}
         <div className="game-board__header-center">
-          <span className="game-board__turn">Turn {turn || 1}</span>
+          <span className="game-board__turn">Turn {myPlayer?.turnCount || 1}</span>
           <span className="game-board__phase">{getPhaseDisplay(phase)}</span>
           <span className={`game-board__turn-indicator ${isMyTurn ? 'game-board__turn-indicator--your-turn' : 'game-board__turn-indicator--waiting'}`}>
             {isMyTurn ? 'Your Turn' : "Opponent's Turn"}

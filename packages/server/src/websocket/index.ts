@@ -191,7 +191,8 @@ export function setupWebSocket(io: SocketServer) {
     });
 
     // Queue events (ranked - requires login)
-    socket.on(WS_EVENTS.QUEUE_JOIN, (deckId, callback) => {
+    socket.on(WS_EVENTS.QUEUE_JOIN, (data, callback) => {
+      const deckId = data?.deckId || data; // Support both { deckId } object and direct string
       if ((socket as AuthenticatedSocket).isGuest) {
         return callback?.({ success: false, error: 'Ranked queue requires a registered account' });
       }

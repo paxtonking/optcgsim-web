@@ -35,10 +35,11 @@ export class QueueManager {
   async joinQueue(
     socket: AuthenticatedSocket,
     deckId: string,
-    callback: (response: { success: boolean; position?: number; error?: string }) => void
+    callback?: (response: { success: boolean; position?: number; error?: string }) => void
   ) {
     if (this.queue.has(socket.userId!)) {
-      return callback({ success: false, error: 'Already in queue' });
+      if (callback) callback({ success: false, error: 'Already in queue' });
+      return;
     }
 
     try {
@@ -51,7 +52,8 @@ export class QueueManager {
       });
 
       if (!deck) {
-        return callback({ success: false, error: 'Invalid deck' });
+        if (callback) callback({ success: false, error: 'Invalid deck' });
+        return;
       }
 
       // Get user's ELO rating from database
@@ -61,7 +63,8 @@ export class QueueManager {
       });
 
       if (!user) {
-        return callback({ success: false, error: 'User not found' });
+        if (callback) callback({ success: false, error: 'User not found' });
+        return;
       }
 
       const entry: QueueEntry = {
@@ -76,10 +79,12 @@ export class QueueManager {
       this.queue.set(socket.userId!, entry);
 
       // Send queue position
-      callback({
-        success: true,
-        position: this.queue.size,
-      });
+      if (callback) {
+        callback({
+          success: true,
+          position: this.queue.size,
+        });
+      }
 
       // Notify user of queue status
       socket.emit(WS_EVENTS.QUEUE_STATUS, {
@@ -88,7 +93,7 @@ export class QueueManager {
       });
     } catch (error) {
       console.error('Error joining queue:', error);
-      callback({ success: false, error: 'Failed to join queue' });
+      if (callback) callback({ success: false, error: 'Failed to join queue' });
     }
   }
 

@@ -18,6 +18,7 @@ export const LifeBar: React.FC<LifeBarProps> = ({
   useEffect(() => {
     if (current < previousLife) {
       setDamaged(true);
+      setPreviousLife(current); // Update before early return
       const timer = setTimeout(() => setDamaged(false), 300);
       return () => clearTimeout(timer);
     }
