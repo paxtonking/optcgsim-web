@@ -581,9 +581,107 @@ export class EffectEngine {
       case ConditionType.LEADER_HAS_TRAIT:
         return this.leaderHasTrait(sourcePlayer, condition.traits || []);
 
+      case ConditionType.LEADER_IS: {
+        const leaderDefIs = this.cardDefinitions.get(sourcePlayer.leaderCard?.cardId || '');
+        return leaderDefIs?.name === condition.leaderName;
+      }
+
+      case ConditionType.LEADER_HAS_COLOR: {
+        const leaderDefColor = this.cardDefinitions.get(sourcePlayer.leaderCard?.cardId || '');
+        const colorValue = String(condition.value ?? '');
+        return leaderDefColor?.colors?.includes(colorValue) ?? false;
+      }
+
       // Turn conditions
       case ConditionType.FIRST_TURN:
         return sourcePlayer.turnCount === 1;
+
+      // Target conditions (for filtering valid targets during selection)
+      // These use selectedTargets from context to check target properties
+      case ConditionType.TARGET_COST_OR_LESS: {
+        if (!context.selectedTargets || context.selectedTargets.length === 0) return true;
+        const targetCardCostLess = this.findCard(gameState, context.selectedTargets[0]);
+        if (!targetCardCostLess) return true;
+        const targetDefCostLess = this.cardDefinitions.get(targetCardCostLess.cardId);
+        return (targetDefCostLess?.cost || 0) <= (condition.value || 0);
+      }
+
+      case ConditionType.TARGET_COST_OR_MORE: {
+        if (!context.selectedTargets || context.selectedTargets.length === 0) return true;
+        const targetCardCostMore = this.findCard(gameState, context.selectedTargets[0]);
+        if (!targetCardCostMore) return true;
+        const targetDefCostMore = this.cardDefinitions.get(targetCardCostMore.cardId);
+        return (targetDefCostMore?.cost || 0) >= (condition.value || 0);
+      }
+
+      case ConditionType.TARGET_POWER_OR_LESS: {
+        if (!context.selectedTargets || context.selectedTargets.length === 0) return true;
+        const targetCardPowerLess = this.findCard(gameState, context.selectedTargets[0]);
+        if (!targetCardPowerLess) return true;
+        const powerLess = targetCardPowerLess.basePower ?? targetCardPowerLess.power ?? 0;
+        return powerLess <= (condition.value || 0);
+      }
+
+      case ConditionType.TARGET_POWER_OR_MORE: {
+        if (!context.selectedTargets || context.selectedTargets.length === 0) return true;
+        const targetCardPowerMore = this.findCard(gameState, context.selectedTargets[0]);
+        if (!targetCardPowerMore) return true;
+        const powerMore = targetCardPowerMore.basePower ?? targetCardPowerMore.power ?? 0;
+        return powerMore >= (condition.value || 0);
+      }
+
+      case ConditionType.TARGET_HAS_COLOR: {
+        if (!context.selectedTargets || context.selectedTargets.length === 0) return true;
+        const targetCardColor = this.findCard(gameState, context.selectedTargets[0]);
+        if (!targetCardColor) return true;
+        const targetDefColor = this.cardDefinitions.get(targetCardColor.cardId);
+        const targetColorValue = String(condition.value ?? '');
+        return targetDefColor?.colors?.includes(targetColorValue) ?? false;
+      }
+
+      case ConditionType.TARGET_HAS_TRAIT: {
+        if (!context.selectedTargets || context.selectedTargets.length === 0) return true;
+        const targetCardTrait = this.findCard(gameState, context.selectedTargets[0]);
+        if (!targetCardTrait) return true;
+        const targetDefTrait = this.cardDefinitions.get(targetCardTrait.cardId);
+        return targetDefTrait ? (condition.traits || []).some(t => targetDefTrait.traits.includes(t)) : true;
+      }
+
+      case ConditionType.TARGET_HAS_TYPE: {
+        if (!context.selectedTargets || context.selectedTargets.length === 0) return true;
+        const targetCardType = this.findCard(gameState, context.selectedTargets[0]);
+        if (!targetCardType) return true;
+        const targetDefType = this.cardDefinitions.get(targetCardType.cardId);
+        return targetDefType?.type === condition.value;
+      }
+
+      // Trash card type condition
+      case ConditionType.TRASH_HAS_CARD_TYPE: {
+        return sourcePlayer.trash.some(c => {
+          const trashDef = this.cardDefinitions.get(c.cardId);
+          return trashDef?.type === condition.value;
+        });
+      }
+
+      // Attack state condition
+      case ConditionType.HAS_ATTACKED:
+        return context.sourceCard?.hasAttacked === true;
+
+      // Deck conditions
+      case ConditionType.DECK_HAS_CARDS:
+        return sourcePlayer.deck.length >= (condition.value || 0);
+
+      case ConditionType.TOP_DECK_HAS_TRAIT: {
+        if (sourcePlayer.deck.length === 0) return false;
+        const topCardDef = this.cardDefinitions.get(sourcePlayer.deck[0].cardId);
+        return topCardDef ? (condition.traits || []).some(t => topCardDef.traits.includes(t)) : false;
+      }
+
+      // DON attached count (exact match)
+      case ConditionType.DON_ATTACHED_COUNT: {
+        const exactDonCount = this.getAttachedDonCount(context.sourceCard, sourcePlayer);
+        return exactDonCount === (condition.value || 0);
+      }
 
       default:
         return true;

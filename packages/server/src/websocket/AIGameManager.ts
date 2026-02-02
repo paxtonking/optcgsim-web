@@ -37,6 +37,7 @@ interface AIGameRoom {
   actionLog: GameAction[];
   startedAt: Date;
   aiThinkDelay: number; // Delay in ms to simulate AI thinking
+  pendingTimeouts: NodeJS.Timeout[]; // Track scheduled timeouts for cleanup
 }
 
 interface PendingAIGame {
@@ -95,6 +96,30 @@ export class AIGameManager {
 
   constructor(io: SocketServer) {
     this.io = io;
+  }
+
+  /**
+   * Schedule a timeout that is tracked for cleanup on disconnect
+   */
+  private scheduleTrackedTimeout(gameId: string, callback: () => void, delay: number): void {
+    const game = this.games.get(gameId);
+    if (!game) {
+      // Game doesn't exist, don't schedule
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      // Remove from tracking when executed
+      if (game.pendingTimeouts) {
+        game.pendingTimeouts = game.pendingTimeouts.filter(t => t !== timeout);
+      }
+      // Only execute if game still exists
+      if (this.games.has(gameId)) {
+        callback();
+      }
+    }, delay);
+
+    game.pendingTimeouts.push(timeout);
   }
 
   /**
@@ -272,6 +297,7 @@ export class AIGameManager {
       actionLog: [],
       startedAt: new Date(),
       aiThinkDelay: pending.aiPlayer.getThinkDelay(),
+      pendingTimeouts: [],
     };
 
     // Move from pending to active games
@@ -482,13 +508,13 @@ export class AIGameManager {
 
     // Check if it's now AI's turn OR if AI needs to respond defensively
     if (updatedState.activePlayerId === game.aiPlayer.getPlayerId()) {
-      // Delay AI response for better UX
-      setTimeout(() => {
+      // Delay AI response for better UX (tracked for cleanup on disconnect)
+      this.scheduleTrackedTimeout(gameId, () => {
         this.processAITurn(gameId);
       }, game.aiThinkDelay);
     } else if (this.needsAIDefensiveAction(updatedState, game)) {
       // AI needs to respond to counter step or blocker step
-      setTimeout(() => {
+      this.scheduleTrackedTimeout(gameId, () => {
         this.processAIDefensiveAction(gameId);
       }, game.aiThinkDelay);
     } else if (updatedState.phase === GamePhase.START_MULLIGAN) {
@@ -498,7 +524,7 @@ export class AIGameManager {
       const aiConfirmed = game.stateManager.hasConfirmedHand(game.aiPlayer.getPlayerId());
       if (!aiConfirmed) {
         console.log('[AIGameManager] Human made mulligan decision, triggering AI mulligan');
-        setTimeout(() => {
+        this.scheduleTrackedTimeout(gameId, () => {
           this.processAIMulliganDecision(gameId);
         }, game.aiThinkDelay);
       }
@@ -840,12 +866,35 @@ export class AIGameManager {
    * Handle player disconnect
    */
   handleDisconnect(socket: AuthenticatedSocket) {
-    const gameId = this.playerToGame.get(socket.userId!);
+    const userId = socket.userId;
+    if (!userId) return;
+
+    // Check for pending games first
+    for (const [gameId, pending] of this.pendingGames.entries()) {
+      if (pending.humanPlayerId === userId) {
+        // Clear any pending timeout
+        if (pending.firstChoiceTimeoutId) {
+          clearTimeout(pending.firstChoiceTimeoutId);
+        }
+        this.pendingGames.delete(gameId);
+        console.log(`[AIGameManager] Cleaned up pending game ${gameId} due to disconnect`);
+        return;
+      }
+    }
+
+    // Check for active games
+    const gameId = this.playerToGame.get(userId);
     if (!gameId) return;
 
-    // End game - AI wins by forfeit
     const game = this.games.get(gameId);
     if (game) {
+      // Clear all pending timeouts
+      if (game.pendingTimeouts) {
+        game.pendingTimeouts.forEach(timeout => clearTimeout(timeout));
+        game.pendingTimeouts = [];
+      }
+
+      // End game - AI wins by forfeit
       this.endGame(gameId, game.aiPlayer.getPlayerId(), 'disconnect');
     }
   }

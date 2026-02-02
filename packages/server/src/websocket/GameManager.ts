@@ -193,6 +193,14 @@ export class GameManager {
    */
   handleRPSChoice(socket: AuthenticatedSocket, gameId: string, choice: RPSChoice) {
     console.log(`[GameManager] handleRPSChoice called - gameId: ${gameId}, userId: ${socket.userId}, choice: ${choice}`);
+
+    // Validate RPS choice
+    if (!choice || !['rock', 'paper', 'scissors'].includes(choice)) {
+      console.log(`[GameManager] Invalid RPS choice received: ${choice}`);
+      socket.emit('game:error', { error: 'Invalid RPS choice' });
+      return;
+    }
+
     const pending = this.rpsPendingGames.get(gameId);
     if (!pending) {
       console.log(`[GameManager] RPS choice received but no pending game found: ${gameId}`);
@@ -326,6 +334,11 @@ export class GameManager {
           rpsState: newRpsState,
           message: "It's a tie! Choose again.",
         });
+
+        // Clear existing timeout before setting new one
+        if (pending.rpsTimeoutId) {
+          clearTimeout(pending.rpsTimeoutId);
+        }
 
         // Start new timeout
         pending.rpsTimeoutId = setTimeout(() => {
@@ -801,9 +814,58 @@ export class GameManager {
     };
   }
 
-  handleDisconnect(_socket: AuthenticatedSocket) {
-    // Handle player disconnect - give them time to reconnect
-    // In production, start a reconnection timer
+  handleDisconnect(socket: AuthenticatedSocket) {
+    const userId = socket.userId;
+    if (!userId) return;
+
+    // Check if user is in an RPS pending game
+    for (const [gameId, pending] of this.rpsPendingGames.entries()) {
+      if (pending.player1Id === userId || pending.player2Id === userId) {
+        // Clear timeouts
+        if (pending.rpsTimeoutId) {
+          clearTimeout(pending.rpsTimeoutId);
+        }
+        if (pending.firstChoiceTimeoutId) {
+          clearTimeout(pending.firstChoiceTimeoutId);
+        }
+
+        // Notify other player
+        const otherSocketId = pending.player1Id === userId
+          ? pending.player2SocketId
+          : pending.player1SocketId;
+        const otherSocket = this.io.sockets.sockets.get(otherSocketId);
+        if (otherSocket?.connected) {
+          otherSocket.emit(WS_EVENTS.GAME_ERROR, {
+            message: 'Opponent disconnected during game setup'
+          });
+        }
+
+        // Remove pending game
+        this.rpsPendingGames.delete(gameId);
+        console.log(`[GameManager] Cleaned up RPS pending game ${gameId} due to disconnect`);
+        return;
+      }
+    }
+
+    // Check if user is in an active game
+    const gameId = this.playerToGame.get(userId);
+    if (gameId) {
+      const game = this.games.get(gameId);
+      if (game) {
+        // Notify opponent of disconnect
+        const otherSocketId = game.player1Id === userId
+          ? game.player2SocketId
+          : game.player1SocketId;
+        const otherSocket = this.io.sockets.sockets.get(otherSocketId);
+        if (otherSocket?.connected) {
+          otherSocket.emit(WS_EVENTS.OPPONENT_DISCONNECTED, {
+            timeout: 30,
+            message: 'Opponent disconnected. Waiting for reconnection...'
+          });
+        }
+        console.log(`[GameManager] Player ${userId} disconnected from game ${gameId}`);
+      }
+    }
   }
 
   private async endGame(gameId: string, winnerId: string, reason: string) {

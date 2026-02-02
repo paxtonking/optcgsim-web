@@ -128,6 +128,9 @@ export const WS_EVENTS = {
   GAME_RECONNECT: 'game:reconnect',
   GAME_END: 'game:end',
   GAME_DON_REFRESH: 'game:don:refresh',  // DON cards returned during Refresh Phase
+  GAME_ERROR: 'game:error',              // Game-specific error
+  OPPONENT_DISCONNECTED: 'game:opponent:disconnected',  // Opponent lost connection
+  OPPONENT_RECONNECTED: 'game:opponent:reconnected',    // Opponent reconnected
 
   // Rock-Paper-Scissors (first player determination)
   RPS_CHOOSE: 'rps:choose',              // Player sends their RPS choice
