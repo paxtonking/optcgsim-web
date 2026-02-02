@@ -601,6 +601,7 @@ export class GameManager {
 
     // Phases where both players can act (not just the active player)
     const simultaneousPhases = [
+      GamePhase.PRE_GAME_SETUP,  // Both players select start-of-game cards (e.g., Imu's stage)
       GamePhase.START_MULLIGAN,  // Both players decide on mulligan
       GamePhase.COUNTER_STEP,    // Defender uses counter cards
       GamePhase.BLOCKER_STEP,    // Defender declares blockers
