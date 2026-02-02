@@ -684,6 +684,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         previousHandCountRef.current = { player: myPlayer.hand.length, opponent: opponent.hand.length };
         // Initialize life count refs to actual values to prevent false damage detection
         previousLifeCountRef.current = { player: myPlayer.lifeCards.length, opponent: opponent.lifeCards.length };
+        // Sync visible life count to actual values (fixes race condition where animation callbacks may not all fire)
+        setVisibleLifeCount({ player: myPlayer.lifeCards.length, opponent: opponent.lifeCards.length });
         // Initialize trash and deck count refs to prevent false mill animation triggers
         previousTrashCountRef.current = { player: myPlayer.trash.length, opponent: opponent.trash.length };
         previousDeckCountRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
@@ -2156,6 +2158,22 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     return 0;
   }, [previewedCard, gameState]);
 
+  // Calculate whether DON bonus should apply for the previewed card
+  // DON bonus only applies on the card owner's turn
+  const previewedCardShowDonBonus = useMemo(() => {
+    if (!previewedCard || !gameState) return false;
+    // Find the card owner by checking which player has this card
+    for (const player of Object.values(gameState.players)) {
+      const isOnField = player.field.some(c => c.id === previewedCard.id);
+      const isLeader = player.leaderCard?.id === previewedCard.id;
+      if (isOnField || isLeader) {
+        // DON bonus applies if it's this player's turn
+        return player.id === gameState.activePlayerId;
+      }
+    }
+    return false;
+  }, [previewedCard, gameState]);
+
   // Calculate combat buff power for the previewed card (only during combat for defender)
   const previewedCardCombatBuff = useMemo(() => {
     if (!previewedCard || !gameState?.currentCombat) return 0;
@@ -3124,6 +3142,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           cardDef={(pinnedCard || hoveredCard) ? cardDefinitions.get((pinnedCard || hoveredCard)!.cardId) : undefined}
           isHidden={!pinnedCard && isHoveredCardHidden}
           attachedDonCount={previewedCardDonCount}
+          showDonBonus={previewedCardShowDonBonus}
           combatBuffPower={previewedCardCombatBuff}
           activateInfo={activateInfo}
           onActivateAbility={handleActivateAbility}

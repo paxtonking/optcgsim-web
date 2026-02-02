@@ -37,6 +37,7 @@ interface GameCardProps {
   isDon?: boolean;          // This is a DON card (smaller size, different styling)
   isDonInactive?: boolean;  // DON is attached but not providing power bonus (opponent's turn)
   attachedDonCount?: number; // Number of DON cards attached to this card
+  showDonBonus?: boolean;   // Whether DON bonus applies (owner's turn) - for tooltip display
   effectivePower?: number;  // Calculated power including buffs and DON
   buffTotal?: number;       // Total buff amount (positive or negative)
   size?: 'small' | 'normal' | 'large';
@@ -68,6 +69,7 @@ export const GameCard: React.FC<GameCardProps> = ({
   isDon = false,
   isDonInactive = false,
   attachedDonCount = 0,
+  showDonBonus = true,
   effectivePower,
   buffTotal = 0,
   size = 'normal',
@@ -238,17 +240,26 @@ export const GameCard: React.FC<GameCardProps> = ({
           )}
 
           {/* Power overlay for characters on field */}
-          {(card.power || effectivePower) && faceUp && (
-            <div
-              className={`game-card__power-badge ${
-                buffTotal > 0 ? 'game-card__power-badge--buffed' :
-                buffTotal < 0 ? 'game-card__power-badge--debuffed' : ''
-              }`}
-              title={buffTotal !== 0 ? `Base: ${card.basePower ?? card.power ?? 0}\nBuff: ${buffTotal > 0 ? '+' : ''}${buffTotal}\nDON: +${attachedDonCount * 1000}` : undefined}
-            >
-              {effectivePower ?? card.power}
-            </div>
-          )}
+          {(card.power || effectivePower) && faceUp && (() => {
+            const donBonusValue = showDonBonus ? attachedDonCount * 1000 : 0;
+            const hasPowerModifiers = buffTotal !== 0 || (attachedDonCount > 0 && showDonBonus);
+            const tooltipLines = [
+              `Base: ${card.basePower ?? card.power ?? 0}`,
+              buffTotal !== 0 ? `Buff: ${buffTotal > 0 ? '+' : ''}${buffTotal}` : null,
+              attachedDonCount > 0 ? (showDonBonus ? `DON: +${donBonusValue}` : `DON: +${attachedDonCount} (not active)`) : null
+            ].filter(Boolean).join('\n');
+            return (
+              <div
+                className={`game-card__power-badge ${
+                  buffTotal > 0 ? 'game-card__power-badge--buffed' :
+                  buffTotal < 0 ? 'game-card__power-badge--debuffed' : ''
+                }`}
+                title={hasPowerModifiers ? tooltipLines : undefined}
+              >
+                {effectivePower ?? card.power}
+              </div>
+            );
+          })()}
 
           {/* DON count badge for attached DON on this card */}
           {attachedDonCount > 0 && (

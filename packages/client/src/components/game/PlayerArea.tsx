@@ -152,13 +152,15 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
     return card.powerBuffs.reduce((sum, buff) => sum + buff.value, 0);
   };
 
+  // DON bonus: player's cards get it on player's turn, opponent's cards get it on opponent's turn
+  // This determines if DON bonus applies for cards in this PlayerArea
+  const isOwnersTurn = isOpponent ? !isMyTurn : isMyTurn;
+
   // Helper to calculate effective power (base + buffs + DON)
   // DON bonus only applies on the card owner's turn (One Piece TCG rule)
   const getEffectivePower = (card: GameCardType, attachedDonCount: number): number => {
     const basePower = card.basePower ?? card.power ?? 0;
     const buffTotal = getBuffTotal(card);
-    // DON bonus: player's cards get it on player's turn, opponent's cards get it on opponent's turn
-    const isOwnersTurn = isOpponent ? !isMyTurn : isMyTurn;
     const donBonus = isOwnersTurn ? (attachedDonCount * 1000) : 0;
     return basePower + buffTotal + donBonus;
   };
@@ -271,6 +273,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                     isCounterEffectTarget={counterEffectTargets.has(player.leaderCard.id)}
                     isCounterEffectSelected={counterEffectSelected.has(player.leaderCard.id)}
                     attachedDonCount={leaderAttachedDons.length}
+                    showDonBonus={isOwnersTurn}
                     effectivePower={getEffectivePower(player.leaderCard, leaderAttachedDons.length)}
                     buffTotal={getBuffTotal(player.leaderCard)}
                     className={[
@@ -378,6 +381,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                     isCounterEffectTarget={counterEffectTargets.has(card.id)}
                     isCounterEffectSelected={counterEffectSelected.has(card.id)}
                     attachedDonCount={attachedDons.length}
+                    showDonBonus={isOwnersTurn}
                     effectivePower={getEffectivePower(card, attachedDons.length)}
                     buffTotal={getBuffTotal(card)}
                     className={getAttackAnimationClass(card.id)}

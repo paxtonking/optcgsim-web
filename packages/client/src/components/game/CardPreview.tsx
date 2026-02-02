@@ -41,6 +41,7 @@ interface CardPreviewProps {
   cardDef?: CardDefinition;
   isHidden?: boolean;
   attachedDonCount?: number;  // Number of DON cards attached (for power calculation)
+  showDonBonus?: boolean;     // Whether DON bonus applies (only on card owner's turn)
   combatBuffPower?: number;   // Power from combat effects (e.g., Guard Point +3000)
   activateInfo?: ActivateAbilityInfo;
   onActivateAbility?: () => void;
@@ -55,6 +56,7 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
   cardDef,
   isHidden = false,
   attachedDonCount = 0,
+  showDonBonus = true,
   combatBuffPower = 0,
   activateInfo,
   onActivateAbility,
@@ -234,8 +236,10 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
           )}
           {(card.power != null || cardDef?.power != null) && (() => {
             const basePower = card.power ?? cardDef?.power ?? 0;
-            const totalPower = basePower + (attachedDonCount * 1000) + combatBuffPower;
-            const hasDonBonus = attachedDonCount > 0;
+            // Only add DON bonus if it's the card owner's turn
+            const donBonus = showDonBonus ? (attachedDonCount * 1000) : 0;
+            const totalPower = basePower + donBonus + combatBuffPower;
+            const hasDonBonus = showDonBonus && attachedDonCount > 0;
             const hasCombatBuff = combatBuffPower > 0;
             return (
               <div className={`card-preview__stat ${hasDonBonus ? 'card-preview__stat--don-boosted' : ''} ${hasCombatBuff ? 'card-preview__stat--combat-buffed' : ''}`}>

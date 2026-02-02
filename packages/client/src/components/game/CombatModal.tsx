@@ -137,8 +137,11 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   const attackPower = combat.attackPower || 0;
 
   // Defender power includes base power + attached DON (+1000 each)
+  // BUT DON bonus only applies on the card owner's turn
   const defenderAttachedDon = defenderPlayer?.donField.filter(d => d.attachedTo === target?.card.id).length || 0;
-  const defenderBasePower = (target?.card.power || 0) + (defenderAttachedDon * 1000);
+  const isDefendersTurn = target?.player.id === gameState.activePlayerId;
+  const defenderDonBonus = isDefendersTurn ? (defenderAttachedDon * 1000) : 0;
+  const defenderBasePower = (target?.card.power || 0) + defenderDonBonus;
 
   const counterPower = combat.counterPower || 0;
   const effectBuffPower = combat.effectBuffPower || 0;
