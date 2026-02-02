@@ -2826,7 +2826,7 @@
   top: 60px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 1500;
+  z-index: 2100;
   animation: counterSlideDown 0.3s ease;
 }
 
