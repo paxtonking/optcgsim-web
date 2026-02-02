@@ -128,6 +128,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   const previousTrashCountRef = useRef<{ player: number; opponent: number }>({ player: 0, opponent: 0 });
   const previousDeckCountRef = useRef<{ player: number; opponent: number }>({ player: 0, opponent: 0 });
 
+  // Discard animation state (hand to trash)
+  const [animatingDiscard, setAnimatingDiscard] = useState<AnimatingCardData[]>([]);
+  const previousFieldCountRef = useRef<{ player: number; opponent: number }>({ player: 0, opponent: 0 });
+
   // Random playmat selection (assigned once per game session)
   const [playerPlaymat, opponentPlaymat] = useMemo(() => {
     const playmats = ['/assets/playmats/playmat1.webp', '/assets/playmats/playmat2.webp'];
@@ -660,6 +664,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         previousHandCountRef.current = { player: myPlayer.hand.length, opponent: opponent.hand.length };
         previousTrashCountRef.current = { player: myPlayer.trash.length, opponent: opponent.trash.length };
         previousDeckCountRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
+        previousFieldCountRef.current = { player: myPlayer.field.length, opponent: opponent.field.length };
       }
     } else if (dealingPhase === 'dealing-life') {
       // Life dealing complete, game can proceed
@@ -674,6 +679,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         // Initialize trash and deck count refs to prevent false mill animation triggers
         previousTrashCountRef.current = { player: myPlayer.trash.length, opponent: opponent.trash.length };
         previousDeckCountRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
+        // Initialize field count refs to prevent false discard animation triggers
+        previousFieldCountRef.current = { player: myPlayer.field.length, opponent: opponent.field.length };
         // DON counts: set to 0 so the animation useEffect will detect the initial DON and animate it
         // visibleDonCount stays at 0 so cards are hidden until animation completes
         previousDonCountRef.current = { player: 0, opponent: 0 };
@@ -708,6 +715,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         previousHandCountRef.current = { player: myPlayer.hand.length, opponent: opponent.hand.length };
         previousTrashCountRef.current = { player: myPlayer.trash.length, opponent: opponent.trash.length };
         previousDeckCountRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
+        previousFieldCountRef.current = { player: myPlayer.field.length, opponent: opponent.field.length };
       } else {
         // Small delay to let DOM render first
         animationTriggeredRef.current = true;
@@ -743,6 +751,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           // Initialize trash and deck count refs to prevent false mill animations
           previousTrashCountRef.current = { player: myPlayer.trash.length, opponent: opponent.trash.length };
           previousDeckCountRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
+          // Initialize field count refs to prevent false discard animations
+          previousFieldCountRef.current = { player: myPlayer.field.length, opponent: opponent.field.length };
         }
       }
     }
@@ -1192,6 +1202,115 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   const handleMillAnimationComplete = useCallback((cardId: string) => {
     setAnimatingMill(prev => prev.filter(c => c.id !== cardId));
     // Play a sound for milling (reuse damage sound or add a new one)
+    playSound('damage');
+  }, [playSound]);
+
+  // Detect and animate discard (hand to trash) effects
+  useEffect(() => {
+    if (!myPlayer || !opponent) return;
+    if (dealingPhase !== 'complete') return;
+
+    const playerHandCount = myPlayer.hand.length;
+    const opponentHandCount = opponent.hand.length;
+    const playerTrashCount = myPlayer.trash.length;
+    const opponentTrashCount = opponent.trash.length;
+    const playerDeckCount = myPlayer.deck.length;
+    const opponentDeckCount = opponent.deck.length;
+    const playerFieldCount = myPlayer.field.length;
+    const opponentFieldCount = opponent.field.length;
+
+    const prevPlayerHandCount = previousHandCountRef.current.player;
+    const prevOpponentHandCount = previousHandCountRef.current.opponent;
+    const prevPlayerTrashCount = previousTrashCountRef.current.player;
+    const prevOpponentTrashCount = previousTrashCountRef.current.opponent;
+    const prevPlayerDeckCount = previousDeckCountRef.current.player;
+    const prevOpponentDeckCount = previousDeckCountRef.current.opponent;
+    const prevPlayerFieldCount = previousFieldCountRef.current.player;
+    const prevOpponentFieldCount = previousFieldCountRef.current.opponent;
+
+    // Check for discard: hand decreased AND trash increased AND deck unchanged AND field unchanged
+    // This differentiates from: mill (deck->trash), KO (field->trash), play (hand->field)
+    const playerHandDecrease = prevPlayerHandCount - playerHandCount;
+    const opponentHandDecrease = prevOpponentHandCount - opponentHandCount;
+    const playerTrashIncrease = playerTrashCount - prevPlayerTrashCount;
+    const opponentTrashIncrease = opponentTrashCount - prevOpponentTrashCount;
+    const playerDeckChanged = playerDeckCount !== prevPlayerDeckCount;
+    const opponentDeckChanged = opponentDeckCount !== prevOpponentDeckCount;
+    const playerFieldChanged = playerFieldCount !== prevPlayerFieldCount;
+    const opponentFieldChanged = opponentFieldCount !== prevOpponentFieldCount;
+
+    // Discard detected when: hand decreased, trash increased, deck unchanged, field unchanged
+    const playerDiscarded = (playerHandDecrease > 0 && playerTrashIncrease > 0 && !playerDeckChanged && !playerFieldChanged)
+      ? Math.min(playerHandDecrease, playerTrashIncrease)
+      : 0;
+    const opponentDiscarded = (opponentHandDecrease > 0 && opponentTrashIncrease > 0 && !opponentDeckChanged && !opponentFieldChanged)
+      ? Math.min(opponentHandDecrease, opponentTrashIncrease)
+      : 0;
+
+    if (playerDiscarded > 0 || opponentDiscarded > 0) {
+      console.log('[GameBoard] Discard from hand detected - player:', playerDiscarded, 'opponent:', opponentDiscarded);
+      const newAnimations: AnimatingCardData[] = [];
+      const cardDelay = 100;
+
+      // Player discard animations
+      if (playerDiscarded > 0) {
+        for (let i = 0; i < playerDiscarded; i++) {
+          const cardIndex = prevPlayerTrashCount + i;
+          const card = myPlayer.trash[cardIndex];
+          if (card) {
+            // Start from approximate center of previous hand
+            const handCenterIndex = Math.floor(prevPlayerHandCount / 2);
+            newAnimations.push({
+              id: `player-discard-${card.id}-${Date.now()}-${i}`,
+              card,
+              faceUp: true,  // Cards in hand are face-up
+              startPos: getHandCardPosition(handCenterIndex, prevPlayerHandCount, false),
+              endPos: getTrashPosition(false),
+              delay: i * cardDelay,
+              targetZone: 'trash',
+              isOpponent: false,
+              flipDuringFlight: false  // Already face-up
+            });
+          }
+        }
+      }
+
+      // Opponent discard animations
+      if (opponentDiscarded > 0) {
+        for (let i = 0; i < opponentDiscarded; i++) {
+          const cardIndex = prevOpponentTrashCount + i;
+          const card = opponent.trash[cardIndex];
+          if (card) {
+            // Start from approximate center of previous hand
+            const handCenterIndex = Math.floor(prevOpponentHandCount / 2);
+            newAnimations.push({
+              id: `opponent-discard-${card.id}-${Date.now()}-${i}`,
+              card,
+              faceUp: false,  // Opponent cards are face-down in hand
+              startPos: getHandCardPosition(handCenterIndex, prevOpponentHandCount, true),
+              endPos: getTrashPosition(true),
+              delay: i * cardDelay,
+              targetZone: 'trash',
+              isOpponent: true,
+              flipDuringFlight: true  // Flip to reveal the card as it goes to trash
+            });
+          }
+        }
+      }
+
+      if (newAnimations.length > 0) {
+        console.log('[GameBoard] Spawning discard animations:', newAnimations.length);
+        setAnimatingDiscard(prev => [...prev, ...newAnimations]);
+      }
+    }
+
+    // Update field count refs
+    previousFieldCountRef.current = { player: playerFieldCount, opponent: opponentFieldCount };
+  }, [myPlayer, opponent, dealingPhase, getHandCardPosition, getTrashPosition]);
+
+  // Handle discard animation completion
+  const handleDiscardAnimationComplete = useCallback((cardId: string) => {
+    setAnimatingDiscard(prev => prev.filter(c => c.id !== cardId));
     playSound('damage');
   }, [playSound]);
 
@@ -2784,6 +2903,20 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           delay={animCard.delay}
           flipDuringFlight={animCard.flipDuringFlight}
           onComplete={() => handleMillAnimationComplete(animCard.id)}
+        />
+      ))}
+
+      {/* Animating discard cards (hand to trash) */}
+      {animatingDiscard.map(animCard => (
+        <AnimatingCard
+          key={animCard.id}
+          card={animCard.card}
+          faceUp={animCard.faceUp}
+          startPos={animCard.startPos}
+          endPos={animCard.endPos}
+          delay={animCard.delay}
+          flipDuringFlight={animCard.flipDuringFlight}
+          onComplete={() => handleDiscardAnimationComplete(animCard.id)}
         />
       ))}
 
