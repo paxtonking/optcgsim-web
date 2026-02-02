@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFriendsStore } from '../stores/friendsStore';
 import { useLobbyStore } from '../stores/lobbyStore';
+import { toast } from '../stores/toastStore';
 
 type Tab = 'friends' | 'requests' | 'search';
 
@@ -86,7 +87,9 @@ export function FriendsPanel() {
   const handleChallenge = async (friendId: string) => {
     setActionError(null);
     const result = await sendChallenge(friendId, selectedDeckId || undefined);
-    if (!result.success) {
+    if (result.success) {
+      toast.success('Challenge sent!');
+    } else {
       setActionError(result.error || 'Failed to send challenge');
     }
   };

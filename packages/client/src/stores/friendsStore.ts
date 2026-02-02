@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { api } from '../services/api';
 import { connectSocket } from '../services/socket';
 import { WS_EVENTS } from '@optcgsim/shared';
+import { toast } from './toastStore';
 
 // Response types for API calls
 interface FriendsResponse {
@@ -221,10 +222,14 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
 
     const handleChallengeReceived = (data: Challenge) => {
       set({ pendingChallenge: data });
+      toast.info(`${data.fromUsername} challenged you!`);
     };
 
-    const handleChallengeCancelled = () => {
+    const handleChallengeCancelled = (data: { challengeId: string; reason?: string }) => {
       set({ pendingChallenge: null });
+      if (data.reason) {
+        toast.warning(data.reason);
+      }
     };
 
     socket.on(WS_EVENTS.CHALLENGE_RECEIVED, handleChallengeReceived);

@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import Layout from './components/Layout';
+import { ToastContainer } from './components/Toast';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -38,9 +39,11 @@ function App() {
   }
 
   return (
-    <Routes>
-      <Route path="/" element={<Layout />}>
-        <Route index element={<HomePage />} />
+    <>
+      <ToastContainer />
+      <Routes>
+        <Route path="/" element={<Layout />}>
+          <Route index element={<HomePage />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
         <Route path="lobby" element={<LobbyPage />} />
@@ -69,7 +72,8 @@ function App() {
         <Route path="reports" element={<AdminReports />} />
         <Route path="suspensions" element={<AdminSuspensions />} />
       </Route>
-    </Routes>
+      </Routes>
+    </>
   );
 }
 
