@@ -18,6 +18,7 @@ interface AuthState {
   loginAsGuest: (username?: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
+  updateUser: (updates: Partial<User>) => void;
   clearError: () => void;
   setHasHydrated: (hasHydrated: boolean) => void;
 }
@@ -184,6 +185,13 @@ export const useAuthStore = create<AuthState>()(
         })();
 
         return refreshInFlight;
+      },
+
+      updateUser: (updates: Partial<User>) => {
+        const { user } = get();
+        if (user) {
+          set({ user: { ...user, ...updates } });
+        }
       },
 
       clearError: () => set({ error: null }),

@@ -48,6 +48,8 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
+  // Must be declared before any early returns (React hooks rule)
+  const [localAvatarId, setLocalAvatarId] = useState<string>('default');
 
   const isOwnProfile = !id || id === user?.id;
 
@@ -56,6 +58,13 @@ export default function ProfilePage() {
       loadProfile(id);
     }
   }, [id, user?.id]);
+
+  // Sync localAvatarId when user data changes
+  useEffect(() => {
+    if (user?.avatarId) {
+      setLocalAvatarId(user.avatarId);
+    }
+  }, [user?.avatarId]);
 
   const loadProfile = async (userId: string) => {
     setIsLoading(true);
@@ -118,7 +127,6 @@ export default function ProfilePage() {
     return null;
   }
 
-  const [localAvatarId, setLocalAvatarId] = useState(displayUser.avatarId || 'default');
   const avatarId = isOwnProfile ? localAvatarId : (displayUser.avatarId || 'default');
   const rankInfo = getRankInfo(displayUser.eloRating || 1000);
   const gamesPlayed = displayUser.gamesPlayed || 0;

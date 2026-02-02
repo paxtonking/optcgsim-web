@@ -25,6 +25,8 @@ export function ProfileCustomization({
     try {
       setIsSaving(true);
       await api.patch('/users/me', { avatarId });
+      // Update authStore so the change persists across the app
+      useAuthStore.getState().updateUser({ avatarId });
       onAvatarChange?.(avatarId);
     } catch (error) {
       console.error('Failed to update avatar:', error);
