@@ -1,6 +1,7 @@
 import type { Server as SocketServer, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { WS_EVENTS, GamePhase } from '@optcgsim/shared';
+import { z } from 'zod';
 import { prisma } from '../services/prisma.js';
 import { LobbyManager } from './LobbyManager.js';
 import { GameManager } from './GameManager.js';
@@ -57,6 +58,25 @@ class RateLimiter {
 }
 
 const rateLimiter = new RateLimiter();
+
+const gameIdPayloadSchema = z.object({
+  gameId: z.string().min(1),
+});
+
+const firstChoiceSchema = z.object({
+  gameId: z.string().min(1),
+  goFirst: z.boolean(),
+});
+
+const rpsChoiceSchema = z.object({
+  gameId: z.string().min(1),
+  choice: z.enum(['rock', 'paper', 'scissors']),
+});
+
+const actionSchema = z.object({
+  type: z.string().min(1),
+  data: z.unknown().optional(),
+}).passthrough();
 
 // Cleanup rate limiter every minute
 setInterval(() => rateLimiter.cleanup(), 60000);
@@ -158,13 +178,26 @@ export function setupWebSocket(io: SocketServer) {
 
     // Lobby events
     socket.on(WS_EVENTS.LOBBY_CREATE, (data, callback) => {
-      const { deckId, ...settings } = data;
+      const parsed = z.object({ deckId: z.string().min(1) }).passthrough().safeParse(data);
+      if (!parsed.success) {
+        callback?.({ success: false, error: 'Invalid lobby create payload' });
+        return;
+      }
+      const { deckId, ...settings } = parsed.data;
       lobbyManager.createLobby(socket, settings, deckId, callback);
     });
 
     // Rate limited: 5 attempts per minute (prevents lobby code brute-forcing)
     socket.on(WS_EVENTS.LOBBY_JOIN, (data, callback) => {
-      const { code, deckId } = data;
+      const parsed = z.object({
+        code: z.string().min(1),
+        deckId: z.string().min(1),
+      }).safeParse(data);
+      if (!parsed.success) {
+        callback?.({ success: false, error: 'Invalid lobby join payload' });
+        return;
+      }
+      const { code, deckId } = parsed.data;
       if (!rateLimiter.isAllowed(`${socket.userId}:lobby-join`, 5, 60000)) {
         return callback?.({ success: false, error: 'Too many attempts. Please wait.' });
       }
@@ -179,12 +212,17 @@ export function setupWebSocket(io: SocketServer) {
       lobbyManager.setReady(socket);
     });
 
-    socket.on(WS_EVENTS.LOBBY_START, () => {
+    socket.on(WS_EVENTS.LOBBY_START, async () => {
       console.log(`[WebSocket] LOBBY_START received from user ${socket.userId}`);
       const lobby = lobbyManager.getLobbyByPlayer(socket.userId!);
       if (lobby) {
         console.log(`[WebSocket] Found lobby ${lobby.id} for user, calling startGame`);
-        gameManager.startGame(lobby, socket);
+        try {
+          await gameManager.startGame(lobby, socket);
+        } catch (error) {
+          console.error('[WebSocket] Failed to start game from lobby:', error);
+          socket.emit('game:error', { error: 'Failed to start game' });
+        }
       } else {
         console.log(`[WebSocket] No lobby found for user ${socket.userId}`);
       }
@@ -192,7 +230,15 @@ export function setupWebSocket(io: SocketServer) {
 
     // Queue events (ranked - requires login)
     socket.on(WS_EVENTS.QUEUE_JOIN, (data, callback) => {
-      const deckId = data?.deckId || data; // Support both { deckId } object and direct string
+      const parsed = z.union([
+        z.string().min(1),
+        z.object({ deckId: z.string().min(1) }),
+      ]).safeParse(data);
+      if (!parsed.success) {
+        callback?.({ success: false, error: 'Invalid queue payload' });
+        return;
+      }
+      const deckId = typeof parsed.data === 'string' ? parsed.data : parsed.data.deckId;
       if ((socket as AuthenticatedSocket).isGuest) {
         return callback?.({ success: false, error: 'Ranked queue requires a registered account' });
       }
@@ -205,11 +251,21 @@ export function setupWebSocket(io: SocketServer) {
 
     // Game events
     socket.on('game:action', (data, callback) => {
-      gameManager.handleAction(socket, data.action, callback);
+      const parsed = z.object({ action: actionSchema }).safeParse(data);
+      if (!parsed.success) {
+        callback?.({ success: false, error: 'Invalid game action payload' });
+        return;
+      }
+      gameManager.handleAction(socket, parsed.data.action as any, callback);
     });
     
     socket.on('game:getState', (data) => {
-      const gameId = data.gameId;
+      const parsed = gameIdPayloadSchema.safeParse(data);
+      if (!parsed.success) {
+        socket.emit('game:error', { error: 'Invalid game state request' });
+        return;
+      }
+      const gameId = parsed.data.gameId;
       console.log(`[WebSocket] game:getState called for game ${gameId} by user ${socket.userId} (socket ${socket.id})`);
 
       // Check for active game first
@@ -262,16 +318,30 @@ export function setupWebSocket(io: SocketServer) {
     });
 
     socket.on(WS_EVENTS.GAME_RECONNECT, (gameId, callback) => {
+      if (typeof gameId !== 'string' || !gameId.trim()) {
+        callback?.({ success: false, error: 'Invalid reconnect request' });
+        return;
+      }
       gameManager.handleReconnect(socket, gameId, callback);
     });
 
     // Rock-Paper-Scissors events (first player determination)
     socket.on(WS_EVENTS.RPS_CHOOSE, (data: { gameId: string; choice: 'rock' | 'paper' | 'scissors' }) => {
-      gameManager.handleRPSChoice(socket, data.gameId, data.choice);
+      const parsed = rpsChoiceSchema.safeParse(data);
+      if (!parsed.success) {
+        socket.emit('game:error', { error: 'Invalid RPS choice payload' });
+        return;
+      }
+      gameManager.handleRPSChoice(socket, parsed.data.gameId, parsed.data.choice);
     });
 
     socket.on(WS_EVENTS.FIRST_CHOICE, (data: { gameId: string; goFirst: boolean }) => {
-      gameManager.handleFirstChoice(socket, data.gameId, data.goFirst);
+      const parsed = firstChoiceSchema.safeParse(data);
+      if (!parsed.success) {
+        socket.emit('game:error', { error: 'Invalid first-choice payload' });
+        return;
+      }
+      gameManager.handleFirstChoice(socket, parsed.data.gameId, parsed.data.goFirst);
     });
 
     // Spectator functionality removed for security (prevents information leakage)
@@ -301,12 +371,25 @@ export function setupWebSocket(io: SocketServer) {
       if ((socket as AuthenticatedSocket).isGuest) {
         return callback?.({ success: false, error: 'AI games require a registered account' });
       }
-      const { deckId, difficulty = 'basic' } = data;
+      const parsed = z.object({
+        deckId: z.string().min(1),
+        difficulty: z.enum(['basic', 'medium', 'hard']).optional(),
+      }).safeParse(data);
+      if (!parsed.success) {
+        callback?.({ success: false, error: 'Invalid AI start payload' });
+        return;
+      }
+      const { deckId, difficulty = 'basic' } = parsed.data;
       aiGameManager.startAIGame(socket, deckId, difficulty, callback);
     });
 
     socket.on('ai:action', (data, callback) => {
-      aiGameManager.handleAction(socket, data.action, callback);
+      const parsed = z.object({ action: actionSchema }).safeParse(data);
+      if (!parsed.success) {
+        callback?.({ success: false, error: 'Invalid AI action payload' });
+        return;
+      }
+      aiGameManager.handleAction(socket, parsed.data.action as any, callback);
     });
 
     socket.on('ai:surrender', () => {
@@ -315,12 +398,22 @@ export function setupWebSocket(io: SocketServer) {
 
     // AI game first choice (player chooses first/second)
     socket.on('ai:first-choice', (data: { gameId: string; goFirst: boolean }) => {
-      aiGameManager.handleFirstChoice(socket, data.gameId, data.goFirst);
+      const parsed = firstChoiceSchema.safeParse(data);
+      if (!parsed.success) {
+        socket.emit('game:error', { error: 'Invalid AI first-choice payload' });
+        return;
+      }
+      aiGameManager.handleFirstChoice(socket, parsed.data.gameId, parsed.data.goFirst);
     });
 
     socket.on('ai:getState', (data) => {
-      console.log('[WebSocket] ai:getState received. gameId:', data.gameId, 'userId:', socket.userId);
-      const gameId = data.gameId;
+      const parsed = gameIdPayloadSchema.safeParse(data);
+      if (!parsed.success) {
+        socket.emit('game:error', { error: 'Invalid AI state request' });
+        return;
+      }
+      const gameId = parsed.data.gameId;
+      console.log('[WebSocket] ai:getState received. gameId:', gameId, 'userId:', socket.userId);
       const state = aiGameManager.getGameState(socket, gameId);
       if (state) {
         console.log('[WebSocket] Sending game:state. Phase:', state.phase, 'Players:', Object.keys(state.players).length);

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { EffectEngine, TriggerEvent } from '../EffectEngine';
 import { effectTextParser } from '../parser/EffectTextParser';
 import { EffectTrigger } from '../types';
-import { CardZone, GamePhase } from '../../types/game';
+import { ActionType, CardZone, GamePhase } from '../../types/game';
 import { GameStateManager } from '../../game/GameStateManager';
 import {
   createMockCard,
@@ -182,5 +182,86 @@ describe('Extra turn regressions', () => {
     const updatedState = manager.getState();
     expect(updatedState.activePlayerId).toBe('player1');
     expect(updatedState.players.player1.extraTurns).toBe(0);
+  });
+});
+
+describe('Gameplay guard regressions', () => {
+  it('does not lose when drawing the last card at start of turn', () => {
+    const manager = new GameStateManager('game-1', 'player1', 'player2');
+    const gameState = createMockGameState({
+      phase: GamePhase.MAIN_PHASE,
+      activePlayerId: 'player2',
+    });
+
+    gameState.players.player1.deck = [
+      createMockCard({
+        id: 'last-deck-card',
+        owner: 'player1',
+        zone: CardZone.DECK,
+      }),
+    ];
+
+    manager.setState(gameState);
+    manager.startTurn('player1');
+
+    const updatedState = manager.getState();
+    expect(updatedState.phase).toBe(GamePhase.MAIN_PHASE);
+    expect(updatedState.winner).toBeUndefined();
+  });
+
+  it('loses when start-of-turn draw cannot be performed', () => {
+    const manager = new GameStateManager('game-1', 'player1', 'player2');
+    const gameState = createMockGameState({
+      phase: GamePhase.MAIN_PHASE,
+      activePlayerId: 'player2',
+    });
+
+    gameState.players.player1.deck = [];
+
+    manager.setState(gameState);
+    manager.startTurn('player1');
+
+    const updatedState = manager.getState();
+    expect(updatedState.phase).toBe(GamePhase.GAME_OVER);
+    expect(updatedState.winner).toBe('player2');
+  });
+
+  it('rejects resolve-combat actions outside combat phases', () => {
+    const manager = new GameStateManager('game-1', 'player1', 'player2');
+    const gameState = createMockGameState({
+      phase: GamePhase.MAIN_PHASE,
+      activePlayerId: 'player1',
+      currentCombat: undefined,
+    });
+    manager.setState(gameState);
+
+    const success = manager.processAction({
+      id: 'action-1',
+      type: ActionType.RESOLVE_COMBAT,
+      playerId: 'player1',
+      timestamp: Date.now(),
+      data: {},
+    });
+
+    expect(success).toBe(false);
+  });
+
+  it('rejects end-turn actions outside main phase', () => {
+    const manager = new GameStateManager('game-1', 'player1', 'player2');
+    const gameState = createMockGameState({
+      phase: GamePhase.BLOCKER_STEP,
+      activePlayerId: 'player1',
+    });
+    manager.setState(gameState);
+
+    const success = manager.processAction({
+      id: 'action-2',
+      type: ActionType.END_TURN,
+      playerId: 'player1',
+      timestamp: Date.now(),
+      data: {},
+    });
+
+    expect(success).toBe(false);
   });
 });

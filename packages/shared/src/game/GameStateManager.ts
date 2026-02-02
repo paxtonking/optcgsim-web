@@ -2480,17 +2480,15 @@ export class GameStateManager {
     };
     this.processTriggers(startTurnEvent);
 
-    // Move to draw phase
+    // Move to draw phase. In OPTCG, deck-out only happens when a required draw cannot be performed.
     this.state.phase = GamePhase.DRAW_PHASE;
-    this.drawCards(playerId, 1);
-
-    // Check for deck-out: if player's deck is empty, they lose
     if (player.deck.length === 0) {
       const opponentId = Object.keys(this.state.players).find(id => id !== playerId);
       this.state.winner = opponentId;
       this.state.phase = GamePhase.GAME_OVER;
       return;
     }
+    this.drawCards(playerId, 1);
 
     // Add DON!
     this.state.phase = GamePhase.DON_PHASE;
@@ -2796,9 +2794,11 @@ export class GameStateManager {
 
   // Process game action
   public processAction(action: GameAction): boolean {
+    const actionData = action.data ?? {};
+
     switch (action.type) {
       case ActionType.PRE_GAME_SELECT:
-        return this.handlePreGameSelect(action.playerId, action.data.cardId);
+        return this.handlePreGameSelect(action.playerId, actionData.cardId);
 
       case ActionType.SKIP_PRE_GAME:
         return this.skipPreGameEffect(action.playerId);
@@ -2810,40 +2810,40 @@ export class GameStateManager {
         return this.performMulligan(action.playerId);
 
       case ActionType.PLAY_CARD:
-        return this.playCard(action.playerId, action.data.cardId, action.data.zone);
+        return this.playCard(action.playerId, actionData.cardId, actionData.zone);
 
       case ActionType.ATTACH_DON:
-        return this.attachDon(action.playerId, action.data.donId, action.data.targetId);
+        return this.attachDon(action.playerId, actionData.donId, actionData.targetId);
 
       case ActionType.DECLARE_ATTACK:
-        return this.declareAttack(action.data.attackerId, action.data.targetId, action.data.targetType);
+        return this.declareAttack(actionData.attackerId, actionData.targetId, actionData.targetType);
 
       case ActionType.RESOLVE_ATTACK_EFFECT:
-        return this.resolveAttackEffect(action.data.effectId, action.data.selectedTargets || []);
+        return this.resolveAttackEffect(actionData.effectId, actionData.selectedTargets || []);
 
       case ActionType.SKIP_ATTACK_EFFECT:
-        return this.skipAttackEffect(action.data.effectId);
+        return this.skipAttackEffect(actionData.effectId);
 
       case ActionType.RESOLVE_PLAY_EFFECT:
-        return this.resolvePlayEffect(action.data.effectId, action.data.selectedTargets || []);
+        return this.resolvePlayEffect(actionData.effectId, actionData.selectedTargets || []);
 
       case ActionType.SKIP_PLAY_EFFECT:
-        return this.skipPlayEffect(action.data.effectId);
+        return this.skipPlayEffect(actionData.effectId);
 
       case ActionType.RESOLVE_ACTIVATE_EFFECT:
-        return this.resolveActivateEffect(action.data.effectId, action.data.selectedTargets || []);
+        return this.resolveActivateEffect(actionData.effectId, actionData.selectedTargets || []);
 
       case ActionType.SKIP_ACTIVATE_EFFECT:
-        return this.skipActivateEffect(action.data.effectId);
+        return this.skipActivateEffect(actionData.effectId);
 
       case ActionType.USE_COUNTER:
-        return this.useCounter(action.playerId, action.data.cardIds || []);
+        return this.useCounter(action.playerId, actionData.cardIds || []);
 
       case ActionType.PASS_COUNTER:
         return this.passCounter(action.playerId);
 
       case ActionType.SELECT_BLOCKER:
-        return this.declareBlocker(action.playerId, action.data.blockerId);
+        return this.declareBlocker(action.playerId, actionData.blockerId);
 
       case ActionType.PASS_PRIORITY:
         // Handle pass blocker during blocker step
@@ -2853,17 +2853,28 @@ export class GameStateManager {
         return false;
 
       case ActionType.RESOLVE_COMBAT:
+        if (
+          !this.state.currentCombat ||
+          (this.state.phase !== GamePhase.COUNTER_STEP &&
+            this.state.phase !== GamePhase.BLOCKER_STEP &&
+            this.state.phase !== GamePhase.TRIGGER_STEP)
+        ) {
+          return false;
+        }
         this.resolveCombat();
         return true;
 
       case ActionType.END_TURN:
+        if (this.state.phase !== GamePhase.MAIN_PHASE) {
+          return false;
+        }
         this.endTurn(action.playerId);
         return true;
 
       case ActionType.TRIGGER_LIFE:
         // Handle trigger effect activation
-        if (action.data.effectId) {
-          const changes = this.resolveEffect(action.data.effectId, action.data.targets);
+        if (actionData.effectId) {
+          const changes = this.resolveEffect(actionData.effectId, actionData.targets);
           return changes.length > 0;
         }
         // Pass on trigger - continue to next phase
@@ -2873,34 +2884,34 @@ export class GameStateManager {
         return true;
 
       case ActionType.ACTIVATE_ABILITY:
-        return this.activateAbility(action.playerId, action.data.cardId, action.data.targets);
+        return this.activateAbility(action.playerId, actionData.cardId, actionData.targets);
 
       case ActionType.RESOLVE_EVENT_EFFECT:
-        return this.resolveEventEffect(action.playerId, action.data.effectId, action.data.selectedTargets);
+        return this.resolveEventEffect(action.playerId, actionData.effectId, actionData.selectedTargets);
 
       case ActionType.SKIP_EVENT_EFFECT:
-        return this.skipEventEffect(action.playerId, action.data.effectId);
+        return this.skipEventEffect(action.playerId, actionData.effectId);
 
       case ActionType.PAY_ADDITIONAL_COST:
-        return this.payAdditionalCost(action.playerId, action.data.costId);
+        return this.payAdditionalCost(action.playerId, actionData.costId);
 
       case ActionType.SKIP_ADDITIONAL_COST:
-        return this.skipAdditionalCost(action.playerId, action.data.costId);
+        return this.skipAdditionalCost(action.playerId, actionData.costId);
 
       case ActionType.RESOLVE_COUNTER_EFFECT:
-        return this.resolveCounterEffect(action.playerId, action.data.effectId, action.data.selectedTargets);
+        return this.resolveCounterEffect(action.playerId, actionData.effectId, actionData.selectedTargets);
 
       case ActionType.SKIP_COUNTER_EFFECT:
-        return this.skipCounterEffect(action.playerId, action.data.effectId);
+        return this.skipCounterEffect(action.playerId, actionData.effectId);
 
       case ActionType.RESOLVE_DECK_REVEAL:
-        return this.resolveDeckReveal(action.playerId, action.data.selectedCardIds);
+        return this.resolveDeckReveal(action.playerId, actionData.selectedCardIds);
 
       case ActionType.SKIP_DECK_REVEAL:
         return this.skipDeckReveal(action.playerId);
 
       case ActionType.RESOLVE_HAND_SELECT:
-        return this.resolveHandSelect(action.playerId, action.data.selectedCardIds);
+        return this.resolveHandSelect(action.playerId, actionData.selectedCardIds);
 
       case ActionType.SKIP_HAND_SELECT:
         return this.skipHandSelect(action.playerId);

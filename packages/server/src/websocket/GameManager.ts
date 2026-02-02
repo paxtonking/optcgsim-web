@@ -408,7 +408,9 @@ export class GameManager {
     const firstPlayerId = goFirst ? winnerId :
       (winnerId === pending.player1Id ? pending.player2Id : pending.player1Id);
 
-    this.finalizeGameStart(gameId, firstPlayerId);
+    void this.finalizeGameStart(gameId, firstPlayerId).catch(error => {
+      console.error(`[GameManager] Failed to finalize game start for ${gameId}:`, error);
+    });
   }
 
   /**
@@ -425,7 +427,9 @@ export class GameManager {
     const firstPlayerId = goFirst ? pending.rpsWinnerId :
       (pending.rpsWinnerId === pending.player1Id ? pending.player2Id : pending.player1Id);
 
-    this.finalizeGameStart(gameId, firstPlayerId);
+    void this.finalizeGameStart(gameId, firstPlayerId).catch(error => {
+      console.error(`[GameManager] Failed to finalize timed-out game start for ${gameId}:`, error);
+    });
   }
 
   /**
@@ -437,85 +441,106 @@ export class GameManager {
 
     console.log(`[GameManager] Finalizing game start, first player: ${firstPlayerId}`);
 
-    // Initialize game state manager
-    const stateManager = new GameStateManager(gameId, pending.player1Id, pending.player2Id);
+    try {
+      // Initialize game state manager
+      const stateManager = new GameStateManager(gameId, pending.player1Id, pending.player2Id);
 
-    // Load card definitions into the effect engine
-    const cardDefinitions = cardLoaderService.getAllCards();
-    stateManager.loadCardDefinitions(cardDefinitions);
-    console.log(`[GameManager] Loaded ${cardDefinitions.length} card definitions for game ${gameId}`);
+      // Load card definitions into the effect engine
+      const cardDefinitions = cardLoaderService.getAllCards();
+      stateManager.loadCardDefinitions(cardDefinitions);
+      console.log(`[GameManager] Loaded ${cardDefinitions.length} card definitions for game ${gameId}`);
 
-    // Load player decks
-    const [deck1, deck2] = await Promise.all([
-      this.loadPlayerDeck(pending.player1Id, pending.player1DeckId),
-      this.loadPlayerDeck(pending.player2Id, pending.player2DeckId),
-    ]);
+      // Load player decks
+      const [deck1, deck2] = await Promise.all([
+        this.loadPlayerDeck(pending.player1Id, pending.player1DeckId),
+        this.loadPlayerDeck(pending.player2Id, pending.player2DeckId),
+      ]);
 
-    // Setup players with their decks
-    stateManager.setupPlayer(pending.player1Id, pending.player1Username, deck1);
-    stateManager.setupPlayer(pending.player2Id, pending.player2Username, deck2);
+      // Setup players with their decks
+      stateManager.setupPlayer(pending.player1Id, pending.player1Username, deck1);
+      stateManager.setupPlayer(pending.player2Id, pending.player2Username, deck2);
 
-    // Start the game with determined first player
-    stateManager.startGame(firstPlayerId);
+      // Start the game with determined first player
+      stateManager.startGame(firstPlayerId);
 
-    // Capture initial state for replay
-    const initialState = JSON.parse(JSON.stringify(stateManager.getState()));
+      // Capture initial state for replay
+      const initialState = JSON.parse(JSON.stringify(stateManager.getState()));
 
-    const game: GameRoom = {
-      id: gameId,
-      lobbyId: pending.lobbyId,
-      player1Id: pending.player1Id,
-      player2Id: pending.player2Id,
-      player1SocketId: pending.player1SocketId,
-      player2SocketId: pending.player2SocketId,
-      player1DeckId: pending.player1DeckId,
-      player2DeckId: pending.player2DeckId,
-      player1EloRating: pending.player1EloRating,
-      player2EloRating: pending.player2EloRating,
-      player1GamesPlayed: pending.player1GamesPlayed,
-      player2GamesPlayed: pending.player2GamesPlayed,
-      stateManager,
-      actionLog: [],
-      initialState,
-      ranked: pending.ranked,
-      startedAt: new Date(),
-    };
+      const game: GameRoom = {
+        id: gameId,
+        lobbyId: pending.lobbyId,
+        player1Id: pending.player1Id,
+        player2Id: pending.player2Id,
+        player1SocketId: pending.player1SocketId,
+        player2SocketId: pending.player2SocketId,
+        player1DeckId: pending.player1DeckId,
+        player2DeckId: pending.player2DeckId,
+        player1EloRating: pending.player1EloRating,
+        player2EloRating: pending.player2EloRating,
+        player1GamesPlayed: pending.player1GamesPlayed,
+        player2GamesPlayed: pending.player2GamesPlayed,
+        stateManager,
+        actionLog: [],
+        initialState,
+        ranked: pending.ranked,
+        startedAt: new Date(),
+      };
 
-    // Move from pending to active games
+      // Move from pending to active games
+      this.rpsPendingGames.delete(gameId);
+      this.games.set(gameId, game);
+
+      // Determine loser for banner notification
+      const loserId = pending.rpsWinnerId === pending.player1Id ? pending.player2Id : pending.player1Id;
+      const loserGoesFirst = firstPlayerId === loserId;
+
+      // Broadcast final game start with first player info
+      console.log(`[GameManager] Emitting first:decided to room game:${gameId}`);
+      this.io.to(`game:${gameId}`).emit(WS_EVENTS.FIRST_DECIDED, {
+        gameId,
+        firstPlayerId,
+        loserId,
+        loserGoesFirst,
+      });
+
+      // Send sanitized game state to each player individually (anti-cheat)
+      console.log(`[GameManager] Looking for sockets - P1: ${game.player1SocketId}, P2: ${game.player2SocketId}`);
+      const player1Socket = this.io.sockets.sockets.get(game.player1SocketId);
+      const player2Socket = this.io.sockets.sockets.get(game.player2SocketId);
+      console.log(`[GameManager] Found sockets - P1: ${!!player1Socket}, P2: ${!!player2Socket}`);
+
+      if (player1Socket) {
+        console.log(`[GameManager] Sending game:state to player 1`);
+        player1Socket.emit('game:state', {
+          gameState: stateManager.sanitizeStateForPlayer(game.player1Id),
+        });
+      }
+      if (player2Socket) {
+        console.log(`[GameManager] Sending game:state to player 2`);
+        player2Socket.emit('game:state', {
+          gameState: stateManager.sanitizeStateForPlayer(game.player2Id),
+        });
+      }
+    } catch (error) {
+      console.error(`[GameManager] Failed to finalize game ${gameId}:`, error);
+      this.io.to(`game:${gameId}`).emit('game:error', {
+        error: 'Failed to start game. Please try again.',
+      });
+      this.cleanupPendingGame(gameId, pending);
+      throw error;
+    }
+  }
+
+  private cleanupPendingGame(gameId: string, pending: RPSPendingGame): void {
+    if (pending.rpsTimeoutId) {
+      clearTimeout(pending.rpsTimeoutId);
+    }
+    if (pending.firstChoiceTimeoutId) {
+      clearTimeout(pending.firstChoiceTimeoutId);
+    }
     this.rpsPendingGames.delete(gameId);
-    this.games.set(gameId, game);
-
-    // Determine loser for banner notification
-    const loserId = pending.rpsWinnerId === pending.player1Id ? pending.player2Id : pending.player1Id;
-    const loserGoesFirst = firstPlayerId === loserId;
-
-    // Broadcast final game start with first player info
-    console.log(`[GameManager] Emitting first:decided to room game:${gameId}`);
-    this.io.to(`game:${gameId}`).emit(WS_EVENTS.FIRST_DECIDED, {
-      gameId,
-      firstPlayerId,
-      loserId,
-      loserGoesFirst,
-    });
-
-    // Send sanitized game state to each player individually (anti-cheat)
-    console.log(`[GameManager] Looking for sockets - P1: ${game.player1SocketId}, P2: ${game.player2SocketId}`);
-    const player1Socket = this.io.sockets.sockets.get(game.player1SocketId);
-    const player2Socket = this.io.sockets.sockets.get(game.player2SocketId);
-    console.log(`[GameManager] Found sockets - P1: ${!!player1Socket}, P2: ${!!player2Socket}`);
-
-    if (player1Socket) {
-      console.log(`[GameManager] Sending game:state to player 1`);
-      player1Socket.emit('game:state', {
-        gameState: stateManager.sanitizeStateForPlayer(game.player1Id),
-      });
-    }
-    if (player2Socket) {
-      console.log(`[GameManager] Sending game:state to player 2`);
-      player2Socket.emit('game:state', {
-        gameState: stateManager.sanitizeStateForPlayer(game.player2Id),
-      });
-    }
+    this.playerToGame.delete(pending.player1Id);
+    this.playerToGame.delete(pending.player2Id);
   }
 
   private async loadPlayerDeck(playerId: string, deckId: string) {
@@ -678,7 +703,9 @@ export class GameManager {
 
     // Check for game end
     if (updatedState.phase === GamePhase.GAME_OVER && updatedState.winner) {
-      this.endGame(gameId, updatedState.winner, 'normal');
+      void this.endGame(gameId, updatedState.winner, 'normal').catch(error => {
+        console.error(`[GameManager] Failed to end game ${gameId}:`, error);
+      });
       if (callback) callback({ success: true });
       return;
     }
@@ -730,7 +757,9 @@ export class GameManager {
       ? game.player2Id
       : game.player1Id;
 
-    this.endGame(gameId, winnerId, 'surrender');
+    void this.endGame(gameId, winnerId, 'surrender').catch(error => {
+      console.error(`[GameManager] Failed to end surrendered game ${gameId}:`, error);
+    });
   }
 
   handleReconnect(
@@ -870,7 +899,7 @@ export class GameManager {
         }
 
         // Remove pending game
-        this.rpsPendingGames.delete(gameId);
+        this.cleanupPendingGame(gameId, pending);
         console.log(`[GameManager] Cleaned up RPS pending game ${gameId} due to disconnect`);
         return;
       }
@@ -901,155 +930,157 @@ export class GameManager {
     const game = this.games.get(gameId);
     if (!game) return;
 
-    const state = game.stateManager.getState();
-    const loserId = winnerId === game.player1Id ? game.player2Id : game.player1Id;
+    try {
+      const state = game.stateManager.getState();
+      const loserId = winnerId === game.player1Id ? game.player2Id : game.player1Id;
 
-    // Calculate ELO changes for ranked games
-    let eloResult: { player1NewRating: number; player2NewRating: number; player1Change: number; player2Change: number } | null = null;
+      // Calculate ELO changes for ranked games
+      let eloResult: { player1NewRating: number; player2NewRating: number; player1Change: number; player2Change: number } | null = null;
 
-    if (game.ranked) {
-      const winner = winnerId === game.player1Id ? 1 : 2;
-      eloResult = calculateEloChange(
-        game.player1EloRating,
-        game.player2EloRating,
-        game.player1GamesPlayed,
-        game.player2GamesPlayed,
-        winner as 1 | 2
+      if (game.ranked) {
+        const winner = winnerId === game.player1Id ? 1 : 2;
+        eloResult = calculateEloChange(
+          game.player1EloRating,
+          game.player2EloRating,
+          game.player1GamesPlayed,
+          game.player2GamesPlayed,
+          winner as 1 | 2
+        );
+      }
+
+      // Send sanitized final state to each player individually (anti-cheat)
+      const player1Socket = this.io.sockets.sockets.get(game.player1SocketId);
+      const player2Socket = this.io.sockets.sockets.get(game.player2SocketId);
+
+      const eloChanges = game.ranked && eloResult ? {
+        [game.player1Id]: {
+          oldRating: game.player1EloRating,
+          newRating: eloResult.player1NewRating,
+          change: eloResult.player1Change,
+          rankInfo: getPlayerRankInfo(eloResult.player1NewRating, game.player1GamesPlayed + 1),
+        },
+        [game.player2Id]: {
+          oldRating: game.player2EloRating,
+          newRating: eloResult.player2NewRating,
+          change: eloResult.player2Change,
+          rankInfo: getPlayerRankInfo(eloResult.player2NewRating, game.player2GamesPlayed + 1),
+        },
+      } : undefined;
+
+      if (player1Socket) {
+        player1Socket.emit('game:ended', {
+          winner: winnerId,
+          reason,
+          gameState: game.stateManager.sanitizeStateForPlayer(game.player1Id),
+          eloChanges,
+        });
+      }
+      if (player2Socket) {
+        player2Socket.emit('game:ended', {
+          winner: winnerId,
+          reason,
+          gameState: game.stateManager.sanitizeStateForPlayer(game.player2Id),
+          eloChanges,
+        });
+      }
+
+      // Save match to database
+      const duration = Math.floor(
+        (Date.now() - game.startedAt.getTime()) / 1000
       );
-    }
 
-    // Send sanitized final state to each player individually (anti-cheat)
-    const player1Socket = this.io.sockets.sockets.get(game.player1SocketId);
-    const player2Socket = this.io.sockets.sockets.get(game.player2SocketId);
-
-    const eloChanges = game.ranked && eloResult ? {
-      [game.player1Id]: {
-        oldRating: game.player1EloRating,
-        newRating: eloResult.player1NewRating,
-        change: eloResult.player1Change,
-        rankInfo: getPlayerRankInfo(eloResult.player1NewRating, game.player1GamesPlayed + 1),
-      },
-      [game.player2Id]: {
-        oldRating: game.player2EloRating,
-        newRating: eloResult.player2NewRating,
-        change: eloResult.player2Change,
-        rankInfo: getPlayerRankInfo(eloResult.player2NewRating, game.player2GamesPlayed + 1),
-      },
-    } : undefined;
-
-    if (player1Socket) {
-      player1Socket.emit('game:ended', {
-        winner: winnerId,
-        reason,
-        gameState: game.stateManager.sanitizeStateForPlayer(game.player1Id),
-        eloChanges,
-      });
-    }
-    if (player2Socket) {
-      player2Socket.emit('game:ended', {
-        winner: winnerId,
-        reason,
-        gameState: game.stateManager.sanitizeStateForPlayer(game.player2Id),
-        eloChanges,
-      });
-    }
-
-    // Save match to database
-    const duration = Math.floor(
-      (Date.now() - game.startedAt.getTime()) / 1000
-    );
-
-    await prisma.match.create({
-      data: {
-        id: gameId,
-        player1Id: game.player1Id,
-        player2Id: game.player2Id,
-        winnerId,
-        gameLog: [],  // Empty array for security (prevents replay cheating)
-        // initialState omitted (null) for security
-        player1DeckId: game.player1DeckId,
-        player2DeckId: game.player2DeckId,
-        ranked: game.ranked,
-        duration,
-        player1EloBefore: game.ranked ? game.player1EloRating : null,
-        player2EloBefore: game.ranked ? game.player2EloRating : null,
-        player1EloChange: eloResult?.player1Change ?? null,
-        player2EloChange: eloResult?.player2Change ?? null,
-      },
-    });
-
-    // Update player stats and ELO ratings
-    await Promise.all([
-      prisma.user.update({
-        where: { id: winnerId },
+      await prisma.match.create({
         data: {
-          gamesPlayed: { increment: 1 },
-          gamesWon: { increment: 1 },
-          ...(game.ranked && eloResult ? {
-            eloRating: winnerId === game.player1Id
-              ? eloResult.player1NewRating
-              : eloResult.player2NewRating,
-          } : {}),
+          id: gameId,
+          player1Id: game.player1Id,
+          player2Id: game.player2Id,
+          winnerId,
+          gameLog: [],  // Empty array for security (prevents replay cheating)
+          // initialState omitted (null) for security
+          player1DeckId: game.player1DeckId,
+          player2DeckId: game.player2DeckId,
+          ranked: game.ranked,
+          duration,
+          player1EloBefore: game.ranked ? game.player1EloRating : null,
+          player2EloBefore: game.ranked ? game.player2EloRating : null,
+          player1EloChange: eloResult?.player1Change ?? null,
+          player2EloChange: eloResult?.player2Change ?? null,
         },
-      }),
-      prisma.user.update({
-        where: { id: loserId },
-        data: {
-          gamesPlayed: { increment: 1 },
-          ...(game.ranked && eloResult ? {
-            eloRating: loserId === game.player1Id
-              ? eloResult.player1NewRating
-              : eloResult.player2NewRating,
-          } : {}),
-        },
-      }),
-    ]);
+      });
 
-    // Update seasonal leaderboard for ranked games
-    if (game.ranked && eloResult) {
-      const season = getCurrentSeason();
-
+      // Update player stats and ELO ratings
       await Promise.all([
-        prisma.leaderboard.upsert({
-          where: { season_userId: { season, userId: game.player1Id } },
-          create: {
-            season,
-            userId: game.player1Id,
-            username: state.players[game.player1Id]?.username || 'Unknown',
-            eloRating: eloResult.player1NewRating,
-            rank: 0, // Will be recalculated
-            gamesWon: winnerId === game.player1Id ? 1 : 0,
-            gamesLost: winnerId === game.player1Id ? 0 : 1,
-          },
-          update: {
-            eloRating: eloResult.player1NewRating,
-            gamesWon: winnerId === game.player1Id ? { increment: 1 } : undefined,
-            gamesLost: winnerId !== game.player1Id ? { increment: 1 } : undefined,
+        prisma.user.update({
+          where: { id: winnerId },
+          data: {
+            gamesPlayed: { increment: 1 },
+            gamesWon: { increment: 1 },
+            ...(game.ranked && eloResult ? {
+              eloRating: winnerId === game.player1Id
+                ? eloResult.player1NewRating
+                : eloResult.player2NewRating,
+            } : {}),
           },
         }),
-        prisma.leaderboard.upsert({
-          where: { season_userId: { season, userId: game.player2Id } },
-          create: {
-            season,
-            userId: game.player2Id,
-            username: state.players[game.player2Id]?.username || 'Unknown',
-            eloRating: eloResult.player2NewRating,
-            rank: 0, // Will be recalculated
-            gamesWon: winnerId === game.player2Id ? 1 : 0,
-            gamesLost: winnerId === game.player2Id ? 0 : 1,
-          },
-          update: {
-            eloRating: eloResult.player2NewRating,
-            gamesWon: winnerId === game.player2Id ? { increment: 1 } : undefined,
-            gamesLost: winnerId !== game.player2Id ? { increment: 1 } : undefined,
+        prisma.user.update({
+          where: { id: loserId },
+          data: {
+            gamesPlayed: { increment: 1 },
+            ...(game.ranked && eloResult ? {
+              eloRating: loserId === game.player1Id
+                ? eloResult.player1NewRating
+                : eloResult.player2NewRating,
+            } : {}),
           },
         }),
       ]);
-    }
 
-    // Clean up
-    this.playerToGame.delete(game.player1Id);
-    this.playerToGame.delete(game.player2Id);
-    this.games.delete(gameId);
+      // Update seasonal leaderboard for ranked games
+      if (game.ranked && eloResult) {
+        const season = getCurrentSeason();
+
+        await Promise.all([
+          prisma.leaderboard.upsert({
+            where: { season_userId: { season, userId: game.player1Id } },
+            create: {
+              season,
+              userId: game.player1Id,
+              username: state.players[game.player1Id]?.username || 'Unknown',
+              eloRating: eloResult.player1NewRating,
+              rank: 0, // Will be recalculated
+              gamesWon: winnerId === game.player1Id ? 1 : 0,
+              gamesLost: winnerId === game.player1Id ? 0 : 1,
+            },
+            update: {
+              eloRating: eloResult.player1NewRating,
+              gamesWon: winnerId === game.player1Id ? { increment: 1 } : undefined,
+              gamesLost: winnerId !== game.player1Id ? { increment: 1 } : undefined,
+            },
+          }),
+          prisma.leaderboard.upsert({
+            where: { season_userId: { season, userId: game.player2Id } },
+            create: {
+              season,
+              userId: game.player2Id,
+              username: state.players[game.player2Id]?.username || 'Unknown',
+              eloRating: eloResult.player2NewRating,
+              rank: 0, // Will be recalculated
+              gamesWon: winnerId === game.player2Id ? 1 : 0,
+              gamesLost: winnerId === game.player2Id ? 0 : 1,
+            },
+            update: {
+              eloRating: eloResult.player2NewRating,
+              gamesWon: winnerId === game.player2Id ? { increment: 1 } : undefined,
+              gamesLost: winnerId !== game.player2Id ? { increment: 1 } : undefined,
+            },
+          }),
+        ]);
+      }
+    } finally {
+      // Always clean up in-memory state, even if persistence fails.
+      this.playerToGame.delete(game.player1Id);
+      this.playerToGame.delete(game.player2Id);
+      this.games.delete(gameId);
+    }
   }
 }

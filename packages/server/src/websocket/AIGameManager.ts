@@ -143,14 +143,17 @@ export class AIGameManager {
       return;
     }
 
+    let gameId: string | undefined;
+
     try {
       console.log('[AIGameManager] Starting AI game for user:', socket.userId, 'with deck:', deckId, 'difficulty:', difficulty);
 
       // Ensure cards are loaded
       await cardLoaderService.loadAllCards();
 
-      const gameId = uuidv4();
-      console.log('[AIGameManager] Created gameId:', gameId);
+      gameId = uuidv4();
+      const createdGameId = gameId;
+      console.log('[AIGameManager] Created gameId:', createdGameId);
       const aiPlayer = createAIPlayer(difficulty);
 
       // Select random AI deck
@@ -159,7 +162,7 @@ export class AIGameManager {
 
       // Create pending game for first choice
       const pending: PendingAIGame = {
-        gameId,
+        gameId: createdGameId,
         humanPlayerId: socket.userId,
         humanSocketId: socket.id,
         humanDeckId: deckId,
@@ -169,17 +172,17 @@ export class AIGameManager {
         difficulty,
       };
 
-      this.pendingGames.set(gameId, pending);
-      this.playerToGame.set(socket.userId, gameId);
+      this.pendingGames.set(createdGameId, pending);
+      this.playerToGame.set(socket.userId, createdGameId);
 
       // Join game room
-      socket.join(`game:${gameId}`);
+      socket.join(`game:${createdGameId}`);
 
       console.log('[AIGameManager] Emitting first choice phase for AI game');
 
       // Send first choice phase to player (they choose first/second directly, no RPS)
       socket.emit(WS_EVENTS.LOBBY_START, {
-        gameId,
+        gameId: createdGameId,
         phase: GamePhase.FIRST_CHOICE,
         isAIGame: true,
         aiDifficulty: difficulty,
@@ -187,15 +190,19 @@ export class AIGameManager {
         winnerId: socket.userId,
       });
 
-      callback?.({ success: true, gameId });
+      callback?.({ success: true, gameId: createdGameId });
 
       // Start first choice timeout
       pending.firstChoiceTimeoutId = setTimeout(() => {
-        this.handleFirstChoiceTimeout(gameId);
+        this.handleFirstChoiceTimeout(createdGameId);
       }, FIRST_CHOICE_TIMEOUT);
 
     } catch (error) {
       console.error('[AIGameManager] Error starting AI game:', error);
+      if (gameId) {
+        this.pendingGames.delete(gameId);
+      }
+      this.playerToGame.delete(socket.userId);
       callback?.({ success: false, error: 'Failed to start game' });
       socket.emit('error', { message: 'Failed to start AI game' });
     }
@@ -231,7 +238,9 @@ export class AIGameManager {
     // Determine who goes first
     const firstPlayerId = goFirst ? pending.humanPlayerId : pending.aiPlayer.getPlayerId();
 
-    this.finalizeAIGameStart(gameId, firstPlayerId);
+    void this.finalizeAIGameStart(gameId, firstPlayerId).catch(error => {
+      console.error(`[AIGameManager] Failed to finalize game start for ${gameId}:`, error);
+    });
   }
 
   /**
@@ -247,7 +256,9 @@ export class AIGameManager {
     const goFirst = Math.random() < 0.5;
     const firstPlayerId = goFirst ? pending.humanPlayerId : pending.aiPlayer.getPlayerId();
 
-    this.finalizeAIGameStart(gameId, firstPlayerId);
+    void this.finalizeAIGameStart(gameId, firstPlayerId).catch(error => {
+      console.error(`[AIGameManager] Failed to finalize timed-out game start for ${gameId}:`, error);
+    });
   }
 
   /**
@@ -325,20 +336,20 @@ export class AIGameManager {
       });
     }
 
-    // Check if there's a pre-game setup phase to handle first
-    const currentPhase = stateManager.getState().phase;
-    if (currentPhase === GamePhase.PRE_GAME_SETUP) {
-      console.log('[AIGameManager] Processing AI pre-game setup...');
-      setTimeout(() => {
-        this.processAIPreGameSetup(gameId);
-      }, game.aiThinkDelay);
-    } else {
-      // Process AI mulligan decision after a delay
-      console.log('[AIGameManager] Processing AI mulligan decision...');
-      setTimeout(() => {
-        this.processAIMulliganDecision(gameId);
-      }, game.aiThinkDelay);
-    }
+      // Check if there's a pre-game setup phase to handle first
+      const currentPhase = stateManager.getState().phase;
+      if (currentPhase === GamePhase.PRE_GAME_SETUP) {
+        console.log('[AIGameManager] Processing AI pre-game setup...');
+        this.scheduleTrackedTimeout(gameId, () => {
+          this.processAIPreGameSetup(gameId);
+        }, game.aiThinkDelay);
+      } else {
+        // Process AI mulligan decision after a delay
+        console.log('[AIGameManager] Processing AI mulligan decision...');
+        this.scheduleTrackedTimeout(gameId, () => {
+          this.processAIMulliganDecision(gameId);
+        }, game.aiThinkDelay);
+      }
     } catch (error) {
       console.error('[AIGameManager] Error in finalizeAIGameStart:', error);
       // Notify human player of error
@@ -348,6 +359,8 @@ export class AIGameManager {
       }
       // Clean up
       this.pendingGames.delete(gameId);
+      this.playerToGame.delete(pending.humanPlayerId);
+      throw error;
     }
   }
 
@@ -443,6 +456,11 @@ export class AIGameManager {
     action: GameAction,
     callback?: (response: { success: boolean; error?: string }) => void
   ) {
+    if (!action || !action.type) {
+      callback?.({ success: false, error: 'Invalid action: missing type' });
+      return;
+    }
+
     const gameId = this.playerToGame.get(socket.userId!);
     if (!gameId) {
       callback?.({ success: false, error: 'Not in a game' });
@@ -523,7 +541,9 @@ export class AIGameManager {
 
     // Check for game end
     if (updatedState.phase === GamePhase.GAME_OVER && updatedState.winner) {
-      this.endGame(gameId, updatedState.winner, 'normal');
+      void this.endGame(gameId, updatedState.winner, 'normal').catch(error => {
+        console.error(`[AIGameManager] Failed to end game ${gameId}:`, error);
+      });
       callback?.({ success: true });
       return;
     }
@@ -618,13 +638,15 @@ export class AIGameManager {
 
       // Check for game end
       if (updatedState.phase === GamePhase.GAME_OVER && updatedState.winner) {
-        this.endGame(gameId, updatedState.winner, 'normal');
+        void this.endGame(gameId, updatedState.winner, 'normal').catch(error => {
+          console.error(`[AIGameManager] Failed to end defensive game ${gameId}:`, error);
+        });
         return;
       }
 
       // If still in a defensive phase (e.g., moved from counter to blocker), continue
       if (this.needsAIDefensiveAction(updatedState, game)) {
-        setTimeout(() => {
+        this.scheduleTrackedTimeout(gameId, () => {
           this.processAIDefensiveAction(gameId);
         }, game.aiThinkDelay);
       }
@@ -682,7 +704,7 @@ export class AIGameManager {
       // If pre-game setup is complete, proceed to mulligan
       if (updatedState.phase === GamePhase.START_MULLIGAN) {
         console.log('[AIGameManager] Pre-game setup complete, moving to mulligan');
-        setTimeout(() => {
+        this.scheduleTrackedTimeout(gameId, () => {
           this.processAIMulliganDecision(gameId);
         }, game.aiThinkDelay);
       } else if (updatedState.phase === GamePhase.PRE_GAME_SETUP) {
@@ -756,7 +778,7 @@ export class AIGameManager {
         console.log('[AIGameManager] Mulligan phase complete, phase is now:', updatedState.phase);
         // If it's AI's turn, start processing AI actions
         if (updatedState.activePlayerId === game.aiPlayer.getPlayerId()) {
-          setTimeout(() => {
+          this.scheduleTrackedTimeout(gameId, () => {
             this.processAITurn(gameId);
           }, game.aiThinkDelay);
         }
@@ -813,14 +835,16 @@ export class AIGameManager {
 
       // Check for game end
       if (updatedState.phase === GamePhase.GAME_OVER && updatedState.winner) {
-        this.endGame(gameId, updatedState.winner, 'normal');
+        void this.endGame(gameId, updatedState.winner, 'normal').catch(error => {
+          console.error(`[AIGameManager] Failed to end AI-turn game ${gameId}:`, error);
+        });
         return;
       }
 
       // Continue AI turn if still AI's turn
       if (updatedState.activePlayerId === game.aiPlayer.getPlayerId()) {
         // Delay next action
-        setTimeout(() => {
+        this.scheduleTrackedTimeout(gameId, () => {
           this.processAITurn(gameId);
         }, game.aiThinkDelay);
       }
@@ -838,7 +862,9 @@ export class AIGameManager {
     if (!game) return;
 
     // AI wins by default
-    this.endGame(gameId, game.aiPlayer.getPlayerId(), 'surrender');
+    void this.endGame(gameId, game.aiPlayer.getPlayerId(), 'surrender').catch(error => {
+      console.error(`[AIGameManager] Failed to end surrendered AI game ${gameId}:`, error);
+    });
   }
 
   /**
@@ -849,21 +875,19 @@ export class AIGameManager {
     const game = this.games.get(gameId);
     if (!game) return;
 
-    const state = game.stateManager.getState();
-
-    // Notify player
-    const humanSocket = this.io.sockets.sockets.get(game.humanSocketId);
-    if (humanSocket) {
-      humanSocket.emit('game:ended', {
-        winner: winnerId,
-        reason,
-        gameState: state,
-        isAIGame: true,
-      });
-    }
-
-    // Update player stats (skip match record - AI player ID isn't a real user)
     try {
+      // Notify player
+      const humanSocket = this.io.sockets.sockets.get(game.humanSocketId);
+      if (humanSocket) {
+        humanSocket.emit('game:ended', {
+          winner: winnerId,
+          reason,
+          gameState: game.stateManager.sanitizeStateForPlayer(game.humanPlayerId),
+          isAIGame: true,
+        });
+      }
+
+      // Update player stats (skip match record - AI player ID isn't a real user)
       if (winnerId === game.humanPlayerId) {
         await prisma.user.update({
           where: { id: game.humanPlayerId },
@@ -882,11 +906,16 @@ export class AIGameManager {
       }
     } catch (error) {
       console.error('[AIGameManager] Error updating player stats:', error);
-    }
+    } finally {
+      // Clear any queued AI actions and remove game references even if persistence fails.
+      if (game.pendingTimeouts) {
+        game.pendingTimeouts.forEach(timeout => clearTimeout(timeout));
+        game.pendingTimeouts = [];
+      }
 
-    // Clean up
-    this.playerToGame.delete(game.humanPlayerId);
-    this.games.delete(gameId);
+      this.playerToGame.delete(game.humanPlayerId);
+      this.games.delete(gameId);
+    }
   }
 
   /**
@@ -904,6 +933,7 @@ export class AIGameManager {
           clearTimeout(pending.firstChoiceTimeoutId);
         }
         this.pendingGames.delete(gameId);
+        this.playerToGame.delete(userId);
         console.log(`[AIGameManager] Cleaned up pending game ${gameId} due to disconnect`);
         return;
       }
@@ -922,7 +952,9 @@ export class AIGameManager {
       }
 
       // End game - AI wins by forfeit
-      this.endGame(gameId, game.aiPlayer.getPlayerId(), 'disconnect');
+      void this.endGame(gameId, game.aiPlayer.getPlayerId(), 'disconnect').catch(error => {
+        console.error(`[AIGameManager] Failed to end disconnected AI game ${gameId}:`, error);
+      });
     }
   }
 
