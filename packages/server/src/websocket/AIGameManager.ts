@@ -13,6 +13,7 @@ import {
   GameAction,
   GameStateManager,
   GamePhase,
+  ActionType,
 } from '@optcgsim/shared';
 import { prisma } from '../services/prisma.js';
 import { cardLoaderService } from '../services/CardLoaderService.js';
@@ -459,18 +460,44 @@ export class AIGameManager {
 
     const state = game.stateManager.getState();
 
-    // Validate it's the player's turn (not AI's)
-    if (state.activePlayerId !== socket.userId) {
-      // Allow defensive actions during opponent's turn
-      // Allow mulligan actions during mulligan phase (both players decide)
-      // Allow pre-game actions during pre-game setup (both players may have start-of-game abilities)
-      const isMulliganAction = state.phase === GamePhase.START_MULLIGAN;
-      const isPreGameAction = state.phase === GamePhase.PRE_GAME_SETUP;
-      const isDefensivePhase = state.phase === GamePhase.COUNTER_STEP || state.phase === GamePhase.BLOCKER_STEP;
+    // Phases where BOTH players can act simultaneously
+    const simultaneousPhases = [
+      GamePhase.PRE_GAME_SETUP,  // Both players select start-of-game cards
+      GamePhase.START_MULLIGAN,  // Both players decide on mulligan
+    ];
 
-      if (!isMulliganAction && !isPreGameAction && !isDefensivePhase) {
-        callback?.({ success: false, error: 'Not your turn' });
-        return;
+    // Phases where the NON-ACTIVE (defending) player primarily acts
+    const defensivePhases = [
+      GamePhase.COUNTER_STEP,    // Defender uses counter cards
+      GamePhase.BLOCKER_STEP,    // Defender declares blockers
+      GamePhase.TRIGGER_STEP,    // Defender resolves life triggers
+    ];
+
+    // Check if action is allowed for this player in this phase
+    const isSimultaneousPhase = simultaneousPhases.includes(state.phase as GamePhase);
+    const isDefensivePhase = defensivePhases.includes(state.phase as GamePhase);
+
+    if (!isSimultaneousPhase) {
+      if (isDefensivePhase) {
+        // During defensive phases, the NON-active player (defender) should act
+        if (state.activePlayerId === socket.userId) {
+          // Active player (attacker) can only pass or resolve combat during defensive phases
+          const allowedActiveActions = [
+            ActionType.RESOLVE_COMBAT,
+            ActionType.PASS_PRIORITY,
+          ];
+          if (!allowedActiveActions.includes(action.type as ActionType)) {
+            callback?.({ success: false, error: 'Waiting for opponent' });
+            return;
+          }
+        }
+        // Non-active player (defender) can perform defensive actions - validation done in GameStateManager
+      } else {
+        // Normal phases - only active player can act
+        if (state.activePlayerId !== socket.userId) {
+          callback?.({ success: false, error: 'Not your turn' });
+          return;
+        }
       }
     }
 

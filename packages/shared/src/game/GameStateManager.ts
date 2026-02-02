@@ -471,6 +471,16 @@ export class GameStateManager {
   }
 
   public playCard(playerId: string, cardId: string, targetZone: CardZone = CardZone.FIELD): boolean {
+    // Validate phase - can only play cards during MAIN_PHASE
+    if (this.state.phase !== GamePhase.MAIN_PHASE) {
+      return false;
+    }
+
+    // Validate turn - can only play cards on your turn
+    if (this.state.activePlayerId !== playerId) {
+      return false;
+    }
+
     const player = this.state.players[playerId];
     if (!player) return false;
 
@@ -1457,6 +1467,16 @@ export class GameStateManager {
   }
 
   public attachDon(playerId: string, donId: string, targetId: string): boolean {
+    // Validate turn - can only attach DON on your turn
+    if (this.state.activePlayerId !== playerId) {
+      return false;
+    }
+
+    // Validate phase - can only attach DON during MAIN_PHASE
+    if (this.state.phase !== GamePhase.MAIN_PHASE) {
+      return false;
+    }
+
     const player = this.state.players[playerId];
     if (!player) return false;
 
@@ -1482,11 +1502,25 @@ export class GameStateManager {
   // Combat methods
   public declareAttack(attackerId: string, targetId: string, targetType: 'leader' | 'character'): boolean {
     console.log('[DEBUG ATTACK GSM] declareAttack called:', { attackerId, targetId, targetType });
+
+    // Validate phase - can only attack during MAIN_PHASE
+    if (this.state.phase !== GamePhase.MAIN_PHASE) {
+      console.log('[DEBUG ATTACK GSM] Not in MAIN_PHASE');
+      return false;
+    }
+
     const attacker = this.findCard(attackerId);
     if (!attacker) {
       console.log('[DEBUG ATTACK GSM] Attacker not found');
       return false;
     }
+
+    // Validate that attacker belongs to the active player
+    if (attacker.owner !== this.state.activePlayerId) {
+      console.log('[DEBUG ATTACK GSM] Attacker does not belong to active player');
+      return false;
+    }
+
     if (attacker.state !== CardState.ACTIVE) {
       console.log('[DEBUG ATTACK GSM] Attacker not ACTIVE:', attacker.state);
       return false;
@@ -1891,19 +1925,32 @@ export class GameStateManager {
     return true;
   }
 
-  public declareBlocker(blockerId: string): boolean {
+  public declareBlocker(playerId: string, blockerId: string): boolean {
     if (!this.state.currentCombat) return false;
     if (this.state.phase !== GamePhase.BLOCKER_STEP) return false;
 
+    // Validate that this player is the DEFENDER (not the attacker)
+    const attacker = this.findCard(this.state.currentCombat.attackerId);
+    if (!attacker) return false;
+
+    // The attacker's owner cannot declare blockers - only the defender can
+    if (attacker.owner === playerId) {
+      return false;
+    }
+
     const blocker = this.findCard(blockerId);
     if (!blocker || blocker.state !== CardState.ACTIVE) return false;
+
+    // Validate that the blocker belongs to the player declaring the block
+    if (blocker.owner !== playerId) {
+      return false;
+    }
 
     // Check if card can block using effect engine
     if (!this.effectEngine.canBlock(blocker)) return false;
 
     // Check if attacker is unblockable
-    const attacker = this.findCard(this.state.currentCombat.attackerId);
-    if (attacker && this.effectEngine.isUnblockable(attacker)) return false;
+    if (this.effectEngine.isUnblockable(attacker)) return false;
 
     blocker.state = CardState.RESTED;
     this.state.currentCombat.isBlocked = true;
@@ -2462,6 +2509,11 @@ export class GameStateManager {
   }
 
   public endTurn(playerId: string): void {
+    // Only the active player can end their turn
+    if (this.state.activePlayerId !== playerId) {
+      return;
+    }
+
     const player = this.state.players[playerId];
     if (!player) return;
 
@@ -2756,7 +2808,7 @@ export class GameStateManager {
         return this.passCounter(action.playerId);
 
       case ActionType.SELECT_BLOCKER:
-        return this.declareBlocker(action.data.blockerId);
+        return this.declareBlocker(action.playerId, action.data.blockerId);
 
       case ActionType.PASS_PRIORITY:
         // Handle pass blocker during blocker step
