@@ -572,8 +572,17 @@ export class GameManager {
 
     const state = game.stateManager.getState();
 
-    // Validate it's the player's turn
-    if (state.activePlayerId !== socket.userId) {
+    // Phases where both players can act (not just the active player)
+    const simultaneousPhases = [
+      GamePhase.START_MULLIGAN,  // Both players decide on mulligan
+      GamePhase.COUNTER_STEP,    // Defender uses counter cards
+      GamePhase.BLOCKER_STEP,    // Defender declares blockers
+      GamePhase.TRIGGER_STEP,    // Defender resolves life triggers
+    ];
+
+    // Validate it's the player's turn (skip for simultaneous phases)
+    const isSimultaneousPhase = simultaneousPhases.includes(state.phase as GamePhase);
+    if (!isSimultaneousPhase && state.activePlayerId !== socket.userId) {
       if (callback) callback({ success: false, error: 'Not your turn' });
       return;
     }
