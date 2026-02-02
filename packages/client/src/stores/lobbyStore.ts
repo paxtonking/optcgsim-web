@@ -69,7 +69,7 @@ interface LobbyStore {
   // Internal
   handleLobbyUpdate: (lobby: Lobby) => void;
   handleLobbyStart: (gameId: string) => void;
-  handleQueueMatched: (data: { gameId: string; opponent: string }) => void;
+  handleQueueMatched: (data: { gameId: string; opponent: { id: string; username: string; eloRating: number } }) => void;
   reset: () => void;
 }
 
@@ -203,6 +203,12 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
 
     socketService.emit('queue:join', {
       deckId: serverDeckId,
+    }, (response: { success: boolean; position?: number; error?: string }) => {
+      if (!response.success) {
+        set({ queueError: response.error || 'Failed to join queue', queueStatus: 'idle' });
+        return;
+      }
+      console.log(`[LobbyStore] Joined queue at position ${response.position}`);
     });
 
     // Start timer
@@ -262,6 +268,7 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
   },
 
   handleQueueMatched: (data) => {
+    console.log('[LobbyStore] Queue matched:', data);
     set({ queueStatus: 'matched', gameId: data.gameId });
     // Navigation will be handled by the component watching gameId
   },
@@ -309,7 +316,8 @@ export function setupLobbySocketListeners() {
     }
   });
 
-  socketService.on<{ gameId: string; opponent: string }>('queue:matched', (data: { gameId: string; opponent: string }) => {
+  socketService.on<{ gameId: string; opponent: { id: string; username: string; eloRating: number } }>('queue:matched', (data) => {
+    console.log('[LobbyStore] Received queue:matched event:', data);
     store.handleQueueMatched(data);
   });
 

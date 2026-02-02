@@ -78,6 +78,8 @@ export class QueueManager {
 
       this.queue.set(socket.userId!, entry);
 
+      console.log(`[QueueManager] Player ${socket.username} (ELO: ${user.eloRating}) joined queue. Queue size: ${this.queue.size}`);
+
       // Send queue position
       if (callback) {
         callback({
@@ -92,16 +94,21 @@ export class QueueManager {
         estimatedWait: this.estimateWaitTime(),
       });
     } catch (error) {
-      console.error('Error joining queue:', error);
+      console.error('[QueueManager] Error joining queue:', error);
       if (callback) callback({ success: false, error: 'Failed to join queue' });
     }
   }
 
   leaveQueue(socket: AuthenticatedSocket) {
+    const wasInQueue = this.queue.has(socket.userId!);
     this.queue.delete(socket.userId!);
+    if (wasInQueue) {
+      console.log(`[QueueManager] Player ${socket.username} left queue. Queue size: ${this.queue.size}`);
+    }
   }
 
   private startMatchmaking() {
+    console.log('[QueueManager] Matchmaking service started');
     // Run matchmaking every 3 seconds
     this.matchmakingInterval = setInterval(() => {
       this.findMatches();
@@ -111,6 +118,7 @@ export class QueueManager {
   private findMatches() {
     if (this.queue.size < 2) return;
 
+    console.log(`[QueueManager] Finding matches... Queue size: ${this.queue.size}`);
     const entries = Array.from(this.queue.values());
     const matched = new Set<string>();
 
@@ -147,6 +155,7 @@ export class QueueManager {
       }
 
       if (bestMatch) {
+        console.log(`[QueueManager] Match found: ${player1.username} (${player1.eloRating}) vs ${bestMatch.username} (${bestMatch.eloRating})`);
         matched.add(player1.id);
         matched.add(bestMatch.id);
         this.createMatch(player1, bestMatch);
@@ -154,7 +163,9 @@ export class QueueManager {
     }
   }
 
-  private createMatch(player1: QueueEntry, player2: QueueEntry) {
+  private async createMatch(player1: QueueEntry, player2: QueueEntry) {
+    console.log(`[QueueManager] Creating match: ${player1.username} vs ${player2.username}`);
+
     // Remove from queue
     this.queue.delete(player1.id);
     this.queue.delete(player2.id);
@@ -165,19 +176,23 @@ export class QueueManager {
 
     if (!socket1 || !socket2) {
       // One player disconnected, put the other back
-      if (socket1) this.queue.set(player1.id, player1);
-      if (socket2) this.queue.set(player2.id, player2);
+      console.log(`[QueueManager] Socket not found - P1: ${!!socket1}, P2: ${!!socket2}`);
+      if (socket1) {
+        this.queue.set(player1.id, player1);
+        socket1.emit(WS_EVENTS.QUEUE_STATUS, {
+          position: this.queue.size,
+          message: 'Opponent disconnected, searching again...'
+        });
+      }
+      if (socket2) {
+        this.queue.set(player2.id, player2);
+        socket2.emit(WS_EVENTS.QUEUE_STATUS, {
+          position: this.queue.size,
+          message: 'Opponent disconnected, searching again...'
+        });
+      }
       return;
     }
-
-    // Notify players they've been matched
-    const matchData = {
-      player1: { id: player1.id, username: player1.username, eloRating: player1.eloRating },
-      player2: { id: player2.id, username: player2.username, eloRating: player2.eloRating },
-    };
-
-    socket1.emit(WS_EVENTS.QUEUE_MATCHED, matchData);
-    socket2.emit(WS_EVENTS.QUEUE_MATCHED, matchData);
 
     // Create a lobby-like structure for the game manager
     const lobby = {
@@ -206,8 +221,42 @@ export class QueueManager {
       hostId: player1.id,
     };
 
-    // Start the game
-    this.gameManager.startGame(lobby, socket1 as any);
+    // Start the game first to get gameId
+    const gameId = await this.gameManager.startGame(lobby, socket1 as any);
+
+    if (!gameId) {
+      console.error('[QueueManager] Failed to start game - no gameId returned');
+      // Re-queue players if game failed to start
+      this.queue.set(player1.id, player1);
+      this.queue.set(player2.id, player2);
+      socket1.emit('error', { message: 'Failed to start match. Please try again.' });
+      socket2.emit('error', { message: 'Failed to start match. Please try again.' });
+      return;
+    }
+
+    console.log(`[QueueManager] Game started with ID: ${gameId}`);
+
+    // Notify players they've been matched with correct payload format
+    // Each player gets the opponent's info
+    socket1.emit(WS_EVENTS.QUEUE_MATCHED, {
+      gameId,
+      opponent: {
+        id: player2.id,
+        username: player2.username,
+        eloRating: player2.eloRating,
+      },
+    });
+
+    socket2.emit(WS_EVENTS.QUEUE_MATCHED, {
+      gameId,
+      opponent: {
+        id: player1.id,
+        username: player1.username,
+        eloRating: player1.eloRating,
+      },
+    });
+
+    console.log(`[QueueManager] Match created successfully: ${gameId}`);
   }
 
   private estimateWaitTime(): number {

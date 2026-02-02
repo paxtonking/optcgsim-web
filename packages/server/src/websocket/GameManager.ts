@@ -104,9 +104,9 @@ export class GameManager {
     }
   }
 
-  async startGame(lobby: any, socket: AuthenticatedSocket) {
-    if (lobby.players.length !== 2) return;
-    if (lobby.hostId !== socket.userId) return;
+  async startGame(lobby: any, socket: AuthenticatedSocket): Promise<string | undefined> {
+    if (lobby.players.length !== 2) return undefined;
+    if (lobby.hostId !== socket.userId) return undefined;
 
     // Ensure cards are loaded
     if (!this.cardsLoaded) {
@@ -187,6 +187,8 @@ export class GameManager {
     rpsPending.rpsTimeoutId = setTimeout(() => {
       this.handleRPSTimeout(gameId);
     }, RPS_TIMEOUT);
+
+    return gameId;
   }
 
   /**
