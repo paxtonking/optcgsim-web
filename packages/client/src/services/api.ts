@@ -4,6 +4,21 @@ const API_URL = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
   : '/api';
 
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = useAuthStore.getState().refreshAuth()
+      .then(() => useAuthStore.getState().accessToken)
+      .catch(() => null)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return refreshPromise;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -17,7 +32,7 @@ class ApiClient {
     data?: unknown
   ): Promise<{ data: T }> {
     const url = `${this.baseUrl}${path}`;
-    const { accessToken, refreshAuth } = useAuthStore.getState();
+    const { accessToken } = useAuthStore.getState();
 
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
@@ -33,10 +48,14 @@ class ApiClient {
       body: data ? JSON.stringify(data) : undefined,
     });
 
-    // Handle token refresh on 401
-    if (response.status === 401 && accessToken) {
-      await refreshAuth();
-      const newToken = useAuthStore.getState().accessToken;
+    // Handle token refresh on 401 (except refresh endpoint itself).
+    const shouldAttemptRefresh = (
+      response.status === 401
+      && accessToken
+      && path !== '/auth/refresh'
+    );
+    if (shouldAttemptRefresh) {
+      const newToken = await refreshAccessToken();
 
       if (newToken) {
         headers['Authorization'] = `Bearer ${newToken}`;

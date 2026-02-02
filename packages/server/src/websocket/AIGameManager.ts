@@ -26,6 +26,7 @@ interface AuthenticatedSocket extends Socket {
 
 // Timeout for first choice (in ms)
 const FIRST_CHOICE_TIMEOUT = 10000; // 10 seconds
+const DISCONNECT_FORFEIT_TIMEOUT = 30000; // 30 seconds
 
 interface AIGameRoom {
   id: string;
@@ -94,6 +95,7 @@ export class AIGameManager {
   private games: Map<string, AIGameRoom> = new Map();
   private pendingGames: Map<string, PendingAIGame> = new Map();
   private playerToGame: Map<string, string> = new Map();
+  private disconnectTimeouts: Map<string, NodeJS.Timeout> = new Map();
 
   constructor(io: SocketServer) {
     this.io = io;
@@ -121,6 +123,36 @@ export class AIGameManager {
     }, delay);
 
     game.pendingTimeouts.push(timeout);
+  }
+
+  private clearDisconnectTimeout(gameId: string): void {
+    const timeout = this.disconnectTimeouts.get(gameId);
+    if (!timeout) return;
+
+    clearTimeout(timeout);
+    this.disconnectTimeouts.delete(gameId);
+  }
+
+  private scheduleDisconnectForfeit(gameId: string): void {
+    this.clearDisconnectTimeout(gameId);
+
+    const timeout = setTimeout(() => {
+      this.disconnectTimeouts.delete(gameId);
+
+      const game = this.games.get(gameId);
+      if (!game) return;
+
+      const activeSocket = this.io.sockets.sockets.get(game.humanSocketId);
+      if (activeSocket?.connected) {
+        return;
+      }
+
+      void this.endGame(gameId, game.aiPlayer.getPlayerId(), 'disconnect').catch(error => {
+        console.error(`[AIGameManager] Failed to end disconnected AI game ${gameId}:`, error);
+      });
+    }, DISCONNECT_FORFEIT_TIMEOUT);
+
+    this.disconnectTimeouts.set(gameId, timeout);
   }
 
   /**
@@ -475,6 +507,7 @@ export class AIGameManager {
 
     // Update socket ID in case user reconnected with a new socket
     game.humanSocketId = socket.id;
+    this.clearDisconnectTimeout(gameId);
 
     const state = game.stateManager.getState();
 
@@ -913,6 +946,7 @@ export class AIGameManager {
         game.pendingTimeouts = [];
       }
 
+      this.clearDisconnectTimeout(gameId);
       this.playerToGame.delete(game.humanPlayerId);
       this.games.delete(gameId);
     }
@@ -945,16 +979,8 @@ export class AIGameManager {
 
     const game = this.games.get(gameId);
     if (game) {
-      // Clear all pending timeouts
-      if (game.pendingTimeouts) {
-        game.pendingTimeouts.forEach(timeout => clearTimeout(timeout));
-        game.pendingTimeouts = [];
-      }
-
-      // End game - AI wins by forfeit
-      void this.endGame(gameId, game.aiPlayer.getPlayerId(), 'disconnect').catch(error => {
-        console.error(`[AIGameManager] Failed to end disconnected AI game ${gameId}:`, error);
-      });
+      this.scheduleDisconnectForfeit(gameId);
+      console.log(`[AIGameManager] Player ${userId} disconnected from AI game ${gameId}, waiting ${DISCONNECT_FORFEIT_TIMEOUT}ms before forfeit`);
     }
   }
 
@@ -975,6 +1001,7 @@ export class AIGameManager {
       }
       // Update socket ID in case user reconnected with a new socket
       game.humanSocketId = socket.id;
+      this.clearDisconnectTimeout(gameId);
       console.log('[AIGameManager] Returning game state from active games');
       return game.stateManager.sanitizeStateForPlayer(game.humanPlayerId);
     }

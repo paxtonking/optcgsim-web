@@ -137,7 +137,17 @@ export function setupWebSocket(io: SocketServer) {
       socket.isGuest = false;
       next();
     } catch (error) {
-      next(new Error('Invalid token'));
+      if (error instanceof jwt.TokenExpiredError) {
+        next(new Error('Token expired'));
+        return;
+      }
+
+      if (error instanceof jwt.JsonWebTokenError) {
+        next(new Error('Invalid token'));
+        return;
+      }
+
+      next(new Error('Authentication failed'));
     }
   });
 

@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react';
-import { getSocket } from '../services/socket';
+import { connectSocket } from '../services/socket';
 import { GameState, GameAction, ActionType } from '@optcgsim/shared';
 
 interface UseGameSocketOptions {
@@ -55,7 +55,7 @@ export function useGameSocket({
   onGameEnd,
   onError
 }: UseGameSocketOptions): UseGameSocketReturn {
-  const socketRef = useRef(getSocket());
+  const socketRef = useRef(connectSocket());
   const connectedRef = useRef(false);
 
   const generateActionId = useCallback(() => {
@@ -83,8 +83,14 @@ export function useGameSocket({
 
   // Socket setup
   useEffect(() => {
-    const socket = socketRef.current;
+    const socket = connectSocket();
+    socketRef.current = socket;
     connectedRef.current = socket.connected;
+
+    const getStateEvent = isAIGame ? 'ai:getState' : 'game:getState';
+    const requestState = () => {
+      socket.emit(getStateEvent, { gameId });
+    };
 
     // State update handler
     const handleState = (data: { gameState: GameState }) => {
@@ -116,10 +122,10 @@ export function useGameSocket({
     socket.on('game:action:result', handleActionResult);
     socket.on('game:ended', handleGameEnd);
     socket.on('game:error', handleError);
+    socket.on('connect', requestState);
 
     // Request initial state
-    const getStateEvent = isAIGame ? 'ai:getState' : 'game:getState';
-    socket.emit(getStateEvent, { gameId });
+    requestState();
 
     // Cleanup
     return () => {
@@ -127,6 +133,7 @@ export function useGameSocket({
       socket.off('game:action:result', handleActionResult);
       socket.off('game:ended', handleGameEnd);
       socket.off('game:error', handleError);
+      socket.off('connect', requestState);
     };
   }, [gameId, isAIGame, onStateUpdate, onGameEnd, onError]);
 

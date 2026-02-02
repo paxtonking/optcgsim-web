@@ -10,6 +10,7 @@ interface AuthState {
   refreshToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  hasHydrated: boolean;
   error: string | null;
 
   login: (email: string, password: string) => Promise<void>;
@@ -18,7 +19,10 @@ interface AuthState {
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
   clearError: () => void;
+  setHasHydrated: (hasHydrated: boolean) => void;
 }
+
+let refreshInFlight: Promise<void> | null = null;
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -28,6 +32,7 @@ export const useAuthStore = create<AuthState>()(
       refreshToken: null,
       isAuthenticated: false,
       isLoading: false,
+      hasHydrated: false,
       error: null,
 
       login: async (email: string, password: string) => {
@@ -141,33 +146,48 @@ export const useAuthStore = create<AuthState>()(
       },
 
       refreshAuth: async () => {
+        if (refreshInFlight) {
+          return refreshInFlight;
+        }
+
         const { refreshToken, user } = get();
         // Guests don't have refresh tokens
         if (!refreshToken || user?.isGuest) return;
 
-        try {
-          const response = await api.post<{
-            accessToken: string;
-            refreshToken: string;
-          }>('/auth/refresh', { refreshToken });
-          const { accessToken, refreshToken: newRefreshToken } = response.data;
+        refreshInFlight = (async () => {
+          try {
+            const response = await api.post<{
+              accessToken: string;
+              refreshToken: string;
+            }>('/auth/refresh', { refreshToken });
+            const { accessToken, refreshToken: newRefreshToken } = response.data;
 
-          set({
-            accessToken,
-            refreshToken: newRefreshToken,
-          });
-        } catch {
-          // Token refresh failed, log out
-          set({
-            user: null,
-            accessToken: null,
-            refreshToken: null,
-            isAuthenticated: false,
-          });
-        }
+            set({
+              accessToken,
+              refreshToken: newRefreshToken,
+            });
+          } catch (error: any) {
+            const status = error?.response?.status;
+            // Only force logout on explicit auth failures.
+            if (status === 401 || status === 403) {
+              set({
+                user: null,
+                accessToken: null,
+                refreshToken: null,
+                isAuthenticated: false,
+              });
+            }
+            throw error;
+          } finally {
+            refreshInFlight = null;
+          }
+        })();
+
+        return refreshInFlight;
       },
 
       clearError: () => set({ error: null }),
+      setHasHydrated: (hasHydrated: boolean) => set({ hasHydrated }),
     }),
     {
       name: 'auth-storage',
@@ -177,6 +197,9 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         isAuthenticated: state.isAuthenticated,
       }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );

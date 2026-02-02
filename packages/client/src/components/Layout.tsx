@@ -13,13 +13,13 @@ export default function Layout() {
     if (isAuthenticated) {
       connectSocket();
       setupLobbySocketListeners();
+    } else {
+      cleanupLobbySocketListeners();
+      disconnectSocket();
     }
 
     return () => {
-      if (!isAuthenticated) {
-        cleanupLobbySocketListeners();
-        disconnectSocket();
-      }
+      cleanupLobbySocketListeners();
     };
   }, [isAuthenticated]);
 

@@ -28,9 +28,9 @@ import TournamentDetailPage from './pages/TournamentDetailPage';
 import GameModesPage from './pages/GameModesPage';
 
 function App() {
-  const { isLoading } = useAuthStore();
+  const { isLoading, hasHydrated } = useAuthStore();
 
-  if (isLoading) {
+  if (isLoading || !hasHydrated) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-xl">Loading...</div>

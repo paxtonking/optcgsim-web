@@ -4,6 +4,72 @@ import { useAuthStore } from '../stores/authStore';
 const WS_URL = import.meta.env.VITE_WS_URL || '/';
 
 let socket: Socket | null = null;
+let authSubscription: (() => void) | null = null;
+let listenersBound = false;
+let socketRefreshInFlight = false;
+
+function isAuthHandshakeError(message: string | undefined): boolean {
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('invalid token')
+    || normalized.includes('token expired')
+    || normalized.includes('authentication required')
+    || normalized.includes('user not found')
+  );
+}
+
+function bindInternalListeners(sock: Socket) {
+  if (listenersBound) return;
+  listenersBound = true;
+
+  sock.on('connect_error', async (error: Error) => {
+    if (!isAuthHandshakeError(error.message)) {
+      return;
+    }
+
+    if (socketRefreshInFlight) {
+      return;
+    }
+
+    const { isAuthenticated, refreshAuth } = useAuthStore.getState();
+    if (!isAuthenticated) {
+      return;
+    }
+
+    socketRefreshInFlight = true;
+    try {
+      await refreshAuth();
+      const { accessToken, isAuthenticated: stillAuthenticated } = useAuthStore.getState();
+
+      if (!stillAuthenticated || !accessToken) {
+        sock.disconnect();
+        return;
+      }
+
+      sock.auth = { token: accessToken };
+      if (!sock.connected) {
+        sock.connect();
+      }
+    } catch {
+      // Ignore and let auth state drive UI if refresh ultimately fails.
+    } finally {
+      socketRefreshInFlight = false;
+    }
+  });
+}
+
+function ensureAuthSubscription() {
+  if (authSubscription) return;
+
+  authSubscription = useAuthStore.subscribe((state, prevState) => {
+    if (!socket || state.accessToken === prevState.accessToken) {
+      return;
+    }
+
+    socket.auth = { token: state.accessToken };
+  });
+}
 
 export function getSocket(): Socket {
   if (!socket) {
@@ -13,6 +79,9 @@ export function getSocket(): Socket {
       auth: { token: accessToken },
       autoConnect: false,
     });
+
+    bindInternalListeners(socket);
+    ensureAuthSubscription();
   }
 
   return socket;
