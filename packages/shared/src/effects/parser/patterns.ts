@@ -343,6 +343,12 @@ export const ACTION_PATTERNS: ActionPattern[] = [
     actionType: EffectType.SET_BASE_POWER,
     extractValue: (m) => parseInt(m[1])
   },
+  // Set base power - "set the base power of ... to 7000"
+  {
+    pattern: /[Ss]et\s+(?:the\s+)?base\s+power\s+(?:of\s+)?.*?to\s+(\d+)/i,
+    actionType: EffectType.SET_BASE_POWER,
+    extractValue: (m) => parseInt(m[1])
+  },
 
   // Set cost to 0 - "Set the cost of ... to 0"
   {
@@ -728,7 +734,19 @@ export const TARGET_PATTERNS: TargetPattern[] = [
     extractCount: () => ({ count: 1 })
   },
 
-  // Your targets
+  // Your targets - trait-filtered (must come before general patterns)
+  {
+    pattern: /all\s+(?:of\s+)?(?:your\s+)?\{([^}]+)\}\s*(?:type\s+)?Characters?/i,
+    targetType: TargetType.YOUR_CHARACTER,
+    extractCount: () => ({ count: -1 }) // -1 means "all matching"
+  },
+  {
+    pattern: /(?:up to )?(\d+)?\s*(?:of )?your\s+\{[^}]+\}\s*(?:type\s+)?Characters?/i,
+    targetType: TargetType.YOUR_CHARACTER,
+    extractCount: (m) => ({ maxCount: m[1] ? parseInt(m[1]) : 1 })
+  },
+
+  // Your targets - general
   {
     pattern: /(?:up to )?(\d+)?\s*(?:of )?your (?:Leader or )?Characters?/i,
     targetType: TargetType.YOUR_CHARACTER,
@@ -971,6 +989,57 @@ export const CONDITION_PATTERNS: ConditionPattern[] = [
   {
     pattern: /opponent'?s?\s*turn/i,
     conditionType: ConditionType.OPPONENT_TURN
+  },
+
+  // Trash count conditions
+  {
+    pattern: /(?:you have\s+)?(\d+)\s+or\s+more\s+cards?\s+in\s+(?:your\s+)?trash/i,
+    conditionType: ConditionType.TRASH_COUNT_OR_MORE,
+    extractValue: (m) => parseInt(m[1])
+  },
+
+  // Life comparison conditions
+  {
+    pattern: /(?:you have\s+)?(?:less|fewer)\s+[Ll]ife\s+than\s+(?:your\s+)?opponent/i,
+    conditionType: ConditionType.LESS_LIFE_THAN_OPPONENT
+  },
+  {
+    pattern: /(?:you have\s+)?more\s+[Ll]ife\s+than\s+(?:your\s+)?opponent/i,
+    conditionType: ConditionType.MORE_LIFE_THAN_OPPONENT
+  },
+
+  // Character presence conditions
+  {
+    pattern: /(?:you have|if you have)\s+(?:a\s+)?\{([^}]+)\}\s*(?:type\s+)?Character/i,
+    conditionType: ConditionType.HAS_CHARACTER_WITH_TRAIT,
+    extractValue: (m) => [m[1]]
+  },
+  {
+    pattern: /(?:you have|if you have)\s+(?:a\s+)?\[([^\]]+)\]\s+(?:on\s+(?:the\s+)?field|in\s+play)/i,
+    conditionType: ConditionType.HAS_CHARACTER_WITH_NAME,
+    extractValue: (m) => [m[1]]
+  },
+
+  // Hand empty condition
+  {
+    pattern: /(?:you have\s+)?no\s+cards?\s+in\s+(?:your\s+)?hand/i,
+    conditionType: ConditionType.HAND_EMPTY
+  },
+
+  // Character state conditions
+  {
+    pattern: /this\s+Character\s+is\s+rested/i,
+    conditionType: ConditionType.IS_RESTED
+  },
+  {
+    pattern: /this\s+Character\s+is\s+active/i,
+    conditionType: ConditionType.IS_ACTIVE
+  },
+
+  // First turn condition
+  {
+    pattern: /(?:on\s+)?(?:your\s+)?first\s+turn/i,
+    conditionType: ConditionType.FIRST_TURN
   },
 ];
 

@@ -581,6 +581,10 @@ export class EffectEngine {
       case ConditionType.LEADER_HAS_TRAIT:
         return this.leaderHasTrait(sourcePlayer, condition.traits || []);
 
+      // Turn conditions
+      case ConditionType.FIRST_TURN:
+        return sourcePlayer.turnCount === 1;
+
       default:
         return true;
     }
@@ -809,12 +813,12 @@ export class EffectEngine {
         break;
 
       case EffectType.SET_BASE_POWER:
-        // Set base power to a specific value (e.g., "base power becomes 7000")
+        // Set base power to a specific value (e.g., "set the base power to 7000")
         targets.forEach(targetId => {
           const card = this.findCard(gameState, targetId);
           if (card) {
             const newPower = action.value || 0;
-            card.power = newPower;
+            card.basePower = newPower;
             changes.push({
               type: 'POWER_CHANGED',
               cardId: targetId,
