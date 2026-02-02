@@ -1034,8 +1034,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       }
     }
 
-    // Update refs
+    // Update refs and visible life count
     previousLifeCountRef.current = { player: playerLifeCount, opponent: opponentLifeCount };
+    // Sync visible life count to actual values so LifeBar shows correct pips
+    setVisibleLifeCount({ player: playerLifeCount, opponent: opponentLifeCount });
   }, [myPlayer, opponent, dealingPhase, getLifePilePosition, getHandZonePosition]);
 
   // Handle life damage animation completion
