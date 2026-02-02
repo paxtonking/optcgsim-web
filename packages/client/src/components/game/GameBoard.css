@@ -2536,65 +2536,89 @@
    ATTACK EFFECT PROMPT
    =================================== */
 
-.attack-effect-prompt {
+/* ===================================
+   UNIFIED EFFECT PROMPT STYLES - Green/Gold Theme
+   All effect prompts use this base style
+   =================================== */
+
+/* Base positioning for ALL effect prompts - positioned at TOP */
+.attack-effect-prompt,
+.play-effect-prompt,
+.activate-effect-prompt,
+.event-effect-prompt,
+.counter-effect-prompt,
+.additional-cost-prompt {
   position: fixed;
-  top: 50%;
+  top: 20px;
   left: 50%;
-  transform: translate(-50%, -50%);
+  transform: translateX(-50%);
   z-index: 2000;
-  animation: attackEffectFadeIn 0.3s ease;
+  animation: effectPromptSlideIn 0.3s ease;
 }
 
-@keyframes attackEffectFadeIn {
+@keyframes effectPromptSlideIn {
   from {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.9);
+    transform: translateX(-50%) translateY(-20px);
   }
   to {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
+    transform: translateX(-50%) translateY(0);
   }
 }
 
-.attack-effect-prompt__content {
+/* Unified content container - Green/Gold theme */
+.attack-effect-prompt__content,
+.play-effect-prompt__content {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
   padding: 20px 32px;
-  background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+  background: linear-gradient(135deg, #1a2e1a 0%, #0d1f0d 100%);
   border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(155, 89, 182, 0.5);
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 20px rgba(74, 222, 128, 0.2),
+    inset 0 1px 0 rgba(255, 215, 0, 0.1);
+  border: 2px solid rgba(255, 215, 0, 0.6);
   min-width: 300px;
-  max-width: 400px;
+  max-width: 450px;
 }
 
-.attack-effect-prompt__header {
+/* Header styling */
+.attack-effect-prompt__header,
+.play-effect-prompt__header {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.attack-effect-prompt__icon {
+.attack-effect-prompt__icon,
+.play-effect-prompt__icon {
   font-size: 24px;
+  filter: drop-shadow(0 0 4px rgba(255, 215, 0, 0.5));
 }
 
-.attack-effect-prompt__title {
-  color: #fff;
+.attack-effect-prompt__title,
+.play-effect-prompt__title {
+  color: #ffd700;
   font-size: 18px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
 }
 
-.attack-effect-prompt__card-name {
-  color: #f1c40f;
+.attack-effect-prompt__card-name,
+.play-effect-prompt__card-name {
+  color: #4ade80;
   font-size: 16px;
   font-weight: 600;
 }
 
-.attack-effect-prompt__description {
+.attack-effect-prompt__description,
+.play-effect-prompt__description {
   color: rgba(255, 255, 255, 0.9);
   font-size: 14px;
   text-align: center;
@@ -2602,22 +2626,25 @@
   margin: 0;
 }
 
-.attack-effect-prompt__instruction {
-  color: #f1c40f;
+.attack-effect-prompt__instruction,
+.play-effect-prompt__instruction {
+  color: #ffd700;
   font-size: 13px;
   font-weight: 500;
   margin: 0;
 }
 
-.attack-effect-prompt__buttons {
+.attack-effect-prompt__buttons,
+.play-effect-prompt__buttons {
   display: flex;
   gap: 12px;
   margin-top: 8px;
 }
 
+/* Unified button styles */
 .action-btn--use-effect {
-  background: linear-gradient(135deg, #27ae60 0%, #219a52 100%);
-  color: white;
+  background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+  color: #000;
   padding: 10px 24px;
   border: none;
   border-radius: 6px;
@@ -2625,11 +2652,13 @@
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(74, 222, 128, 0.3);
 }
 
 .action-btn--use-effect:hover:not(:disabled) {
-  background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+  background: linear-gradient(135deg, #5eeb94 0%, #2dd469 100%);
   transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(74, 222, 128, 0.4);
 }
 
 .action-btn--use-effect:disabled {
@@ -2638,10 +2667,10 @@
 }
 
 .action-btn--skip-effect {
-  background: linear-gradient(135deg, #7f8c8d 0%, #6c7a7b 100%);
-  color: white;
+  background: rgba(255, 255, 255, 0.1);
+  color: #a8b6cc;
   padding: 10px 24px;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 6px;
   font-size: 14px;
   font-weight: 600;
@@ -2650,90 +2679,64 @@
 }
 
 .action-btn--skip-effect:hover {
-  background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
-  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
 }
 
-/* Attack effect target highlighting */
-.game-card--attack-effect-target {
-  box-shadow: 0 0 15px 5px rgba(155, 89, 182, 0.8) !important;
-  animation: attackEffectTargetPulse 1.5s ease-in-out infinite;
+/* Effect target highlighting - Green/Gold theme */
+.game-card--attack-effect-target,
+.game-card--play-effect-target {
+  box-shadow: 0 0 15px 5px rgba(74, 222, 128, 0.8) !important;
+  animation: effectTargetPulse 1.5s ease-in-out infinite;
 }
 
-@keyframes attackEffectTargetPulse {
+@keyframes effectTargetPulse {
   0%, 100% {
-    box-shadow: 0 0 15px 5px rgba(155, 89, 182, 0.8);
+    box-shadow: 0 0 15px 5px rgba(74, 222, 128, 0.8);
   }
   50% {
-    box-shadow: 0 0 20px 8px rgba(155, 89, 182, 1);
+    box-shadow: 0 0 20px 8px rgba(74, 222, 128, 1);
   }
 }
 
-.game-card--attack-effect-selected {
-  box-shadow: 0 0 20px 8px rgba(241, 196, 15, 0.9) !important;
+.game-card--attack-effect-selected,
+.game-card--play-effect-selected {
+  box-shadow: 0 0 20px 8px rgba(255, 215, 0, 0.9) !important;
   transform: scale(1.05);
 }
 
+/* Warning text style */
+.play-effect-prompt__warning {
+  color: #f59e0b;
+  font-size: 12px;
+  font-style: italic;
+  margin: 0;
+}
+
 /* ===================================
-   PLAY EFFECT PROMPT (ON_PLAY abilities)
+   LEGACY SUPPORT - Keep old keyframes for compatibility
    =================================== */
 
-.play-effect-prompt {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 2000;
-  animation: playEffectFadeIn 0.3s ease;
+@keyframes attackEffectFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
 @keyframes playEffectFadeIn {
   from {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.9);
+    transform: translateX(-50%) translateY(-20px);
   }
   to {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
+    transform: translateX(-50%) translateY(0);
   }
-}
-
-.play-effect-prompt__content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 20px 32px;
-  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(52, 152, 219, 0.5);
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  min-width: 300px;
-  max-width: 400px;
-}
-
-.play-effect-prompt__header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.play-effect-prompt__icon {
-  font-size: 24px;
-}
-
-.play-effect-prompt__title {
-  color: #fff;
-  font-size: 18px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.play-effect-prompt__card-name {
-  color: #f1c40f;
-  font-size: 16px;
-  font-weight: 600;
 }
 
 .play-effect-prompt__description {
@@ -2757,18 +2760,18 @@
   margin-top: 8px;
 }
 
-/* Play effect target highlighting */
+/* Play effect target highlighting - green/gold theme */
 .game-card--play-effect-target {
-  box-shadow: 0 0 15px 5px rgba(52, 152, 219, 0.8) !important;
+  box-shadow: 0 0 15px 5px rgba(74, 222, 128, 0.8) !important;
   animation: playEffectTargetPulse 1.5s ease-in-out infinite;
 }
 
 @keyframes playEffectTargetPulse {
   0%, 100% {
-    box-shadow: 0 0 15px 5px rgba(52, 152, 219, 0.8);
+    box-shadow: 0 0 15px 5px rgba(74, 222, 128, 0.8);
   }
   50% {
-    box-shadow: 0 0 20px 8px rgba(52, 152, 219, 1);
+    box-shadow: 0 0 20px 8px rgba(74, 222, 128, 1);
   }
 }
 
@@ -2777,18 +2780,18 @@
   transform: scale(1.05);
 }
 
-/* Event effect target highlighting (orange glow) */
+/* Event effect target highlighting - green/gold theme */
 .game-card--event-effect-target {
-  box-shadow: 0 0 15px 5px rgba(230, 126, 34, 0.8) !important;
+  box-shadow: 0 0 15px 5px rgba(74, 222, 128, 0.8) !important;
   animation: eventEffectTargetPulse 1.5s ease-in-out infinite;
 }
 
 @keyframes eventEffectTargetPulse {
   0%, 100% {
-    box-shadow: 0 0 15px 5px rgba(230, 126, 34, 0.8);
+    box-shadow: 0 0 15px 5px rgba(74, 222, 128, 0.8);
   }
   50% {
-    box-shadow: 0 0 20px 8px rgba(230, 126, 34, 1);
+    box-shadow: 0 0 20px 8px rgba(74, 222, 128, 1);
   }
 }
 
@@ -2797,18 +2800,18 @@
   transform: scale(1.05);
 }
 
-/* Counter effect target highlighting (cyan glow) */
+/* Counter effect target highlighting - green/gold theme */
 .game-card--counter-effect-target {
-  box-shadow: 0 0 15px 5px rgba(26, 188, 156, 0.8) !important;
+  box-shadow: 0 0 15px 5px rgba(74, 222, 128, 0.8) !important;
   animation: counterEffectTargetPulse 1.5s ease-in-out infinite;
 }
 
 @keyframes counterEffectTargetPulse {
   0%, 100% {
-    box-shadow: 0 0 15px 5px rgba(26, 188, 156, 0.8);
+    box-shadow: 0 0 15px 5px rgba(74, 222, 128, 0.8);
   }
   50% {
-    box-shadow: 0 0 20px 8px rgba(26, 188, 156, 1);
+    box-shadow: 0 0 20px 8px rgba(74, 222, 128, 1);
   }
 }
 
@@ -2846,10 +2849,10 @@
   align-items: center;
   gap: 12px;
   padding: 12px 24px;
-  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  background: linear-gradient(135deg, #1a2e1a 0%, #0d1f0d 100%);
   border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(52, 152, 219, 0.4);
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 20px rgba(74, 222, 128, 0.4);
+  border: 2px solid rgba(255, 215, 0, 0.6);
 }
 
 .counter-notification__icon {
@@ -3239,13 +3242,13 @@
 
 .deck-reveal-modal__content {
   position: relative;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  background: linear-gradient(135deg, #1a2e1a 0%, #0d1f0d 100%);
+  border: 2px solid rgba(255, 215, 0, 0.6);
   border-radius: 16px;
   padding: 28px 32px;
   min-width: 500px;
   max-width: 90vw;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 20px rgba(74, 222, 128, 0.2);
   animation: deckRevealFadeIn 0.3s ease;
 }
 
@@ -3331,7 +3334,7 @@
 }
 
 .deck-reveal-modal__selection-info {
-  color: #3498db;
+  color: #4ade80;
   text-align: center;
   font-size: 14px;
   margin: 0 0 8px 0;
@@ -3372,11 +3375,11 @@
 }
 
 .hand-select-panel__content {
-  background: linear-gradient(135deg, #2c3e50 0%, #1a252f 100%);
-  border: 2px solid rgba(241, 196, 15, 0.5);
+  background: linear-gradient(135deg, #1a2e1a 0%, #0d1f0d 100%);
+  border: 2px solid rgba(255, 215, 0, 0.6);
   border-radius: 12px;
   padding: 16px 24px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 12px rgba(74, 222, 128, 0.2);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3405,15 +3408,16 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-  color: white;
+  background: linear-gradient(135deg, #1a2e1a 0%, #0d1f0d 100%);
+  color: #ffd700;
   padding: 16px 48px;
   border-radius: 8px;
+  border: 2px solid rgba(255, 215, 0, 0.6);
   font-size: 24px;
   font-weight: bold;
   z-index: 1000;
   animation: refreshBannerAppear 0.5s ease-out, refreshBannerFade 0.5s ease-in 1s forwards;
-  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.5);
+  box-shadow: 0 4px 20px rgba(74, 222, 128, 0.4);
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 

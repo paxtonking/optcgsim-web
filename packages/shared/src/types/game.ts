@@ -87,6 +87,18 @@ export interface GameCard {
   hasRushVsCharacters?: boolean; // Can attack characters on the turn played (Corrida Coliseum)
   restrictions?: CardRestriction[]; // Attack/ability restrictions
   immunities?: CardImmunity[]; // Protection from effects
+  grantedEffects?: GrantedEffect[]; // Effects granted by other cards
+}
+
+// Effect granted to a card by another card's ability
+export interface GrantedEffect {
+  id: string;              // Unique ID for this granted effect
+  sourceCardId: string;    // Card that granted this effect
+  trigger: string;         // When the effect triggers (ON_ATTACK, ON_PLAY, etc.)
+  effectType: string;      // What the effect does
+  value?: number;          // Value for the effect (e.g., +2000 power)
+  duration: 'THIS_TURN' | 'THIS_BATTLE' | 'WHILE_ON_FIELD' | 'PERMANENT';
+  turnGranted: number;     // Turn when granted (for cleanup)
 }
 
 // Card restriction (e.g., CANT_ATTACK)

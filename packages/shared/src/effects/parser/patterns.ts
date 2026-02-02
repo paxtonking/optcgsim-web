@@ -845,6 +845,20 @@ export const FILTER_PATTERNS: FilterPattern[] = [
     buildFilter: (m) => ({ property: 'COST', operator: 'EQUALS', value: parseInt(m[1]) })
   },
 
+  // Base cost filters (original cost, ignoring modifications)
+  {
+    pattern: /(?:with )?(?:a )?base cost of (\d+) or less/i,
+    buildFilter: (m) => ({ property: 'BASE_COST', operator: 'OR_LESS', value: parseInt(m[1]) })
+  },
+  {
+    pattern: /(?:with )?(?:a )?base cost of (\d+) or more/i,
+    buildFilter: (m) => ({ property: 'BASE_COST', operator: 'OR_MORE', value: parseInt(m[1]) })
+  },
+  {
+    pattern: /(?:with )?(?:a )?base cost of (\d+)(?!\s*or)/i,
+    buildFilter: (m) => ({ property: 'BASE_COST', operator: 'EQUALS', value: parseInt(m[1]) })
+  },
+
   // Power filters
   {
     pattern: /(?:with )?(\d+)\s*(?:base )?power or less/i,
@@ -858,6 +872,14 @@ export const FILTER_PATTERNS: FilterPattern[] = [
     pattern: /(?:with )?(\d+)\s*(?:base )?power or more/i,
     buildFilter: (m) => ({ property: 'POWER', operator: 'OR_MORE', value: parseInt(m[1]) })
   },
+  {
+    pattern: /(?:with )?(?:a )?base power of (\d+) or less/i,
+    buildFilter: (m) => ({ property: 'BASE_POWER', operator: 'OR_LESS', value: parseInt(m[1]) })
+  },
+  {
+    pattern: /(?:with )?(?:a )?base power of (\d+) or more/i,
+    buildFilter: (m) => ({ property: 'BASE_POWER', operator: 'OR_MORE', value: parseInt(m[1]) })
+  },
 
   // Trait filters - {Type} type
   {
@@ -868,7 +890,19 @@ export const FILTER_PATTERNS: FilterPattern[] = [
   // Name filters - [Card Name]
   {
     pattern: /other than \[([^\]]+)\]/i,
-    buildFilter: (m) => ({ property: 'NAME', operator: 'NOT', value: m[1] })
+    buildFilter: (m) => ({ property: 'NAME', operator: 'NOT_EQUALS', value: m[1] })
+  },
+  {
+    pattern: /other than "([^"]+)"/i,
+    buildFilter: (m) => ({ property: 'NAME', operator: 'NOT_EQUALS', value: m[1] })
+  },
+  {
+    pattern: /named \[([^\]]+)\]/i,
+    buildFilter: (m) => ({ property: 'NAME', operator: 'EQUALS', value: m[1] })
+  },
+  {
+    pattern: /named "([^"]+)"/i,
+    buildFilter: (m) => ({ property: 'NAME', operator: 'EQUALS', value: m[1] })
   },
 
   // State filters
@@ -969,7 +1003,7 @@ export const CONDITION_PATTERNS: ConditionPattern[] = [
     extractValue: (m) => parseInt(m[1])
   },
 
-  // Hand conditions
+  // Hand conditions (your hand)
   {
     pattern: /(?:you have|if you have)\s*(\d+)\s*or\s*(?:less|fewer).*in.*hand/i,
     conditionType: ConditionType.HAND_COUNT_OR_LESS,
@@ -978,6 +1012,35 @@ export const CONDITION_PATTERNS: ConditionPattern[] = [
   {
     pattern: /(?:you have|if you have)\s*(\d+)\s*or\s*more.*in.*hand/i,
     conditionType: ConditionType.HAND_COUNT_OR_MORE,
+    extractValue: (m) => parseInt(m[1])
+  },
+
+  // Opponent hand conditions
+  {
+    pattern: /(?:your\s+)?opponent\s+has\s*(\d+)\s*or\s*more\s*cards?\s*in\s*(?:their\s*)?hand/i,
+    conditionType: ConditionType.OPPONENT_HAND_COUNT_OR_MORE,
+    extractValue: (m) => parseInt(m[1])
+  },
+  {
+    pattern: /(?:your\s+)?opponent\s+has\s*(\d+)\s*or\s*(?:less|fewer)\s*cards?\s*in\s*(?:their\s*)?hand/i,
+    conditionType: ConditionType.OPPONENT_HAND_COUNT_OR_LESS,
+    extractValue: (m) => parseInt(m[1])
+  },
+  {
+    pattern: /(?:your\s+)?opponent\s+has\s+no\s+cards?\s+in\s+(?:their\s+)?hand/i,
+    conditionType: ConditionType.OPPONENT_HAND_EMPTY
+  },
+
+  // Leader multicolor condition
+  {
+    pattern: /(?:your\s+)?[Ll]eader\s+is\s+multicolou?red/i,
+    conditionType: ConditionType.LEADER_IS_MULTICOLORED
+  },
+
+  // Total life condition (combined)
+  {
+    pattern: /you\s+and\s+(?:your\s+)?opponent\s+have\s+(?:a\s+)?total\s+of\s+(\d+)\s+or\s+more\s+[Ll]ife/i,
+    conditionType: ConditionType.TOTAL_LIFE_OR_MORE,
     extractValue: (m) => parseInt(m[1])
   },
 

@@ -2533,7 +2533,20 @@ export class GameStateManager {
     // Clear THIS_TURN power buffs from all cards (for both players)
     this.clearTurnBuffs();
 
-    // Find next player
+    // Check for ExtraTurn marker - if player has it, they take another turn instead
+    const hasExtraTurn = player.leaderCard?.temporaryKeywords?.includes('ExtraTurn');
+    if (hasExtraTurn && player.leaderCard) {
+      // Remove the ExtraTurn marker
+      player.leaderCard.temporaryKeywords = player.leaderCard.temporaryKeywords?.filter(
+        k => k !== 'ExtraTurn'
+      );
+      console.log('[GameStateManager] Player', playerId, 'takes an extra turn!');
+      // Start another turn for the same player
+      this.startTurn(playerId);
+      return;
+    }
+
+    // Find next player (normal turn transition)
     const nextPlayerId = Object.keys(this.state.players).find(id => id !== playerId);
     if (nextPlayerId) {
       this.startTurn(nextPlayerId);
@@ -2569,7 +2582,7 @@ export class GameStateManager {
   }
 
   /**
-   * Clear THIS_TURN power buffs from all cards at end of turn
+   * Clear THIS_TURN power buffs and granted effects from all cards at end of turn
    */
   private clearTurnBuffs(): void {
     for (const player of Object.values(this.state.players)) {
@@ -2579,6 +2592,12 @@ export class GameStateManager {
           buff => buff.duration !== 'THIS_TURN'
         );
       }
+      // Clear granted effects from leader
+      if (player.leaderCard?.grantedEffects) {
+        player.leaderCard.grantedEffects = player.leaderCard.grantedEffects.filter(
+          effect => effect.duration !== 'THIS_TURN'
+        );
+      }
       // Clear from field cards
       for (const card of player.field) {
         if (card.powerBuffs) {
@@ -2586,12 +2605,18 @@ export class GameStateManager {
             buff => buff.duration !== 'THIS_TURN'
           );
         }
+        // Clear granted effects
+        if (card.grantedEffects) {
+          card.grantedEffects = card.grantedEffects.filter(
+            effect => effect.duration !== 'THIS_TURN'
+          );
+        }
       }
     }
   }
 
   /**
-   * Clear THIS_BATTLE power buffs from all cards after combat resolves
+   * Clear THIS_BATTLE power buffs and granted effects from all cards after combat resolves
    */
   private clearBattleBuffs(): void {
     for (const player of Object.values(this.state.players)) {
@@ -2601,11 +2626,23 @@ export class GameStateManager {
           buff => buff.duration !== 'THIS_BATTLE'
         );
       }
+      // Clear granted effects from leader
+      if (player.leaderCard?.grantedEffects) {
+        player.leaderCard.grantedEffects = player.leaderCard.grantedEffects.filter(
+          effect => effect.duration !== 'THIS_BATTLE'
+        );
+      }
       // Clear from field cards
       for (const card of player.field) {
         if (card.powerBuffs) {
           card.powerBuffs = card.powerBuffs.filter(
             buff => buff.duration !== 'THIS_BATTLE'
+          );
+        }
+        // Clear granted effects
+        if (card.grantedEffects) {
+          card.grantedEffects = card.grantedEffects.filter(
+            effect => effect.duration !== 'THIS_BATTLE'
           );
         }
       }
@@ -3192,6 +3229,65 @@ export class GameStateManager {
     }
 
     return { canActivate: true };
+  }
+
+  /**
+   * Get all cards with activatable abilities that can currently be activated
+   * Useful for UI to highlight cards with available abilities
+   */
+  public getActivatableCards(playerId: string): { cardId: string; cardInstanceId: string; effectDescription?: string }[] {
+    const activatableCards: { cardId: string; cardInstanceId: string; effectDescription?: string }[] = [];
+
+    // Can only activate during main phase on your turn
+    if (this.state.phase !== GamePhase.MAIN_PHASE) return activatableCards;
+    if (this.state.activePlayerId !== playerId) return activatableCards;
+
+    const player = this.state.players[playerId];
+    if (!player) return activatableCards;
+
+    // Check leader card
+    if (player.leaderCard) {
+      const result = this.canActivateAbility(playerId, player.leaderCard.id);
+      if (result.canActivate) {
+        const cardDef = this.effectEngine.getCardDefinition(player.leaderCard.cardId);
+        const activateEffect = cardDef?.effects.find(e => e.trigger === EffectTrigger.ACTIVATE_MAIN);
+        activatableCards.push({
+          cardId: player.leaderCard.cardId,
+          cardInstanceId: player.leaderCard.id,
+          effectDescription: activateEffect?.description,
+        });
+      }
+    }
+
+    // Check field cards (characters)
+    for (const card of player.field) {
+      const result = this.canActivateAbility(playerId, card.id);
+      if (result.canActivate) {
+        const cardDef = this.effectEngine.getCardDefinition(card.cardId);
+        const activateEffect = cardDef?.effects.find(e => e.trigger === EffectTrigger.ACTIVATE_MAIN);
+        activatableCards.push({
+          cardId: card.cardId,
+          cardInstanceId: card.id,
+          effectDescription: activateEffect?.description,
+        });
+      }
+    }
+
+    // Check stage card
+    if (player.stage) {
+      const result = this.canActivateAbility(playerId, player.stage.id);
+      if (result.canActivate) {
+        const cardDef = this.effectEngine.getCardDefinition(player.stage.cardId);
+        const activateEffect = cardDef?.effects.find(e => e.trigger === EffectTrigger.ACTIVATE_MAIN);
+        activatableCards.push({
+          cardId: player.stage.cardId,
+          cardInstanceId: player.stage.id,
+          effectDescription: activateEffect?.description,
+        });
+      }
+    }
+
+    return activatableCards;
   }
 
   /**

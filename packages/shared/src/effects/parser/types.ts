@@ -38,8 +38,8 @@ export interface ParsedTarget {
 }
 
 export interface ParsedFilter {
-  property: 'COST' | 'POWER' | 'BASE_POWER' | 'COLOR' | 'TRAIT' | 'TYPE' | 'NAME' | 'STATE';
-  operator: 'EQUALS' | 'OR_MORE' | 'OR_LESS' | 'CONTAINS' | 'NOT';
+  property: 'COST' | 'POWER' | 'BASE_POWER' | 'BASE_COST' | 'COLOR' | 'TRAIT' | 'TYPE' | 'NAME' | 'STATE';
+  operator: 'EQUALS' | 'OR_MORE' | 'OR_LESS' | 'CONTAINS' | 'NOT' | 'NOT_EQUALS';
   value: string | number | string[];
 }
 

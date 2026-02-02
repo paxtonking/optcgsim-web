@@ -247,11 +247,17 @@ export enum ConditionType {
   LIFE_COUNT_OR_LESS = 'LIFE_COUNT_OR_LESS',
   LESS_LIFE_THAN_OPPONENT = 'LESS_LIFE_THAN_OPPONENT',
   MORE_LIFE_THAN_OPPONENT = 'MORE_LIFE_THAN_OPPONENT',
+  TOTAL_LIFE_OR_MORE = 'TOTAL_LIFE_OR_MORE',  // "if you and your opponent have a total of X or more Life cards"
 
-  // Hand conditions
+  // Hand conditions (your hand)
   HAND_COUNT_OR_MORE = 'HAND_COUNT_OR_MORE',
   HAND_COUNT_OR_LESS = 'HAND_COUNT_OR_LESS',
   HAND_EMPTY = 'HAND_EMPTY',
+
+  // Opponent hand conditions
+  OPPONENT_HAND_COUNT_OR_MORE = 'OPPONENT_HAND_COUNT_OR_MORE',
+  OPPONENT_HAND_COUNT_OR_LESS = 'OPPONENT_HAND_COUNT_OR_LESS',
+  OPPONENT_HAND_EMPTY = 'OPPONENT_HAND_EMPTY',
 
   // Field conditions
   CHARACTER_COUNT_OR_MORE = 'CHARACTER_COUNT_OR_MORE',
@@ -281,6 +287,7 @@ export enum ConditionType {
   LEADER_IS = 'LEADER_IS',               // "If your Leader is [Name]"
   LEADER_HAS_COLOR = 'LEADER_HAS_COLOR',
   LEADER_HAS_TRAIT = 'LEADER_HAS_TRAIT',
+  LEADER_IS_MULTICOLORED = 'LEADER_IS_MULTICOLORED',  // "If your Leader is multicolored"
 
   // State conditions
   IS_RESTED = 'IS_RESTED',
@@ -394,8 +401,8 @@ export interface EffectTarget {
 }
 
 export interface TargetFilter {
-  property: 'COST' | 'POWER' | 'COLOR' | 'TRAIT' | 'TYPE' | 'NAME' | 'STATE';
-  operator: 'EQUALS' | 'OR_MORE' | 'OR_LESS' | 'LESS_THAN_OR_EQUAL' | 'CONTAINS' | 'NOT_CONTAINS';
+  property: 'COST' | 'POWER' | 'COLOR' | 'TRAIT' | 'TYPE' | 'NAME' | 'STATE' | 'BASE_COST' | 'BASE_POWER';
+  operator: 'EQUALS' | 'OR_MORE' | 'OR_LESS' | 'LESS_THAN_OR_EQUAL' | 'CONTAINS' | 'NOT_CONTAINS' | 'NOT_EQUALS' | 'NOT';
   value: string | number | string[];  // Can be 'DON_COUNT' for dynamic value resolution
 }
 

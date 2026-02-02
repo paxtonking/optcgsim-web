@@ -269,6 +269,7 @@ export class EffectEngine {
 
     const triggered: PendingEffect[] = [];
 
+    // Check effects from card definition
     definition.effects.forEach(effect => {
       if (this.doesTriggerMatch(effect, event, card, player, gameState)) {
         const pendingEffect = {
@@ -284,6 +285,39 @@ export class EffectEngine {
         triggered.push(pendingEffect);
       }
     });
+
+    // Also check granted effects on the card
+    if (card.grantedEffects && card.grantedEffects.length > 0) {
+      card.grantedEffects.forEach(grantedEffect => {
+        // Check if the granted effect's trigger matches the event
+        if (grantedEffect.trigger === event.type ||
+            (grantedEffect.trigger === 'PASSIVE' && event.type === EffectTrigger.ON_ATTACK)) {
+          // Create a synthetic effect definition for the granted effect
+          const syntheticEffect: CardEffectDefinition = {
+            id: grantedEffect.id,
+            trigger: grantedEffect.trigger as EffectTrigger,
+            effects: [{
+              type: grantedEffect.effectType as EffectType,
+              value: grantedEffect.value,
+              target: { type: TargetType.SELF },
+            }],
+            description: `Granted effect from ${grantedEffect.sourceCardId}`,
+          };
+
+          const pendingEffect = {
+            id: `pending-granted-${++this.effectIdCounter}`,
+            sourceCardId: card.id,
+            playerId: player.id,
+            effect: syntheticEffect,
+            trigger: event.type,
+            requiresChoice: false,
+            priority: 0,
+          };
+          console.log(`[EffectEngine] Creating PendingEffect for granted effect - card: ${card.cardId}, grantedType: ${grantedEffect.effectType}`);
+          triggered.push(pendingEffect);
+        }
+      });
+    }
 
     return triggered;
   }
@@ -317,6 +351,12 @@ export class EffectEngine {
 
     // YOUR_TURN trigger - only fires for the card owner when it's their turn
     if (effect.trigger === EffectTrigger.YOUR_TURN) {
+      if (gameState.activePlayerId !== player.id) return false;
+    }
+
+    // START_OF_TURN trigger - fires at the start of your turn
+    if (effect.trigger === EffectTrigger.START_OF_TURN) {
+      if (event.type !== 'START_OF_TURN') return false;
       if (gameState.activePlayerId !== player.id) return false;
     }
 
@@ -536,6 +576,12 @@ export class EffectEngine {
       case ConditionType.MORE_LIFE_THAN_OPPONENT:
         return opponent ? sourcePlayer.life > opponent.life : false;
 
+      case ConditionType.TOTAL_LIFE_OR_MORE: {
+        const myLife = Array.isArray(sourcePlayer.life) ? sourcePlayer.life.length : (sourcePlayer.life ?? 0);
+        const oppLife = opponent ? (Array.isArray(opponent.life) ? opponent.life.length : (opponent.life ?? 0)) : 0;
+        return (myLife + oppLife) >= (condition.value ?? 0);
+      }
+
       // Hand conditions
       case ConditionType.HAND_COUNT_OR_MORE:
         return sourcePlayer.hand.length >= (condition.value || 0);
@@ -545,6 +591,16 @@ export class EffectEngine {
 
       case ConditionType.HAND_EMPTY:
         return sourcePlayer.hand.length === 0;
+
+      // Opponent hand conditions
+      case ConditionType.OPPONENT_HAND_COUNT_OR_MORE:
+        return (opponent?.hand.length ?? 0) >= (condition.value ?? 0);
+
+      case ConditionType.OPPONENT_HAND_COUNT_OR_LESS:
+        return (opponent?.hand.length ?? 0) <= (condition.value ?? 0);
+
+      case ConditionType.OPPONENT_HAND_EMPTY:
+        return (opponent?.hand.length ?? 0) === 0;
 
       // Field conditions
       case ConditionType.CHARACTER_COUNT_OR_MORE:
@@ -590,6 +646,11 @@ export class EffectEngine {
         const leaderDefColor = this.cardDefinitions.get(sourcePlayer.leaderCard?.cardId || '');
         const colorValue = String(condition.value ?? '');
         return leaderDefColor?.colors?.includes(colorValue) ?? false;
+      }
+
+      case ConditionType.LEADER_IS_MULTICOLORED: {
+        const leaderDefMulti = this.cardDefinitions.get(sourcePlayer.leaderCard?.cardId || '');
+        return (leaderDefMulti?.colors?.length ?? 0) > 1;
       }
 
       // Turn conditions
@@ -2322,25 +2383,53 @@ export class EffectEngine {
       // ============================================
       // GRANT_EFFECT - Grant an effect to target card
       // ============================================
-      case EffectType.GRANT_EFFECT:
+      case EffectType.GRANT_EFFECT: {
         // This grants a temporary effect definition to a card
-        // The effect is stored via temporaryKeywords as a marker
+        // The effect is stored in grantedEffects array for proper trigger handling
+        const grantedEffectDef = (action as any).grantedEffect;
+        const grantDuration = action.duration === EffectDuration.UNTIL_END_OF_TURN
+          ? 'THIS_TURN'
+          : action.duration === EffectDuration.UNTIL_END_OF_BATTLE
+            ? 'THIS_BATTLE'
+            : action.duration === EffectDuration.WHILE_ON_FIELD
+              ? 'WHILE_ON_FIELD'
+              : 'THIS_TURN'; // Default to THIS_TURN
+
         targets.forEach(targetId => {
           const card = this.findCard(gameState, targetId);
-          const grantedEffect = (action as any).grantedEffect;
-          if (card && grantedEffect) {
-            // Store granted effect marker in temporaryKeywords
-            if (!card.temporaryKeywords) card.temporaryKeywords = [];
-            card.temporaryKeywords.push(`GrantedEffect:${grantedEffect.id || 'effect'}`);
+          if (card && grantedEffectDef) {
+            // Initialize grantedEffects array if not present
+            if (!card.grantedEffects) card.grantedEffects = [];
+
+            // Create the granted effect entry
+            const grantedEffect = {
+              id: `granted-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              sourceCardId: context.sourceCard.id,
+              trigger: grantedEffectDef.trigger || 'PASSIVE',
+              effectType: grantedEffectDef.type || grantedEffectDef.effectType || 'BUFF_POWER',
+              value: grantedEffectDef.value,
+              duration: grantDuration as 'THIS_TURN' | 'THIS_BATTLE' | 'WHILE_ON_FIELD' | 'PERMANENT',
+              turnGranted: gameState.turn,
+            };
+
+            card.grantedEffects.push(grantedEffect);
+
+            // Also add keyword marker for simpler keyword-based effects
+            if (grantedEffectDef.keyword) {
+              if (!card.temporaryKeywords) card.temporaryKeywords = [];
+              card.temporaryKeywords.push(grantedEffectDef.keyword);
+            }
+
             changes.push({
               type: 'EFFECT_APPLIED',
               cardId: targetId,
-              value: 'GRANT_EFFECT',
+              value: `GRANT_EFFECT:${grantedEffect.effectType}`,
             });
           }
         });
-        console.log('[GRANT_EFFECT] Granted effect to', targets.length, 'cards');
+        console.log('[GRANT_EFFECT] Granted effect to', targets.length, 'cards:', grantedEffectDef?.type || grantedEffectDef?.effectType);
         break;
+      }
 
       // ============================================
       // TAKE_ANOTHER_TURN - Extra turn after current
@@ -3044,6 +3133,34 @@ export class EffectEngine {
             if (filter.operator === 'EQUALS') {
               return card.state === filter.value;
             }
+            break;
+
+          case 'NAME':
+            const cardName = def.name || '';
+            if (filter.operator === 'NOT_EQUALS' || filter.operator === 'NOT') {
+              return cardName !== filter.value;
+            }
+            if (filter.operator === 'EQUALS') {
+              return cardName === filter.value;
+            }
+            break;
+
+          case 'BASE_COST':
+            // Base cost is the original cost from card definition, not modified by effects
+            const baseCost = def.cost ?? 0;
+            const baseCostValue = context ? this.resolveDynamicValue(filter.value, context) : (filter.value as number);
+            if (filter.operator === 'OR_LESS' || filter.operator === 'LESS_THAN_OR_EQUAL') return baseCost <= baseCostValue;
+            if (filter.operator === 'OR_MORE') return baseCost >= baseCostValue;
+            if (filter.operator === 'EQUALS') return baseCost === baseCostValue;
+            break;
+
+          case 'BASE_POWER':
+            // Base power is the original power from card definition, not modified by buffs
+            const basePower = def.power ?? 0;
+            const basePowerValue = context ? this.resolveDynamicValue(filter.value, context) : (filter.value as number);
+            if (filter.operator === 'OR_LESS' || filter.operator === 'LESS_THAN_OR_EQUAL') return basePower <= basePowerValue;
+            if (filter.operator === 'OR_MORE') return basePower >= basePowerValue;
+            if (filter.operator === 'EQUALS') return basePower === basePowerValue;
             break;
         }
 

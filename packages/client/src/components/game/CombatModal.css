@@ -22,13 +22,13 @@
 }
 
 .combat-modal {
-  background: linear-gradient(135deg, #1a1a2e 0%, #252540 100%);
+  background: linear-gradient(135deg, #1a2e1a 0%, #0d1f0d 100%);
   border-radius: 16px;
   padding: 24px 32px;
   min-width: 500px;
   max-width: 700px;
-  border: 2px solid rgba(255, 255, 255, 0.15);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  border: 2px solid rgba(255, 215, 0, 0.6);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 20px rgba(74, 222, 128, 0.2);
   animation: slideIn 0.3s ease;
 }
 
@@ -122,9 +122,9 @@
 }
 
 .combat-modal__power--defender {
-  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
-  color: #fff;
-  box-shadow: 0 4px 15px rgba(52, 152, 219, 0.4);
+  background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+  color: #000;
+  box-shadow: 0 4px 15px rgba(74, 222, 128, 0.4);
 }
 
 .combat-modal__counter-bonus {
@@ -171,9 +171,9 @@
 }
 
 .combat-modal__result--defender {
-  background: rgba(52, 152, 219, 0.2);
-  color: #3498db;
-  border: 1px solid #3498db;
+  background: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+  border: 1px solid #4ade80;
 }
 
 /* Actions Section */
@@ -232,29 +232,29 @@
 
 .combat-modal__blocker-option:hover,
 .combat-modal__counter-option:hover {
-  background: rgba(39, 174, 96, 0.2);
-  border-color: #27ae60;
+  background: rgba(74, 222, 128, 0.2);
+  border-color: #4ade80;
   transform: translateY(-2px);
 }
 
 /* Selected card styling */
 .combat-modal__blocker-option--selected,
 .combat-modal__counter-option--selected {
-  border-color: #3498db;
-  background: rgba(52, 152, 219, 0.3);
-  box-shadow: 0 0 12px rgba(52, 152, 219, 0.5);
+  border-color: #ffd700;
+  background: rgba(255, 215, 0, 0.2);
+  box-shadow: 0 0 12px rgba(255, 215, 0, 0.5);
 }
 
 .combat-modal__blocker-option--selected:hover,
 .combat-modal__counter-option--selected:hover {
-  border-color: #3498db;
-  background: rgba(52, 152, 219, 0.4);
+  border-color: #ffd700;
+  background: rgba(255, 215, 0, 0.3);
 }
 
 .combat-modal__blocker-power {
   font-size: 14px;
   font-weight: bold;
-  color: #3498db;
+  color: #4ade80;
 }
 
 .combat-modal__counter-value {
@@ -294,12 +294,12 @@
 }
 
 .combat-modal__btn--block {
-  background: #3498db;
-  color: #fff;
+  background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+  color: #000;
 }
 
 .combat-modal__btn--block:hover:not(:disabled) {
-  background: #2980b9;
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
   transform: scale(1.02);
 }
 
@@ -310,12 +310,12 @@
 }
 
 .combat-modal__btn--counter {
-  background: #27ae60;
-  color: #fff;
+  background: linear-gradient(135deg, #ffd700 0%, #f1c40f 100%);
+  color: #000;
 }
 
 .combat-modal__btn--counter:hover:not(:disabled) {
-  background: #219a52;
+  background: linear-gradient(135deg, #f1c40f 0%, #d4ac0d 100%);
   transform: scale(1.02);
 }
 
