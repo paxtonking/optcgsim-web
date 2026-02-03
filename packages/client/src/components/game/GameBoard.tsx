@@ -230,6 +230,63 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     return false;
   }, [gameState, playerId]);
 
+  const findCardInState = useCallback((cardId: string): GameCardType | undefined => {
+    if (!gameState) return undefined;
+    for (const player of Object.values(gameState.players)) {
+      if (player.leaderCard?.id === cardId) {
+        return player.leaderCard;
+      }
+      const card = player.field.find(c => c.id === cardId) ||
+        player.hand.find(c => c.id === cardId) ||
+        player.trash.find(c => c.id === cardId) ||
+        player.deck.find(c => c.id === cardId) ||
+        player.lifeCards.find(c => c.id === cardId) ||
+        player.donField.find(c => c.id === cardId) ||
+        (player.stage?.id === cardId ? player.stage : undefined);
+      if (card) return card;
+    }
+    return undefined;
+  }, [gameState]);
+
+  const hasRuntimeKeyword = useCallback((card: GameCardType | undefined, keyword: string): boolean => {
+    if (!card) return false;
+
+    if (card.keywords?.includes(keyword)) return true;
+    if (card.temporaryKeywords?.includes(keyword)) return true;
+    if (card.continuousKeywords?.includes(keyword)) return true;
+    if (!card.grantedEffects || !gameState) return false;
+
+    for (const effect of card.grantedEffects) {
+      if (effect.effectType !== 'GRANT_KEYWORD' || effect.keyword !== keyword) continue;
+      const duration = effect.duration as string;
+
+      switch (duration) {
+        case 'THIS_TURN':
+          if (effect.turnGranted === gameState.turn) return true;
+          break;
+        case 'UNTIL_END_OF_OPPONENT_TURN':
+        case 'UNTIL_START_OF_YOUR_TURN':
+          if (gameState.turn <= effect.turnGranted + 1) return true;
+          break;
+        case 'THIS_BATTLE':
+          if (Boolean(gameState.currentCombat) && effect.turnGranted === gameState.turn) return true;
+          break;
+        case 'WHILE_ON_FIELD': {
+          const sourceCard = findCardInState(effect.sourceCardId);
+          if (sourceCard &&
+            (sourceCard.zone === CardZone.FIELD || sourceCard.zone === CardZone.LEADER || sourceCard.zone === CardZone.STAGE)) {
+            return true;
+          }
+          break;
+        }
+        case 'PERMANENT':
+          return true;
+      }
+    }
+
+    return false;
+  }, [findCardInState, gameState]);
+
   // Detect when opponent uses counter and show notification
   useEffect(() => {
     const currentCounterPower = gameState?.currentCombat?.counterPower || 0;
@@ -2030,16 +2087,16 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       // Check leader
       if (player.leaderCard?.id === attackerId) {
         const card = player.leaderCard;
-        return card.keywords?.includes('Unblockable') || card.temporaryKeywords?.includes('Unblockable') || false;
+        return hasRuntimeKeyword(card, 'Unblockable');
       }
       // Check field
       const fieldCard = player.field.find(c => c.id === attackerId);
       if (fieldCard) {
-        return fieldCard.keywords?.includes('Unblockable') || fieldCard.temporaryKeywords?.includes('Unblockable') || false;
+        return hasRuntimeKeyword(fieldCard, 'Unblockable');
       }
     }
     return false;
-  }, [gameState?.currentCombat, gameState?.players]);
+  }, [gameState?.currentCombat, gameState?.players, hasRuntimeKeyword]);
 
   // Calculate ACTIVE DON count
   const activeDonCount = useMemo(() => {
@@ -2083,10 +2140,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     // Characters played this turn need Rush to attack (summoning sickness)
     // Leaders (zone === LEADER) are exempt from this rule
     if (selectedCard.zone === CardZone.FIELD && selectedCard.turnPlayed === turn) {
-      if (!selectedCard.keywords?.includes('Rush')) return false;
+      if (!hasRuntimeKeyword(selectedCard, 'Rush')) return false;
     }
     return true;
-  }, [selectedCard, isMyTurn, phase, turn, playerId, gameState?.firstPlayerId, myPlayer?.turnCount]);
+  }, [selectedCard, isMyTurn, phase, turn, playerId, gameState?.firstPlayerId, myPlayer?.turnCount, hasRuntimeKeyword]);
 
   // Check if selected card has abilities (for attack button flow)
   const selectedCardHasAbilities = useMemo(() => {
@@ -2126,13 +2183,13 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
     // Characters with Blocker keyword that are not rested can block
     myPlayer.field.forEach(card => {
-      if (card.state !== 'RESTED' && card.keywords?.includes('Blocker')) {
+      if (card.state !== 'RESTED' && hasRuntimeKeyword(card, 'Blocker')) {
         blockers.add(card.id);
       }
     });
 
     return blockers;
-  }, [myPlayer, isDefender, phase]);
+  }, [myPlayer, isDefender, phase, hasRuntimeKeyword]);
 
   // Calculate DON attachment targets - when a DON is selected, show valid targets
   const donAttachTargets = useMemo(() => {
@@ -2562,7 +2619,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       } else if (selectedCard.hasAttacked) {
         showErrorBanner('This character has already attacked this turn');
         return;
-      } else if (selectedCard.zone === CardZone.FIELD && selectedCard.turnPlayed === turn && !selectedCard.keywords?.includes('Rush')) {
+      } else if (selectedCard.zone === CardZone.FIELD && selectedCard.turnPlayed === turn && !hasRuntimeKeyword(selectedCard, 'Rush')) {
         showErrorBanner('Cannot attack - played this turn (needs Rush)');
         return;
       }
@@ -2631,7 +2688,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         }
       }
     }
-  }, [phase, isDefender, validBlockers, selectBlocker, playableCards, selectedCard, targetableCards, playCard, declareAttack, setSelectedCard, playerId, opponent, isMyTurn, selectedDon, attachDon, showErrorBanner, turn, pinnedCard, activationMode, activationDonTargets, activationTargets, activateAbility, pendingPlayCard, getTargetZone]);
+  }, [phase, isDefender, validBlockers, selectBlocker, playableCards, selectedCard, targetableCards, playCard, declareAttack, setSelectedCard, playerId, opponent, isMyTurn, selectedDon, attachDon, showErrorBanner, turn, pinnedCard, activationMode, activationDonTargets, activationTargets, activateAbility, pendingPlayCard, getTargetZone, hasRuntimeKeyword]);
 
   // Card hover handler
   const handleCardHover = useCallback((card: GameCardType | null) => {

@@ -350,6 +350,10 @@ export class EffectEngine {
     switch (grantedEffect.duration) {
       case 'THIS_TURN':
         return grantedEffect.turnGranted === gameState.turn;
+      case 'UNTIL_END_OF_OPPONENT_TURN':
+      case 'UNTIL_START_OF_YOUR_TURN':
+        // Two-player turn progression: active through the next turn after grant.
+        return gameState.turn <= grantedEffect.turnGranted + 1;
       case 'THIS_BATTLE':
         return Boolean(gameState.currentCombat) && grantedEffect.turnGranted === gameState.turn;
       case 'WHILE_ON_FIELD': {
@@ -1426,13 +1430,17 @@ export class EffectEngine {
           const card = this.findCard(gameState, targetId);
           if (card && action.keyword) {
             // Map EffectDuration to GrantedEffect duration format (Bug 2 fix)
-            let grantDuration: 'THIS_TURN' | 'THIS_BATTLE' | 'WHILE_ON_FIELD' | 'PERMANENT';
+            let grantDuration: 'THIS_TURN' | 'THIS_BATTLE' | 'WHILE_ON_FIELD' | 'PERMANENT' | 'UNTIL_END_OF_OPPONENT_TURN' | 'UNTIL_START_OF_YOUR_TURN';
 
             switch (action.duration) {
               case EffectDuration.UNTIL_END_OF_TURN:
-              case EffectDuration.UNTIL_END_OF_OPPONENT_TURN:
-              case EffectDuration.UNTIL_START_OF_YOUR_TURN:
                 grantDuration = 'THIS_TURN';
+                break;
+              case EffectDuration.UNTIL_END_OF_OPPONENT_TURN:
+                grantDuration = 'UNTIL_END_OF_OPPONENT_TURN';
+                break;
+              case EffectDuration.UNTIL_START_OF_YOUR_TURN:
+                grantDuration = 'UNTIL_START_OF_YOUR_TURN';
                 break;
               case EffectDuration.UNTIL_END_OF_BATTLE:
                 grantDuration = 'THIS_BATTLE';
@@ -2471,6 +2479,10 @@ export class EffectEngine {
         const grantedEffectDef = (action as any).grantedEffect;
         const grantDuration = action.duration === EffectDuration.UNTIL_END_OF_TURN
           ? 'THIS_TURN'
+          : action.duration === EffectDuration.UNTIL_END_OF_OPPONENT_TURN
+            ? 'UNTIL_END_OF_OPPONENT_TURN'
+            : action.duration === EffectDuration.UNTIL_START_OF_YOUR_TURN
+              ? 'UNTIL_START_OF_YOUR_TURN'
           : action.duration === EffectDuration.UNTIL_END_OF_BATTLE
             ? 'THIS_BATTLE'
             : action.duration === EffectDuration.WHILE_ON_FIELD
@@ -2490,7 +2502,7 @@ export class EffectEngine {
               trigger: grantedEffectDef.trigger || 'PASSIVE',
               effectType: grantedEffectDef.type || grantedEffectDef.effectType || 'BUFF_POWER',
               value: grantedEffectDef.value,
-              duration: grantDuration as 'THIS_TURN' | 'THIS_BATTLE' | 'WHILE_ON_FIELD' | 'PERMANENT',
+              duration: grantDuration as 'THIS_TURN' | 'THIS_BATTLE' | 'WHILE_ON_FIELD' | 'PERMANENT' | 'UNTIL_END_OF_OPPONENT_TURN' | 'UNTIL_START_OF_YOUR_TURN',
               turnGranted: gameState.turn,
             };
 
@@ -2596,7 +2608,7 @@ export class EffectEngine {
   // KEYWORD ABILITY CHECKING
   // ============================================
 
-  public hasKeyword(card: GameCard, keyword: string): boolean {
+  public hasKeyword(card: GameCard, keyword: string, gameState?: GameState): boolean {
     // Check permanent and temporary keyword arrays
     if (card.keywords?.includes(keyword)) return true;
     if (card.temporaryKeywords?.includes(keyword)) return true;
@@ -2605,7 +2617,12 @@ export class EffectEngine {
     // Check grantedEffects for GRANT_KEYWORD effects (Bug 6 fix)
     if (card.grantedEffects) {
       for (const effect of card.grantedEffects) {
-        if (effect.effectType === 'GRANT_KEYWORD' && effect.keyword === keyword) {
+        const isActive = gameState ? this.isGrantedEffectActive(effect, gameState) : true;
+        if (
+          isActive &&
+          effect.effectType === 'GRANT_KEYWORD' &&
+          effect.keyword === keyword
+        ) {
           return true;
         }
       }
@@ -2614,9 +2631,9 @@ export class EffectEngine {
     return false;
   }
 
-  public canAttackOnPlayTurn(card: GameCard, currentTurn: number): boolean {
+  public canAttackOnPlayTurn(card: GameCard, currentTurn: number, gameState?: GameState): boolean {
     // Check if card has Rush keyword
-    if (this.hasKeyword(card, 'Rush')) {
+    if (this.hasKeyword(card, 'Rush', gameState)) {
       return true;
     }
 
@@ -2624,22 +2641,22 @@ export class EffectEngine {
     return card.turnPlayed !== currentTurn;
   }
 
-  public canBlock(card: GameCard): boolean {
+  public canBlock(card: GameCard, gameState?: GameState): boolean {
     // Card must have Blocker keyword and be active
-    return this.hasKeyword(card, 'Blocker') && card.state === CardState.ACTIVE;
+    return this.hasKeyword(card, 'Blocker', gameState) && card.state === CardState.ACTIVE;
   }
 
-  public hasBanish(card: GameCard): boolean {
-    return this.hasKeyword(card, 'Banish');
+  public hasBanish(card: GameCard, gameState?: GameState): boolean {
+    return this.hasKeyword(card, 'Banish', gameState);
   }
 
-  public hasDoubleAttack(card: GameCard): boolean {
-    return this.hasKeyword(card, 'Double Attack');
+  public hasDoubleAttack(card: GameCard, gameState?: GameState): boolean {
+    return this.hasKeyword(card, 'Double Attack', gameState);
   }
 
-  public isUnblockable(card: GameCard): boolean {
+  public isUnblockable(card: GameCard, gameState?: GameState): boolean {
     // Check permanent Unblockable keyword
-    if (this.hasKeyword(card, 'Unblockable')) return true;
+    if (this.hasKeyword(card, 'Unblockable', gameState)) return true;
     // Also check temporary keywords granted by effects (e.g., CANT_BE_BLOCKED)
     return card.temporaryKeywords?.includes('Unblockable') || false;
   }

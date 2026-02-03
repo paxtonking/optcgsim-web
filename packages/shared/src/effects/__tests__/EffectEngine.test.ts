@@ -511,7 +511,45 @@ describe('EffectEngine.resolveAction', () => {
       };
 
       engine.resolveEffect(effect, context);
-      expect(targetCard.keywords).toContain('Rush');
+      expect(targetCard.keywords ?? []).not.toContain('Rush');
+      expect(targetCard.grantedEffects?.some(e => e.keyword === 'Rush' && e.duration === 'THIS_TURN')).toBe(true);
+      expect(engine.hasKeyword(targetCard, 'Rush', gameState)).toBe(true);
+    });
+
+    it('should keep opponent-turn duration active for one additional turn', () => {
+      const gameState = createMockGameState();
+      const player = gameState.players['player1'];
+      const sourceCard = createMockCard({ owner: 'player1' });
+      const targetCard = createMockCard({ owner: 'player1' });
+      addToField(player, [sourceCard, targetCard]);
+
+      const context: EffectContext = {
+        gameState,
+        sourceCard,
+        sourcePlayer: player,
+        selectedTargets: [targetCard.id],
+      };
+
+      const effect = {
+        id: 'test-grant-opponent-turn',
+        trigger: EffectTrigger.ACTIVATE_MAIN,
+        effects: [{
+          type: EffectType.GRANT_KEYWORD,
+          target: { type: TargetType.YOUR_CHARACTER, count: 1 },
+          keyword: 'Rush',
+          duration: EffectDuration.UNTIL_END_OF_OPPONENT_TURN,
+        }],
+        description: 'Grant Rush until end of opponent turn',
+      };
+
+      engine.resolveEffect(effect, context);
+      expect(engine.hasKeyword(targetCard, 'Rush', gameState)).toBe(true);
+
+      gameState.turn = 2;
+      expect(engine.hasKeyword(targetCard, 'Rush', gameState)).toBe(true);
+
+      gameState.turn = 3;
+      expect(engine.hasKeyword(targetCard, 'Rush', gameState)).toBe(false);
     });
   });
 

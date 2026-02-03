@@ -2339,7 +2339,7 @@ export class GameStateManager {
     // Check if card can attack (Rush check for cards played this turn)
     if (attacker.turnPlayed === this.state.turn) {
       // Card was played this turn - check attack eligibility
-      const hasRush = this.effectEngine.canAttackOnPlayTurn(attacker, this.state.turn);
+      const hasRush = this.effectEngine.canAttackOnPlayTurn(attacker, this.state.turn, this.state);
       const hasStageRushVsCharacters = this.hasStageGrantedRushVsCharacters(attacker.owner, attacker.id);
 
       if (hasRush) {
@@ -2750,10 +2750,10 @@ export class GameStateManager {
     }
 
     // Check if card can block using effect engine
-    if (!this.effectEngine.canBlock(blocker)) return false;
+    if (!this.effectEngine.canBlock(blocker, this.state)) return false;
 
     // Check if attacker is unblockable
-    if (this.effectEngine.isUnblockable(attacker)) return false;
+    if (this.effectEngine.isUnblockable(attacker, this.state)) return false;
 
     blocker.state = CardState.RESTED;
     this.state.currentCombat.isBlocked = true;
@@ -3038,7 +3038,7 @@ export class GameStateManager {
       if (targetPlayer) {
         // Check for Double Attack
         let damageMultiplier = 1;
-        const hasDoubleAttack = attacker && this.effectEngine.hasDoubleAttack(attacker);
+        const hasDoubleAttack = attacker && this.effectEngine.hasDoubleAttack(attacker, this.state);
         if (hasDoubleAttack) {
           damageMultiplier = 2;
         }
@@ -3149,7 +3149,7 @@ export class GameStateManager {
     const lifeBeforeDamage = player.lifeCards.length;
 
     // Check if attacker has Banish - cards go to trash instead of hand
-    const hasBanish = attacker && this.effectEngine.hasBanish(attacker);
+    const hasBanish = attacker && this.effectEngine.hasBanish(attacker, this.state);
 
     for (let i = 0; i < damage; i++) {
       // Win condition: If player has no life cards and takes damage, they lose
@@ -3395,6 +3395,17 @@ export class GameStateManager {
    * Clear THIS_TURN power buffs and granted effects from all cards at end of turn
    */
   private clearTurnBuffs(): void {
+    const keepGrantedEffect = (effect: { duration: string; turnGranted: number }): boolean => {
+      if (effect.duration === 'THIS_TURN') return false;
+      if (
+        (effect.duration === 'UNTIL_END_OF_OPPONENT_TURN' || effect.duration === 'UNTIL_START_OF_YOUR_TURN') &&
+        this.state.turn > effect.turnGranted
+      ) {
+        return false;
+      }
+      return true;
+    };
+
     for (const player of Object.values(this.state.players)) {
       // Clear from leader
       if (player.leaderCard?.powerBuffs) {
@@ -3405,7 +3416,7 @@ export class GameStateManager {
       // Clear granted effects from leader
       if (player.leaderCard?.grantedEffects) {
         player.leaderCard.grantedEffects = player.leaderCard.grantedEffects.filter(
-          effect => effect.duration !== 'THIS_TURN'
+          effect => keepGrantedEffect(effect)
         );
       }
       // Clear from field cards
@@ -3418,7 +3429,7 @@ export class GameStateManager {
         // Clear granted effects
         if (card.grantedEffects) {
           card.grantedEffects = card.grantedEffects.filter(
-            effect => effect.duration !== 'THIS_TURN'
+            effect => keepGrantedEffect(effect)
           );
         }
       }
