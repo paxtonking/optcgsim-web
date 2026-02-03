@@ -1110,10 +1110,18 @@ export const CONDITION_PATTERNS: ConditionPattern[] = [
 // COST PATTERNS
 // ============================================
 
+interface CostAlternative {
+  type: string;
+  count: number;
+  traitFilter?: string;
+}
+
 interface CostPattern {
   pattern: RegExp;
-  costType: 'DON' | 'DON_MINUS' | 'TRASH_CARD' | 'REST_DON' | 'REST_THIS' | 'LIFE' | 'TRASH_FROM_HAND';
+  costType: 'DON' | 'DON_MINUS' | 'TRASH_CARD' | 'REST_DON' | 'REST_THIS' | 'LIFE' | 'TRASH_FROM_HAND' | 'TRASH_ALTERNATIVE' | 'TRASH_CHARACTER';
   extractCount?: (match: RegExpMatchArray) => number;
+  extractAlternatives?: (match: RegExpMatchArray) => CostAlternative[];
+  extractTraitFilter?: (match: RegExpMatchArray) => string | undefined;
 }
 
 export const COST_PATTERNS: CostPattern[] = [
@@ -1129,12 +1137,25 @@ export const COST_PATTERNS: CostPattern[] = [
     extractCount: (m) => m[1] ? parseInt(m[1]) : 1
   },
 
-  // Trash costs - complex "or" pattern: "trash X ... Characters or X card from hand"
+  // Trash costs - complex "or" pattern: "trash X {Type} Characters or X card from hand"
+  // This creates ALTERNATIVE costs - player chooses one
   // Must come BEFORE simple pattern
   {
-    pattern: /[Tt]rash\s*(\d+)?\s*(?:of\s+your\s+)?(?:\{[^}]+\}\s*type\s+)?Characters?\s+or\s+(\d+)?\s*cards?\s*from\s*(?:your\s*)?hand/i,
-    costType: 'TRASH_FROM_HAND',
-    extractCount: (m) => m[1] ? parseInt(m[1]) : 1
+    pattern: /[Tt]rash\s*(\d+)?\s*(?:of\s+your\s+)?(?:\{([^}]+)\}\s*type\s+)?Characters?\s+or\s+(\d+)?\s*cards?\s*from\s*(?:your\s*)?hand/i,
+    costType: 'TRASH_ALTERNATIVE',
+    extractCount: (m) => m[1] ? parseInt(m[1]) : 1,
+    extractAlternatives: (m) => [
+      { type: 'TRASH_CHARACTER', count: m[1] ? parseInt(m[1]) : 1, traitFilter: m[2] || undefined },
+      { type: 'TRASH_FROM_HAND', count: m[3] ? parseInt(m[3]) : 1 }
+    ],
+    extractTraitFilter: (m) => m[2] || undefined
+  },
+  // Trash costs - field character only: "trash X of your {Type} Characters"
+  {
+    pattern: /[Tt]rash\s*(\d+)?\s*(?:of\s+your\s+)?(?:\{([^}]+)\}\s*type\s+)?Characters?(?!\s+or)/i,
+    costType: 'TRASH_CHARACTER',
+    extractCount: (m) => m[1] ? parseInt(m[1]) : 1,
+    extractTraitFilter: (m) => m[2] || undefined
   },
   // Trash costs - simple pattern
   {
@@ -1295,14 +1316,30 @@ export function extractCosts(text: string): ParsedCost[] {
   // Check if the cost section has "You may" prefix (optional cost)
   const isOptionalCost = OPTIONAL_COST_PATTERN.test(text);
 
-  for (const { pattern, costType, extractCount } of COST_PATTERNS) {
+  for (const costPattern of COST_PATTERNS) {
+    const { pattern, costType, extractCount, extractAlternatives, extractTraitFilter } = costPattern;
     const match = text.match(pattern);
     if (match) {
-      costs.push({
+      const parsedCost: ParsedCost = {
         type: costType,
         count: extractCount?.(match) ?? 1,
         optional: isOptionalCost
-      });
+      };
+
+      // Extract trait filter if present
+      if (extractTraitFilter) {
+        const traitFilter = extractTraitFilter(match);
+        if (traitFilter) {
+          parsedCost.traitFilter = traitFilter;
+        }
+      }
+
+      // Extract alternatives if present (for "X or Y" costs)
+      if (extractAlternatives) {
+        parsedCost.alternatives = extractAlternatives(match);
+      }
+
+      costs.push(parsedCost);
     }
   }
 

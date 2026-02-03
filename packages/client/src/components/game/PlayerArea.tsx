@@ -67,6 +67,10 @@ interface PlayerAreaProps {
   gameOverResult?: 'winner' | 'loser' | null;  // Result for this player when game ends
   playmatImage?: string;  // Custom playmat background image path
   isMyTurn?: boolean;  // Whether it's the current player's turn (for DON power display)
+  fieldSelectMode?: boolean;  // Whether field character selection is active
+  fieldSelectValidTargets?: Set<string>;  // Valid character IDs for field selection
+  fieldSelectSelectedTargets?: Set<string>;  // Currently selected character IDs
+  onFieldSelectClick?: (cardId: string) => void;  // Called when a field card is clicked during selection
 }
 
 export const PlayerArea: React.FC<PlayerAreaProps> = ({
@@ -102,7 +106,11 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
   hideLifeZone = false,
   gameOverResult,
   playmatImage,
-  isMyTurn = true
+  isMyTurn = true,
+  fieldSelectMode = false,
+  fieldSelectValidTargets = new Set(),
+  fieldSelectSelectedTargets = new Set(),
+  onFieldSelectClick
 }) => {
   // DON attached to cards are inactive (dimmed) when it's not the card owner's turn
   // For player's cards: inactive when it's opponent's turn
@@ -384,9 +392,15 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                     showDonBonus={isOwnersTurn}
                     effectivePower={getEffectivePower(card, attachedDons.length)}
                     buffTotal={getBuffTotal(card)}
-                    className={getAttackAnimationClass(card.id)}
+                    className={[
+                      getAttackAnimationClass(card.id),
+                      fieldSelectMode && fieldSelectValidTargets.has(card.id) && 'game-card--field-selectable',
+                      fieldSelectMode && fieldSelectSelectedTargets.has(card.id) && 'game-card--field-selected'
+                    ].filter(Boolean).join(' ')}
                     onHover={onCardHover}
-                    onClick={onCardClick}
+                    onClick={fieldSelectMode && fieldSelectValidTargets.has(card.id) && onFieldSelectClick
+                      ? () => onFieldSelectClick(card.id)
+                      : () => onCardClick(card)}
                   />
                 </div>
                 <span className={`card-with-stats__stats ${getBuffTotal(card) > 0 ? 'card-with-stats__stats--buffed' : getBuffTotal(card) < 0 ? 'card-with-stats__stats--debuffed' : ''}`}>

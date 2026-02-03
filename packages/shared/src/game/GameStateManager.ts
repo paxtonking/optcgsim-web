@@ -16,6 +16,7 @@ import {
   PendingDeckRevealEffect,
   PendingHandSelectEffect,
   PendingPlayEffect,
+  ChoiceOption,
   CardRestriction,
 } from '../types/game';
 
@@ -34,6 +35,7 @@ import {
   parseLeaderRestrictions,
   ConditionType,
   extractSearchAndSelectDetails,
+  EffectCost,
 } from '../effects';
 
 export class GameStateManager {
@@ -616,45 +618,116 @@ export class GameStateManager {
       // Check if any ON_PLAY effects require target selection
       const effectsRequiringChoice = pendingEffects.filter(e => e.requiresChoice);
       if (effectsRequiringChoice.length > 0) {
-        // Check if the first effect has a cost that requires card selection (e.g., trash from hand)
+        // Check if the first effect has a cost that requires card selection
         const firstEffect = effectsRequiringChoice[0];
         const trashCost = firstEffect.effect.costs?.find(c =>
-          c.type === 'TRASH_CARD' || c.type === 'TRASH_FROM_HAND'
+          c.type === 'TRASH_CARD' || c.type === 'TRASH_FROM_HAND' ||
+          c.type === 'TRASH_CHARACTER' || c.alternatives
         );
 
         if (trashCost) {
-          // This effect has a trash cost - need to collect cost payment first
-          const canPayCost = player.hand.length >= (trashCost.count || 1);
           const isOptional = trashCost.optional === true;
 
-          if (!canPayCost && !isOptional) {
-            // Cannot pay required cost - effect fizzles
-            console.log('[playCard] Cannot pay required trash cost, effect fizzles');
-            this.effectEngine.removePendingEffect(firstEffect.id);
-          } else if (!canPayCost && isOptional) {
-            // Cannot pay optional cost - skip this effect's cost
-            console.log('[playCard] Cannot pay optional trash cost, skipping effect');
-            this.effectEngine.removePendingEffect(firstEffect.id);
-          } else {
-            // Set up cost payment via HAND_SELECT_STEP
-            console.log('[playCard] Effect has trash cost, entering HAND_SELECT_STEP');
-            const pendingCostPayment: PendingHandSelectEffect = {
-              id: `cost-payment-${Date.now()}`,
-              sourceCardId: firstEffect.sourceCardId,
-              playerId: playerId,
-              description: `Trash ${trashCost.count || 1} card(s) from your hand to activate effect`,
-              selectAction: 'TRASH',
-              minSelections: isOptional ? 0 : (trashCost.count || 1),
-              maxSelections: trashCost.count || 1,
-              canSkip: isOptional,
-              isCostPayment: true,
-              pendingEffectId: firstEffect.id,
-              sourceCardInstanceId: card.id
-            };
+          // Check if cost has alternatives (e.g., "trash 1 Character OR 1 card from hand")
+          if (trashCost.alternatives && trashCost.alternatives.length > 0) {
+            // Set up choice between alternatives
+            const options: ChoiceOption[] = trashCost.alternatives.map((alt, idx) => {
+              const canPay = this.canPaySingleCost(alt, player);
+              const label = this.describeCost(alt);
+              return {
+                id: `cost-${idx}`,
+                label,
+                enabled: canPay,
+                disabledReason: canPay ? undefined : 'Cannot pay this cost'
+              };
+            });
 
-            this.state.pendingHandSelectEffect = pendingCostPayment;
-            this.state.phase = GamePhase.HAND_SELECT_STEP;
-            return true;
+            // Check if at least one option can be paid
+            const anyCanPay = options.some(o => o.enabled);
+            if (!anyCanPay && !isOptional) {
+              console.log('[playCard] Cannot pay any cost alternative, effect fizzles');
+              this.effectEngine.removePendingEffect(firstEffect.id);
+            } else if (!anyCanPay && isOptional) {
+              console.log('[playCard] Cannot pay optional cost alternatives, skipping effect');
+              this.effectEngine.removePendingEffect(firstEffect.id);
+            } else {
+              console.log('[playCard] Effect has cost alternatives, entering CHOICE_STEP');
+              this.state.pendingChoiceEffect = {
+                id: `cost-choice-${Date.now()}`,
+                sourceCardId: firstEffect.sourceCardId,
+                playerId: playerId,
+                description: 'Choose which cost to pay',
+                choiceType: 'COST_ALTERNATIVE',
+                options,
+                minSelections: 1,
+                maxSelections: 1,
+                pendingEffectId: firstEffect.id
+              };
+              this.state.phase = GamePhase.CHOICE_STEP;
+              return true;
+            }
+          } else if (trashCost.type === 'TRASH_CHARACTER') {
+            // Field character selection
+            const validTargets = this.getValidFieldCharactersForCost(trashCost, player);
+            const canPayCost = validTargets.length >= (trashCost.count || 1);
+
+            if (!canPayCost && !isOptional) {
+              console.log('[playCard] Cannot pay required field trash cost, effect fizzles');
+              this.effectEngine.removePendingEffect(firstEffect.id);
+            } else if (!canPayCost && isOptional) {
+              console.log('[playCard] Cannot pay optional field trash cost, skipping effect');
+              this.effectEngine.removePendingEffect(firstEffect.id);
+            } else {
+              console.log('[playCard] Effect has field trash cost, entering FIELD_SELECT_STEP');
+              const traitDesc = trashCost.traitFilter ? ` ${trashCost.traitFilter}` : '';
+              this.state.pendingFieldSelectEffect = {
+                id: `field-cost-${Date.now()}`,
+                sourceCardId: firstEffect.sourceCardId,
+                playerId: playerId,
+                description: `Trash ${trashCost.count || 1}${traitDesc} Character(s) to activate effect`,
+                selectAction: 'TRASH',
+                validTargetIds: validTargets,
+                minSelections: isOptional ? 0 : (trashCost.count || 1),
+                maxSelections: trashCost.count || 1,
+                traitFilter: trashCost.traitFilter,
+                canSkip: isOptional,
+                isCostPayment: true,
+                pendingEffectId: firstEffect.id
+              };
+              this.state.phase = GamePhase.FIELD_SELECT_STEP;
+              return true;
+            }
+          } else {
+            // Regular hand trash cost (existing flow)
+            const canPayCost = player.hand.length >= (trashCost.count || 1);
+
+            if (!canPayCost && !isOptional) {
+              console.log('[playCard] Cannot pay required trash cost, effect fizzles');
+              this.effectEngine.removePendingEffect(firstEffect.id);
+            } else if (!canPayCost && isOptional) {
+              console.log('[playCard] Cannot pay optional trash cost, skipping effect');
+              this.effectEngine.removePendingEffect(firstEffect.id);
+            } else {
+              // Set up cost payment via HAND_SELECT_STEP
+              console.log('[playCard] Effect has trash cost, entering HAND_SELECT_STEP');
+              const pendingCostPayment: PendingHandSelectEffect = {
+                id: `cost-payment-${Date.now()}`,
+                sourceCardId: firstEffect.sourceCardId,
+                playerId: playerId,
+                description: `Trash ${trashCost.count || 1} card(s) from your hand to activate effect`,
+                selectAction: 'TRASH',
+                minSelections: isOptional ? 0 : (trashCost.count || 1),
+                maxSelections: trashCost.count || 1,
+                canSkip: isOptional,
+                isCostPayment: true,
+                pendingEffectId: firstEffect.id,
+                sourceCardInstanceId: card.id
+              };
+
+              this.state.pendingHandSelectEffect = pendingCostPayment;
+              this.state.phase = GamePhase.HAND_SELECT_STEP;
+              return true;
+            }
           }
         }
 
@@ -2151,6 +2224,70 @@ export class GameStateManager {
     return restricted;
   }
 
+  // Helper: Check if a single cost can be paid
+  private canPaySingleCost(cost: EffectCost, player: PlayerState): boolean {
+    const count = cost.count || 1;
+    switch (cost.type) {
+      case 'TRASH_FROM_HAND':
+      case 'TRASH_CARD':
+        return player.hand.length >= count;
+      case 'TRASH_CHARACTER':
+        const validChars = this.getValidFieldCharactersForCost(cost, player);
+        return validChars.length >= count;
+      case 'REST_DON':
+      case 'DON':
+        const activeDon = player.donField.filter(d => d.state === CardState.ACTIVE && !d.attachedTo);
+        return activeDon.length >= count;
+      case 'LIFE':
+        return player.lifeCards.length >= count;
+      case 'REST_SELF':
+      case 'REST_CHARACTER':
+        return true; // Assume can rest
+      default:
+        return true;
+    }
+  }
+
+  // Helper: Get valid field characters for a TRASH_CHARACTER cost
+  private getValidFieldCharactersForCost(cost: EffectCost, player: PlayerState): string[] {
+    return player.field
+      .filter(char => {
+        // Apply trait filter if present
+        if (cost.traitFilter) {
+          const cardDef = this.effectEngine.getCardDefinition(char.cardId);
+          if (!cardDef?.traits?.includes(cost.traitFilter)) {
+            return false;
+          }
+        }
+        return true;
+      })
+      .map(char => char.id);
+  }
+
+  // Helper: Describe a cost for display
+  private describeCost(cost: EffectCost): string {
+    const count = cost.count || 1;
+    switch (cost.type) {
+      case 'TRASH_FROM_HAND':
+      case 'TRASH_CARD':
+        return `Trash ${count} card${count > 1 ? 's' : ''} from hand`;
+      case 'TRASH_CHARACTER':
+        const traitDesc = cost.traitFilter ? ` ${cost.traitFilter}` : '';
+        return `Trash ${count}${traitDesc} Character${count > 1 ? 's' : ''} from field`;
+      case 'REST_DON':
+      case 'DON':
+        return `Rest ${count} DON!!`;
+      case 'LIFE':
+        return `Take ${count} damage`;
+      case 'REST_SELF':
+        return 'Rest this card';
+      case 'REST_CHARACTER':
+        return `Rest ${count} Character${count > 1 ? 's' : ''}`;
+      default:
+        return `Pay cost`;
+    }
+  }
+
   // Combat methods
   public declareAttack(attackerId: string, targetId: string, targetType: 'leader' | 'character'): boolean {
     console.log('[DEBUG ATTACK GSM] declareAttack called:', { attackerId, targetId, targetType });
@@ -3578,6 +3715,15 @@ export class GameStateManager {
       case ActionType.SKIP_HAND_SELECT:
         return this.skipHandSelect(action.playerId);
 
+      case ActionType.RESOLVE_FIELD_SELECT:
+        return this.resolveFieldSelect(action.playerId, actionData.selectedCardIds);
+
+      case ActionType.SKIP_FIELD_SELECT:
+        return this.skipFieldSelect(action.playerId);
+
+      case ActionType.RESOLVE_CHOICE:
+        return this.resolveChoice(action.playerId, actionData.optionId);
+
       default:
         return false;
     }
@@ -4664,6 +4810,250 @@ export class GameStateManager {
     this.state.phase = GamePhase.MAIN_PHASE;
 
     return true;
+  }
+
+  /**
+   * Handle field character selection (for TRASH_CHARACTER costs)
+   */
+  public resolveFieldSelect(playerId: string, selectedCardIds: string[]): boolean {
+    console.log('[resolveFieldSelect] Called:', { playerId, selectedCardIds });
+
+    if (this.state.phase !== GamePhase.FIELD_SELECT_STEP) {
+      console.log('[resolveFieldSelect] Wrong phase:', this.state.phase);
+      return false;
+    }
+
+    const pending = this.state.pendingFieldSelectEffect;
+    if (!pending || pending.playerId !== playerId) {
+      console.log('[resolveFieldSelect] No pending effect or wrong player');
+      return false;
+    }
+
+    const player = this.state.players[playerId];
+    if (!player) return false;
+
+    // Validate selections
+    if (selectedCardIds.length < pending.minSelections) {
+      console.log('[resolveFieldSelect] Not enough selections');
+      return false;
+    }
+    if (selectedCardIds.length > pending.maxSelections) {
+      console.log('[resolveFieldSelect] Too many selections');
+      return false;
+    }
+    if (!selectedCardIds.every(id => pending.validTargetIds.includes(id))) {
+      console.log('[resolveFieldSelect] Invalid card selected');
+      return false;
+    }
+
+    // Execute the action on selected characters
+    for (const cardId of selectedCardIds) {
+      const cardIndex = player.field.findIndex(c => c.id === cardId);
+      if (cardIndex === -1) continue;
+
+      const card = player.field[cardIndex];
+
+      switch (pending.selectAction) {
+        case 'TRASH':
+          player.field.splice(cardIndex, 1);
+          card.zone = CardZone.TRASH;
+          player.trash.push(card);
+          console.log('[resolveFieldSelect] Trashed character:', cardId);
+          break;
+        case 'REST':
+          card.state = CardState.RESTED;
+          console.log('[resolveFieldSelect] Rested character:', cardId);
+          break;
+        case 'RETURN_TO_HAND':
+          player.field.splice(cardIndex, 1);
+          card.zone = CardZone.HAND;
+          player.hand.push(card);
+          console.log('[resolveFieldSelect] Returned to hand:', cardId);
+          break;
+        case 'RETURN_TO_DECK':
+          player.field.splice(cardIndex, 1);
+          card.zone = CardZone.DECK;
+          player.deck.push(card);
+          console.log('[resolveFieldSelect] Returned to deck:', cardId);
+          break;
+      }
+    }
+
+    // If this was cost payment, continue to effect resolution
+    if (pending.isCostPayment && pending.pendingEffectId) {
+      const effect = this.effectEngine.getPendingEffects().find(e => e.id === pending.pendingEffectId);
+
+      if (effect?.requiresChoice) {
+        // Continue to target selection
+        console.log('[resolveFieldSelect] Cost paid, entering PLAY_EFFECT_STEP');
+        this.state.pendingFieldSelectEffect = undefined;
+        this.state.phase = GamePhase.PLAY_EFFECT_STEP;
+        return true;
+      } else if (effect) {
+        // Resolve immediately
+        console.log('[resolveFieldSelect] Cost paid, resolving effect immediately');
+        const context = this.buildEffectContext(effect);
+        this.effectEngine.resolveEffect(effect.effect, context);
+        this.effectEngine.removePendingEffect(effect.id);
+      }
+    }
+
+    this.state.pendingFieldSelectEffect = undefined;
+    this.state.phase = GamePhase.MAIN_PHASE;
+    return true;
+  }
+
+  /**
+   * Skip field character selection (for optional costs)
+   */
+  public skipFieldSelect(playerId: string): boolean {
+    console.log('[skipFieldSelect] Called:', { playerId });
+
+    if (this.state.phase !== GamePhase.FIELD_SELECT_STEP) {
+      return false;
+    }
+
+    const pending = this.state.pendingFieldSelectEffect;
+    if (!pending || pending.playerId !== playerId) {
+      return false;
+    }
+
+    if (!pending.canSkip) {
+      console.log('[skipFieldSelect] Cannot skip - effect is mandatory');
+      return false;
+    }
+
+    // If this was a cost payment, remove the pending effect
+    if (pending.isCostPayment && pending.pendingEffectId) {
+      console.log('[skipFieldSelect] Skipping cost payment, removing pending effect');
+      const pendingEffect = this.effectEngine.getPendingEffects().find(e =>
+        e.effect.id === pending.pendingEffectId || e.id === pending.pendingEffectId
+      );
+      if (pendingEffect) {
+        this.effectEngine.removePendingEffect(pendingEffect.id);
+      }
+    }
+
+    this.state.pendingFieldSelectEffect = undefined;
+    this.state.phase = GamePhase.MAIN_PHASE;
+    return true;
+  }
+
+  /**
+   * Handle choice selection (for cost alternatives and effect options)
+   */
+  public resolveChoice(playerId: string, optionId: string): boolean {
+    console.log('[resolveChoice] Called:', { playerId, optionId });
+
+    if (this.state.phase !== GamePhase.CHOICE_STEP) {
+      console.log('[resolveChoice] Wrong phase:', this.state.phase);
+      return false;
+    }
+
+    const pending = this.state.pendingChoiceEffect;
+    if (!pending || pending.playerId !== playerId) {
+      console.log('[resolveChoice] No pending choice or wrong player');
+      return false;
+    }
+
+    const option = pending.options.find(o => o.id === optionId);
+    if (!option || !option.enabled) {
+      console.log('[resolveChoice] Option not found or disabled');
+      return false;
+    }
+
+    const player = this.state.players[playerId];
+    if (!player) return false;
+
+    switch (pending.choiceType) {
+      case 'COST_ALTERNATIVE':
+        // Extract cost index from option id ("cost-0", "cost-1")
+        const costIndex = parseInt(optionId.split('-')[1]);
+        console.log('[resolveChoice] Selected cost alternative:', costIndex);
+
+        // Find the original pending effect to get the cost alternatives
+        const pendingEffect = pending.pendingEffectId ?
+          this.effectEngine.getPendingEffects().find(e => e.id === pending.pendingEffectId) : null;
+
+        if (pendingEffect) {
+          const cost = pendingEffect.effect.costs?.find(c => c.alternatives);
+          if (cost?.alternatives && cost.alternatives[costIndex]) {
+            const selectedCost = cost.alternatives[costIndex];
+
+            // Now handle the selected cost
+            if (selectedCost.type === 'TRASH_CHARACTER') {
+              // Set up field select for this cost
+              const validTargets = this.getValidFieldCharactersForCost(selectedCost, player);
+              const traitDesc = selectedCost.traitFilter ? ` ${selectedCost.traitFilter}` : '';
+
+              this.state.pendingChoiceEffect = undefined;
+              this.state.pendingFieldSelectEffect = {
+                id: `field-cost-${Date.now()}`,
+                sourceCardId: pending.sourceCardId,
+                playerId: playerId,
+                description: `Trash ${selectedCost.count || 1}${traitDesc} Character(s) to activate effect`,
+                selectAction: 'TRASH',
+                validTargetIds: validTargets,
+                minSelections: selectedCost.count || 1,
+                maxSelections: selectedCost.count || 1,
+                traitFilter: selectedCost.traitFilter,
+                canSkip: false, // Already chose to pay, can't skip now
+                isCostPayment: true,
+                pendingEffectId: pendingEffect.id
+              };
+              this.state.phase = GamePhase.FIELD_SELECT_STEP;
+              return true;
+            } else if (selectedCost.type === 'TRASH_FROM_HAND') {
+              // Set up hand select for this cost
+              this.state.pendingChoiceEffect = undefined;
+              this.state.pendingHandSelectEffect = {
+                id: `cost-payment-${Date.now()}`,
+                sourceCardId: pending.sourceCardId,
+                playerId: playerId,
+                description: `Trash ${selectedCost.count || 1} card(s) from your hand to activate effect`,
+                selectAction: 'TRASH',
+                minSelections: selectedCost.count || 1,
+                maxSelections: selectedCost.count || 1,
+                canSkip: false, // Already chose to pay, can't skip now
+                isCostPayment: true,
+                pendingEffectId: pendingEffect.id
+              };
+              this.state.phase = GamePhase.HAND_SELECT_STEP;
+              return true;
+            }
+          }
+        }
+        break;
+
+      case 'EFFECT_OPTION':
+        // Handle effect option selection (for "Choose one" effects)
+        console.log('[resolveChoice] Effect option selected:', optionId);
+        // TODO: Implement effect option handling
+        break;
+
+      case 'ZONE_SELECTION':
+        // Handle zone selection (for "from hand or trash" effects)
+        console.log('[resolveChoice] Zone selected:', optionId);
+        // TODO: Implement zone selection handling
+        break;
+    }
+
+    this.state.pendingChoiceEffect = undefined;
+    this.state.phase = GamePhase.MAIN_PHASE;
+    return true;
+  }
+
+  /**
+   * Build effect context for a pending effect
+   */
+  private buildEffectContext(pendingEffect: PendingEffect): EffectContext {
+    const player = this.state.players[pendingEffect.playerId];
+    const card = this.findCard(pendingEffect.sourceCardId);
+    return {
+      gameState: this.state,
+      sourceCard: card!,
+      sourcePlayer: player!,
+    };
   }
 
   /**

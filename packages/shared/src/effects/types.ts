@@ -402,15 +402,17 @@ export interface EffectTarget {
 
 export interface TargetFilter {
   property: 'COST' | 'POWER' | 'COLOR' | 'TRAIT' | 'TYPE' | 'NAME' | 'STATE' | 'BASE_COST' | 'BASE_POWER';
-  operator: 'EQUALS' | 'OR_MORE' | 'OR_LESS' | 'LESS_THAN_OR_EQUAL' | 'CONTAINS' | 'NOT_CONTAINS' | 'NOT_EQUALS' | 'NOT';
-  value: string | number | string[];  // Can be 'DON_COUNT' for dynamic value resolution
+  operator: 'EQUALS' | 'OR_MORE' | 'OR_LESS' | 'LESS_THAN_OR_EQUAL' | 'CONTAINS' | 'NOT_CONTAINS' | 'NOT_EQUALS' | 'NOT' | 'IN';  // IN = matches any in array
+  value: string | number | string[];  // Can be 'DON_COUNT' for dynamic value resolution, or array for IN operator
 }
 
 export interface EffectCost {
-  type: 'DON' | 'TRASH_CARD' | 'REST_DON' | 'RETURN_DON' | 'LIFE' | 'TRASH_FROM_HAND' | 'REST_SELF';
+  type: 'DON' | 'TRASH_CARD' | 'REST_DON' | 'RETURN_DON' | 'LIFE' | 'TRASH_FROM_HAND' | 'REST_SELF' | 'TRASH_CHARACTER' | 'REST_CHARACTER';
   count?: number;
   filters?: TargetFilter[];
   optional?: boolean;  // "You may" makes this cost optional
+  traitFilter?: string;  // For "{Type} Characters" - filter by trait
+  alternatives?: EffectCost[];  // For "X or Y" costs - player chooses one
 }
 
 export interface CardEffectDefinition {

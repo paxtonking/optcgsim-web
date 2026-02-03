@@ -25,6 +25,8 @@ export enum GamePhase {
   ADDITIONAL_COST_STEP = 'ADDITIONAL_COST_STEP', // Player chooses whether to pay optional costs
   DECK_REVEAL_STEP = 'DECK_REVEAL_STEP',      // Player selects from revealed deck cards
   HAND_SELECT_STEP = 'HAND_SELECT_STEP',      // Player selects cards from hand (discard, return, etc.)
+  CHOICE_STEP = 'CHOICE_STEP',                // Player chooses between effect/cost alternatives
+  FIELD_SELECT_STEP = 'FIELD_SELECT_STEP',    // Player selects characters from field (trash, rest, etc.)
   COUNTER_STEP = 'COUNTER_STEP',
   BLOCKER_STEP = 'BLOCKER_STEP',
   TRIGGER_STEP = 'TRIGGER_STEP',
@@ -282,6 +284,47 @@ export interface PendingHandSelectEffect {
   sourceCardInstanceId?: string; // Instance ID of the card with the ability
 }
 
+// Pending effect for field character selection (trash/rest your characters as cost)
+export interface PendingFieldSelectEffect {
+  id: string;
+  sourceCardId: string;        // The card that triggered this effect
+  playerId: string;
+  description: string;         // Human-readable description
+  selectAction: 'TRASH' | 'REST' | 'RETURN_TO_HAND' | 'RETURN_TO_DECK';
+  validTargetIds: string[];    // IDs of valid characters on field
+  minSelections: number;       // Required number of selections
+  maxSelections: number;       // Maximum selections allowed
+  traitFilter?: string;        // Filter by trait (e.g., "Celestial Dragons")
+  canSkip: boolean;            // Whether player can skip (for optional effects)
+  // For cost payment - effect to execute after cost is paid
+  isCostPayment?: boolean;     // True if this is paying a cost for an ability
+  pendingEffectId?: string;    // ID of the effect to execute after cost paid
+}
+
+// Choice option for multi-option effects
+export interface ChoiceOption {
+  id: string;
+  label: string;               // Display text for the option
+  description?: string;        // Optional longer description
+  enabled: boolean;            // Whether this option can be selected
+  disabledReason?: string;     // Why the option is disabled (if applicable)
+}
+
+// Pending effect for "Choose one" and cost alternatives
+export interface PendingChoiceEffect {
+  id: string;
+  sourceCardId: string;        // The card that triggered this effect
+  playerId: string;
+  description: string;         // Human-readable description
+  choiceType: 'EFFECT_OPTION' | 'COST_ALTERNATIVE' | 'ZONE_SELECTION';
+  options: ChoiceOption[];     // Available choices
+  minSelections: number;       // Usually 1
+  maxSelections: number;       // Usually 1 (for "Choose one")
+  // For cost alternatives - track which cost was chosen
+  selectedCostIndex?: number;
+  pendingEffectId?: string;    // ID of the effect to execute after choice
+}
+
 export interface GameState {
   id: string;
   phase: GamePhase;
@@ -307,6 +350,8 @@ export interface GameState {
   pendingAdditionalCost?: PendingAdditionalCost; // Optional additional cost waiting for player decision
   pendingDeckRevealEffect?: PendingDeckRevealEffect; // Deck reveal effect waiting for card selection
   pendingHandSelectEffect?: PendingHandSelectEffect; // Hand selection effect waiting for card selection (discard, etc.)
+  pendingFieldSelectEffect?: PendingFieldSelectEffect; // Field selection effect waiting for character selection
+  pendingChoiceEffect?: PendingChoiceEffect; // Choice effect waiting for option selection
 }
 
 export interface GameAction {
@@ -383,7 +428,14 @@ export enum ActionType {
 
   // Hand select actions (discard, return to deck, etc.)
   RESOLVE_HAND_SELECT = 'RESOLVE_HAND_SELECT',     // Player confirms card selection from hand
-  SKIP_HAND_SELECT = 'SKIP_HAND_SELECT'            // Player skips selection (if allowed)
+  SKIP_HAND_SELECT = 'SKIP_HAND_SELECT',           // Player skips selection (if allowed)
+
+  // Field select actions (trash/rest characters from field)
+  RESOLVE_FIELD_SELECT = 'RESOLVE_FIELD_SELECT',   // Player confirms character selection from field
+  SKIP_FIELD_SELECT = 'SKIP_FIELD_SELECT',         // Player skips field selection (if allowed)
+
+  // Choice actions (cost alternatives, effect options)
+  RESOLVE_CHOICE = 'RESOLVE_CHOICE'                // Player selects an option from choices
 }
 
 export interface TurnAction {

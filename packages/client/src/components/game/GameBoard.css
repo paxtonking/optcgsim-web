@@ -3399,6 +3399,162 @@
   gap: 12px;
 }
 
+/* Field Select Panel - for character selection costs */
+.field-select-panel {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  animation: fieldSelectSlideIn 0.3s ease;
+}
+
+@keyframes fieldSelectSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.field-select-panel__content {
+  background: linear-gradient(135deg, #1a2e2e 0%, #0d1f1f 100%);
+  border: 2px solid rgba(255, 165, 0, 0.6);
+  border-radius: 12px;
+  padding: 16px 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 12px rgba(255, 165, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.field-select-panel__text {
+  color: #ffa500;
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  text-align: center;
+}
+
+.field-select-panel__buttons {
+  display: flex;
+  gap: 12px;
+}
+
+/* Field card highlighting for selection */
+.game-card--field-selectable {
+  cursor: pointer;
+  box-shadow: 0 0 12px 4px rgba(255, 165, 0, 0.6) !important;
+  animation: fieldSelectPulse 1.5s infinite;
+}
+
+.game-card--field-selected {
+  box-shadow: 0 0 16px 6px rgba(74, 222, 128, 0.8) !important;
+  transform: translateY(-8px);
+}
+
+@keyframes fieldSelectPulse {
+  0%, 100% { box-shadow: 0 0 12px 4px rgba(255, 165, 0, 0.6); }
+  50% { box-shadow: 0 0 20px 8px rgba(255, 165, 0, 0.8); }
+}
+
+/* Choice Modal - for cost alternatives and effect choices */
+.choice-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  animation: choiceOverlayFadeIn 0.2s ease;
+}
+
+@keyframes choiceOverlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.choice-modal {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border: 2px solid rgba(99, 102, 241, 0.5);
+  border-radius: 16px;
+  padding: 24px;
+  min-width: 400px;
+  max-width: 600px;
+  animation: choiceModalScaleIn 0.3s ease;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 20px rgba(99, 102, 241, 0.2);
+}
+
+@keyframes choiceModalScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.choice-modal__title {
+  color: white;
+  font-size: 1.25rem;
+  margin: 0 0 20px 0;
+  text-align: center;
+}
+
+.choice-modal__options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.choice-option {
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.choice-option:hover:not(.choice-option--disabled) {
+  border-color: rgba(74, 222, 128, 0.6);
+  background: rgba(74, 222, 128, 0.1);
+  transform: translateX(4px);
+}
+
+.choice-option--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.choice-option__label {
+  color: white;
+  font-weight: 500;
+  font-size: 1rem;
+}
+
+.choice-option__desc {
+  color: #9ca3af;
+  font-size: 0.875rem;
+}
+
+.choice-option__reason {
+  color: #f87171;
+  font-size: 0.75rem;
+  font-style: italic;
+}
+
 /* ===================================
    REFRESH PHASE BANNER
    =================================== */

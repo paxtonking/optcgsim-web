@@ -497,21 +497,42 @@ export class EffectTextParser {
    */
   private convertCost(parsed: ParsedCost): EffectCost {
     // Map cost types
-    let costType: 'DON' | 'TRASH_CARD' | 'REST_DON' | 'RETURN_DON' | 'LIFE' | 'TRASH_FROM_HAND' | 'REST_SELF';
+    let costType: 'DON' | 'TRASH_CARD' | 'REST_DON' | 'RETURN_DON' | 'LIFE' | 'TRASH_FROM_HAND' | 'REST_SELF' | 'TRASH_CHARACTER' | 'REST_CHARACTER';
     switch (parsed.type) {
       case 'DON':
       case 'DON_MINUS': costType = 'RETURN_DON'; break;
       case 'REST_DON': costType = 'REST_DON'; break;
       case 'REST_THIS': costType = 'REST_SELF'; break;
       case 'TRASH_FROM_HAND': costType = 'TRASH_FROM_HAND'; break;
+      case 'TRASH_CHARACTER': costType = 'TRASH_CHARACTER'; break;
       case 'LIFE': costType = 'LIFE'; break;
+      case 'TRASH_ALTERNATIVE':
+        // For alternative costs, use TRASH_FROM_HAND as base but include alternatives
+        costType = 'TRASH_FROM_HAND';
+        break;
       default: costType = 'DON';
     }
 
-    return {
+    const result: EffectCost = {
       type: costType,
       count: parsed.count,
     };
+
+    // Add trait filter if present
+    if (parsed.traitFilter) {
+      result.traitFilter = parsed.traitFilter;
+    }
+
+    // Add alternatives if present (for "X or Y" costs)
+    if (parsed.alternatives && parsed.alternatives.length > 0) {
+      result.alternatives = parsed.alternatives.map(alt => ({
+        type: alt.type as EffectCost['type'],
+        count: alt.count,
+        traitFilter: alt.traitFilter,
+      }));
+    }
+
+    return result;
   }
 }
 

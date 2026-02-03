@@ -1369,6 +1369,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     skipDeckReveal,
     resolveHandSelect,
     skipHandSelect,
+    resolveFieldSelect,
+    skipFieldSelect,
+    resolveChoice,
     payAdditionalCost,
     skipAdditionalCost,
     endTurn,
@@ -1903,6 +1906,72 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     if (!currentHandSelectEffect) return false;
     return handSelectSelectedCards.size >= currentHandSelectEffect.minSelections;
   }, [currentHandSelectEffect, handSelectSelectedCards]);
+
+  // Field select state - for effects that require selecting characters from field (trash, rest, etc.)
+  const [fieldSelectSelectedCards, setFieldSelectSelectedCards] = useState<Set<string>>(new Set());
+
+  // Get current pending field select effect
+  const currentFieldSelectEffect = useMemo(() => {
+    if (phase !== GamePhase.FIELD_SELECT_STEP || !gameState?.pendingFieldSelectEffect) return null;
+    return gameState.pendingFieldSelectEffect;
+  }, [phase, gameState?.pendingFieldSelectEffect]);
+
+  // Reset field selection when entering FIELD_SELECT_STEP
+  useEffect(() => {
+    if (phase === GamePhase.FIELD_SELECT_STEP && currentFieldSelectEffect && currentFieldSelectEffect.playerId === playerId) {
+      setFieldSelectSelectedCards(new Set());
+    }
+  }, [phase, currentFieldSelectEffect, playerId]);
+
+  // Field select handlers
+  const handleFieldSelectCardClick = useCallback((cardId: string) => {
+    if (!currentFieldSelectEffect || currentFieldSelectEffect.playerId !== playerId) return;
+    if (!currentFieldSelectEffect.validTargetIds.includes(cardId)) return;
+
+    setFieldSelectSelectedCards(prev => {
+      const next = new Set(prev);
+      if (next.has(cardId)) {
+        next.delete(cardId);
+      } else if (next.size < currentFieldSelectEffect.maxSelections) {
+        next.add(cardId);
+      }
+      return next;
+    });
+  }, [currentFieldSelectEffect, playerId]);
+
+  const handleFieldSelectConfirm = useCallback(() => {
+    if (!currentFieldSelectEffect) return;
+    resolveFieldSelect(Array.from(fieldSelectSelectedCards));
+    setFieldSelectSelectedCards(new Set());
+    playSound('play');
+  }, [currentFieldSelectEffect, fieldSelectSelectedCards, resolveFieldSelect, playSound]);
+
+  const handleFieldSelectSkip = useCallback(() => {
+    if (!currentFieldSelectEffect || !currentFieldSelectEffect.canSkip) return;
+    skipFieldSelect();
+    setFieldSelectSelectedCards(new Set());
+  }, [currentFieldSelectEffect, skipFieldSelect]);
+
+  // Check if we can confirm field select
+  const canConfirmFieldSelect = useMemo(() => {
+    if (!currentFieldSelectEffect) return false;
+    return fieldSelectSelectedCards.size >= currentFieldSelectEffect.minSelections;
+  }, [currentFieldSelectEffect, fieldSelectSelectedCards]);
+
+  // Choice effect state - for "Choose one" and cost alternative effects
+  const currentChoiceEffect = useMemo(() => {
+    if (phase !== GamePhase.CHOICE_STEP || !gameState?.pendingChoiceEffect) return null;
+    return gameState.pendingChoiceEffect;
+  }, [phase, gameState?.pendingChoiceEffect]);
+
+  // Choice handler
+  const handleChoiceSelect = useCallback((optionId: string) => {
+    if (!currentChoiceEffect || currentChoiceEffect.playerId !== playerId) return;
+    const option = currentChoiceEffect.options.find(o => o.id === optionId);
+    if (!option || !option.enabled) return;
+    resolveChoice(optionId);
+    playSound('play');
+  }, [currentChoiceEffect, playerId, resolveChoice, playSound]);
 
   // Debug logging for play effect modal display
   useEffect(() => {
@@ -2819,6 +2888,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       [GamePhase.COUNTER_STEP]: 'Counter',
       [GamePhase.BLOCKER_STEP]: 'Blocker',
       [GamePhase.TRIGGER_STEP]: 'Trigger',
+      [GamePhase.CHOICE_STEP]: 'Choose Option',
+      [GamePhase.FIELD_SELECT_STEP]: 'Select from Field',
       [GamePhase.GAME_OVER]: 'Game Over'
     };
     return phaseNames[p] || p;
@@ -3101,6 +3172,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             gameOverResult={gameOver ? (gameOver.winner === playerId ? 'winner' : 'loser') : null}
             playmatImage={playerPlaymat}
             isMyTurn={isMyTurn}
+            fieldSelectMode={phase === GamePhase.FIELD_SELECT_STEP && currentFieldSelectEffect?.playerId === playerId}
+            fieldSelectValidTargets={currentFieldSelectEffect ? new Set(currentFieldSelectEffect.validTargetIds) : new Set()}
+            fieldSelectSelectedTargets={fieldSelectSelectedCards}
+            onFieldSelectClick={handleFieldSelectCardClick}
           />
         )}
 
@@ -3563,6 +3638,62 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                   Skip
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Field Select UI - shown when player needs to select characters from their field */}
+      {currentFieldSelectEffect && currentFieldSelectEffect.playerId === playerId && (
+        <div className="field-select-panel">
+          <div className="field-select-panel__content">
+            <p className="field-select-panel__text">
+              {currentFieldSelectEffect.description}
+              {fieldSelectSelectedCards.size > 0 && ` (${fieldSelectSelectedCards.size} selected)`}
+            </p>
+            <div className="field-select-panel__buttons">
+              <button
+                className="action-btn action-btn--use-effect"
+                onClick={handleFieldSelectConfirm}
+                disabled={!canConfirmFieldSelect}
+              >
+                Confirm
+              </button>
+              {currentFieldSelectEffect.canSkip && (
+                <button
+                  className="action-btn action-btn--skip-effect"
+                  onClick={handleFieldSelectSkip}
+                >
+                  Skip
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Choice Modal - shown when player needs to choose between options */}
+      {currentChoiceEffect && currentChoiceEffect.playerId === playerId && (
+        <div className="choice-modal-overlay">
+          <div className="choice-modal">
+            <h3 className="choice-modal__title">{currentChoiceEffect.description}</h3>
+            <div className="choice-modal__options">
+              {currentChoiceEffect.options.map(option => (
+                <button
+                  key={option.id}
+                  className={`choice-option ${option.enabled ? '' : 'choice-option--disabled'}`}
+                  onClick={() => option.enabled && handleChoiceSelect(option.id)}
+                  disabled={!option.enabled}
+                >
+                  <span className="choice-option__label">{option.label}</span>
+                  {option.description && (
+                    <span className="choice-option__desc">{option.description}</span>
+                  )}
+                  {option.disabledReason && (
+                    <span className="choice-option__reason">{option.disabledReason}</span>
+                  )}
+                </button>
+              ))}
             </div>
           </div>
         </div>

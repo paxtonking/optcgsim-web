@@ -33,6 +33,9 @@ export interface UseGameSocketReturn {
   skipDeckReveal: () => void;
   resolveHandSelect: (selectedCardIds: string[]) => void;
   skipHandSelect: () => void;
+  resolveFieldSelect: (selectedCardIds: string[]) => void;
+  skipFieldSelect: () => void;
+  resolveChoice: (optionId: string) => void;
   payAdditionalCost: (costId: string) => void;
   skipAdditionalCost: (costId: string) => void;
   endTurn: () => void;
@@ -216,6 +219,18 @@ export function useGameSocket({
     sendAction(createAction(ActionType.SKIP_HAND_SELECT, {}));
   }, [sendAction, createAction]);
 
+  const resolveFieldSelect = useCallback((selectedCardIds: string[]) => {
+    sendAction(createAction(ActionType.RESOLVE_FIELD_SELECT, { selectedIds: selectedCardIds }));
+  }, [sendAction, createAction]);
+
+  const skipFieldSelect = useCallback(() => {
+    sendAction(createAction(ActionType.SKIP_FIELD_SELECT, {}));
+  }, [sendAction, createAction]);
+
+  const resolveChoice = useCallback((optionId: string) => {
+    sendAction(createAction(ActionType.RESOLVE_CHOICE, { optionId }));
+  }, [sendAction, createAction]);
+
   const payAdditionalCost = useCallback((costId: string) => {
     sendAction(createAction(ActionType.PAY_ADDITIONAL_COST, { costId }));
   }, [sendAction, createAction]);
@@ -286,6 +301,9 @@ export function useGameSocket({
     skipDeckReveal,
     resolveHandSelect,
     skipHandSelect,
+    resolveFieldSelect,
+    skipFieldSelect,
+    resolveChoice,
     payAdditionalCost,
     skipAdditionalCost,
     endTurn,
