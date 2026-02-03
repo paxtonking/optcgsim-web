@@ -21,6 +21,9 @@ model User {
   isAdmin       Boolean   @default(false)
   avatarId      String    @default("default")
   badges        String[]  @default([])
+  // Password reset fields
+  passwordResetToken  String?   @unique
+  passwordResetExpiry DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

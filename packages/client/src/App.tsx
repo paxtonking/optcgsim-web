@@ -5,6 +5,8 @@ import { ToastContainer } from './components/Toast';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import LobbyPage from './pages/LobbyPage';
 import DeckBuilderPage from './pages/DeckBuilderPage';
 import ProfilePage from './pages/ProfilePage';
@@ -46,6 +48,8 @@ function App() {
           <Route index element={<HomePage />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
+        <Route path="forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="reset-password" element={<ResetPasswordPage />} />
         <Route path="lobby" element={<LobbyPage />} />
         <Route path="decks" element={<DeckBuilderPage />} />
         <Route path="decks/:id" element={<DeckBuilderPage />} />

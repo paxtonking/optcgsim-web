@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { prisma } from '../services/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { authenticate } from '../middleware/auth.js';
+import { sendPasswordResetEmail } from '../services/emailService.js';
 
 export const authRouter = Router();
 
@@ -43,10 +45,13 @@ authRouter.post('/register', async (req, res, next) => {
   try {
     const { email, username, password } = registerSchema.parse(req.body);
 
-    // Check if user exists
+    // Normalize username to lowercase to prevent case-sensitive duplicates (e.g., "Jeremy1" vs "jeremy1")
+    const normalizedUsername = username.toLowerCase();
+
+    // Check if user exists (case-insensitive for username)
     const existingUser = await prisma.user.findFirst({
       where: {
-        OR: [{ email }, { username }],
+        OR: [{ email }, { username: normalizedUsername }],
       },
     });
 
@@ -58,11 +63,11 @@ authRouter.post('/register', async (req, res, next) => {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // Create user
+    // Create user with normalized (lowercase) username
     const user = await prisma.user.create({
       data: {
         email,
-        username,
+        username: normalizedUsername,
         passwordHash,
       },
       select: {
@@ -241,6 +246,103 @@ authRouter.post('/guest', async (req, res, next) => {
       accessToken,
       // No refresh token for guests
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Password reset - request reset email
+authRouter.post('/forgot-password', async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      throw new AppError('Email is required', 400);
+    }
+
+    // Find user by email
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    // Always return success to prevent email enumeration
+    if (!user) {
+      res.json({ message: 'If an account with that email exists, a password reset link has been sent.' });
+      return;
+    }
+
+    // Generate secure reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+    // Set token expiry to 1 hour from now
+    const resetExpiry = new Date(Date.now() + 60 * 60 * 1000);
+
+    // Store hashed token in database
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordResetToken: resetTokenHash,
+        passwordResetExpiry: resetExpiry,
+      },
+    });
+
+    // Send reset email (with unhashed token)
+    await sendPasswordResetEmail(user.email, user.username, resetToken);
+
+    res.json({ message: 'If an account with that email exists, a password reset link has been sent.' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Password reset - reset password with token
+authRouter.post('/reset-password', async (req, res, next) => {
+  try {
+    const { token, password } = req.body;
+
+    if (!token || !password) {
+      throw new AppError('Token and password are required', 400);
+    }
+
+    if (password.length < 8) {
+      throw new AppError('Password must be at least 8 characters', 400);
+    }
+
+    // Hash the provided token to compare with stored hash
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Find user with valid token
+    const user = await prisma.user.findFirst({
+      where: {
+        passwordResetToken: tokenHash,
+        passwordResetExpiry: { gt: new Date() },
+      },
+    });
+
+    if (!user) {
+      throw new AppError('Invalid or expired reset token', 400);
+    }
+
+    // Hash new password
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    // Update password and clear reset token
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        passwordResetToken: null,
+        passwordResetExpiry: null,
+      },
+    });
+
+    // Invalidate all existing sessions for security
+    await prisma.session.deleteMany({
+      where: { userId: user.id },
+    });
+
+    res.json({ message: 'Password has been reset successfully. Please log in with your new password.' });
   } catch (error) {
     next(error);
   }

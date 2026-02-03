@@ -41,7 +41,10 @@ usersRouter.patch('/me', authenticate, async (req, res, next) => {
   try {
     const data = updateProfileSchema.parse(req.body);
 
+    // Normalize username to lowercase if provided
     if (data.username) {
+      data.username = data.username.toLowerCase();
+
       const existing = await prisma.user.findFirst({
         where: {
           username: data.username,

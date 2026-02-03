@@ -12,6 +12,7 @@ interface AuthState {
   isLoading: boolean;
   hasHydrated: boolean;
   error: string | null;
+  successMessage: string | null;
 
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, username: string, password: string) => Promise<void>;
@@ -19,7 +20,10 @@ interface AuthState {
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
   updateUser: (updates: Partial<User>) => void;
+  forgotPassword: (email: string) => Promise<void>;
+  resetPassword: (token: string, password: string) => Promise<void>;
   clearError: () => void;
+  clearSuccessMessage: () => void;
   setHasHydrated: (hasHydrated: boolean) => void;
 }
 
@@ -35,6 +39,7 @@ export const useAuthStore = create<AuthState>()(
       isLoading: false,
       hasHydrated: false,
       error: null,
+      successMessage: null,
 
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
@@ -194,7 +199,42 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      forgotPassword: async (email: string) => {
+        set({ isLoading: true, error: null, successMessage: null });
+        try {
+          const response = await api.post<{ message: string }>('/auth/forgot-password', { email });
+          set({
+            successMessage: response.data.message,
+            isLoading: false,
+          });
+        } catch (error: any) {
+          set({
+            error: error.response?.data?.message || 'Failed to send reset email',
+            isLoading: false,
+          });
+          throw error;
+        }
+      },
+
+      resetPassword: async (token: string, password: string) => {
+        set({ isLoading: true, error: null, successMessage: null });
+        try {
+          const response = await api.post<{ message: string }>('/auth/reset-password', { token, password });
+          set({
+            successMessage: response.data.message,
+            isLoading: false,
+          });
+        } catch (error: any) {
+          set({
+            error: error.response?.data?.message || 'Failed to reset password',
+            isLoading: false,
+          });
+          throw error;
+        }
+      },
+
       clearError: () => set({ error: null }),
+      clearSuccessMessage: () => set({ successMessage: null }),
       setHasHydrated: (hasHydrated: boolean) => set({ hasHydrated }),
     }),
     {
