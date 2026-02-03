@@ -1386,7 +1386,7 @@ export class EffectEngine {
           if (sourcePlayer.deck.length > 0) {
             const card = sourcePlayer.deck.shift()!;
             card.zone = CardZone.LIFE;
-            card.faceUp = false;
+            card.faceUp = action.faceUp ?? false;  // Respect faceUp modifier (Bug 4 fix)
             sourcePlayer.lifeCards.push(card);
             sourcePlayer.life++;
             changes.push({
@@ -1424,9 +1424,49 @@ export class EffectEngine {
       case EffectType.GRANT_KEYWORD:
         targets.forEach(targetId => {
           const card = this.findCard(gameState, targetId);
-          if (card) {
-            if (!card.keywords) card.keywords = [];
-            card.keywords.push(action.keyword || '');
+          if (card && action.keyword) {
+            // Map EffectDuration to GrantedEffect duration format (Bug 2 fix)
+            let grantDuration: 'THIS_TURN' | 'THIS_BATTLE' | 'WHILE_ON_FIELD' | 'PERMANENT';
+
+            switch (action.duration) {
+              case EffectDuration.UNTIL_END_OF_TURN:
+              case EffectDuration.UNTIL_END_OF_OPPONENT_TURN:
+              case EffectDuration.UNTIL_START_OF_YOUR_TURN:
+                grantDuration = 'THIS_TURN';
+                break;
+              case EffectDuration.UNTIL_END_OF_BATTLE:
+                grantDuration = 'THIS_BATTLE';
+                break;
+              case EffectDuration.WHILE_ON_FIELD:
+                grantDuration = 'WHILE_ON_FIELD';
+                break;
+              case EffectDuration.PERMANENT:
+              case EffectDuration.INSTANT:
+              default:
+                grantDuration = 'PERMANENT';
+                break;
+            }
+
+            if (grantDuration === 'PERMANENT') {
+              // Permanent keywords go to keywords array
+              if (!card.keywords) card.keywords = [];
+              if (!card.keywords.includes(action.keyword)) {
+                card.keywords.push(action.keyword);
+              }
+            } else {
+              // Temporary keywords go to grantedEffects (cleaned up by clearTurnBuffs/clearBattleBuffs)
+              if (!card.grantedEffects) card.grantedEffects = [];
+              card.grantedEffects.push({
+                id: `keyword-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                sourceCardId: context.sourceCard.id,
+                trigger: 'PASSIVE',
+                effectType: 'GRANT_KEYWORD',
+                keyword: action.keyword,
+                duration: grantDuration,
+                turnGranted: gameState.turn,
+              });
+            }
+
             changes.push({
               type: 'KEYWORD_ADDED',
               cardId: targetId,
@@ -2557,11 +2597,21 @@ export class EffectEngine {
   // ============================================
 
   public hasKeyword(card: GameCard, keyword: string): boolean {
-    return Boolean(
-      card.keywords?.includes(keyword) ||
-      card.temporaryKeywords?.includes(keyword) ||
-      card.continuousKeywords?.includes(keyword)
-    );
+    // Check permanent and temporary keyword arrays
+    if (card.keywords?.includes(keyword)) return true;
+    if (card.temporaryKeywords?.includes(keyword)) return true;
+    if (card.continuousKeywords?.includes(keyword)) return true;
+
+    // Check grantedEffects for GRANT_KEYWORD effects (Bug 6 fix)
+    if (card.grantedEffects) {
+      for (const effect of card.grantedEffects) {
+        if (effect.effectType === 'GRANT_KEYWORD' && effect.keyword === keyword) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   public canAttackOnPlayTurn(card: GameCard, currentTurn: number): boolean {
@@ -2892,19 +2942,31 @@ export class EffectEngine {
     const owner = this.findCardOwner(gameState, cardId);
     if (!owner) return changes;
 
-    const fieldIndex = owner.field.findIndex(c => c.id === cardId);
-    if (fieldIndex !== -1) {
-      const card = owner.field.splice(fieldIndex, 1)[0];
-      card.zone = CardZone.HAND;
-      card.state = CardState.ACTIVE;
-      owner.hand.push(card);
+    // Check multiple zones (Bug 3 fix - following sendToDeckTop pattern)
+    const zones: { array: GameCard[]; name: string }[] = [
+      { array: owner.field, name: 'FIELD' },
+      { array: owner.trash, name: 'TRASH' },
+      { array: owner.deck, name: 'DECK' },
+    ];
 
-      changes.push({
-        type: 'CARD_MOVED',
-        cardId: cardId,
-        from: 'FIELD',
-        to: 'HAND',
-      });
+    for (const zone of zones) {
+      const idx = zone.array.findIndex(c => c.id === cardId);
+      if (idx !== -1) {
+        const card = zone.array.splice(idx, 1)[0];
+        card.zone = CardZone.HAND;
+        card.state = CardState.ACTIVE;
+        card.hasAttacked = false;
+        card.activatedThisTurn = false;
+        owner.hand.push(card);
+
+        changes.push({
+          type: 'CARD_MOVED',
+          cardId: cardId,
+          from: zone.name,
+          to: 'HAND',
+        });
+        break; // Card found, exit loop
+      }
     }
 
     return changes;

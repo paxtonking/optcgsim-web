@@ -3120,9 +3120,15 @@ export class GameStateManager {
     };
     this.processTriggers(afterBattleTrigger);
 
-    // Clear temporary keywords granted during combat (e.g., Unblockable from CANT_BE_BLOCKED)
-    if (attacker) {
-      attacker.temporaryKeywords = [];
+    // Clear temporary keywords granted during combat for ALL cards (Bug 5 fix)
+    // Previously only cleared attacker, but defender/blocker may also have temp keywords
+    for (const player of Object.values(this.state.players)) {
+      for (const card of player.field) {
+        card.temporaryKeywords = [];
+      }
+      if (player.leaderCard) {
+        player.leaderCard.temporaryKeywords = [];
+      }
     }
 
     // Clear THIS_BATTLE power buffs from all cards
@@ -3173,7 +3179,7 @@ export class GameStateManager {
         player.life--;
 
         if (hasBanish) {
-          // Banish: card goes to trash
+          // Banish: card goes to trash (no LIFE_ADDED_TO_HAND trigger - Bug 1 fix)
           lifeCard.zone = CardZone.TRASH;
           player.trash.push(lifeCard);
         } else {
@@ -3192,15 +3198,15 @@ export class GameStateManager {
             this.processTriggers(triggerEvent);
             this.state.phase = GamePhase.TRIGGER_STEP;
           }
-        }
 
-        // Trigger LIFE_ADDED_TO_HAND
-        const lifeEvent: TriggerEvent = {
-          type: EffectTrigger.LIFE_ADDED_TO_HAND,
-          cardId: lifeCard.id,
-          playerId: playerId,
-        };
-        this.processTriggers(lifeEvent);
+          // Trigger LIFE_ADDED_TO_HAND (only when actually added to hand - Bug 1 fix)
+          const lifeEvent: TriggerEvent = {
+            type: EffectTrigger.LIFE_ADDED_TO_HAND,
+            cardId: lifeCard.id,
+            playerId: playerId,
+          };
+          this.processTriggers(lifeEvent);
+        }
       }
     }
   }

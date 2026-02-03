@@ -101,6 +101,7 @@ export interface GrantedEffect {
   trigger: string;         // When the effect triggers (ON_ATTACK, ON_PLAY, etc.)
   effectType: string;      // What the effect does
   value?: number;          // Value for the effect (e.g., +2000 power)
+  keyword?: string;        // For GRANT_KEYWORD effects: the keyword granted
   duration: 'THIS_TURN' | 'THIS_BATTLE' | 'WHILE_ON_FIELD' | 'PERMANENT';
   turnGranted: number;     // Turn when granted (for cleanup)
 }

@@ -450,6 +450,8 @@ export interface EffectAction {
   // For IMMUNE_KO effects
   immuneFrom?: string;            // Source of immunity (e.g., 'OPPONENT_CHARACTERS', 'ALL')
   condition?: any;                // Additional condition for the effect
+  // For ADD_TO_LIFE effects
+  faceUp?: boolean;               // Whether to add life card face-up (default: false)
 }
 
 // ============================================
