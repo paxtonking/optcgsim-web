@@ -158,6 +158,16 @@ export class AIService {
       return this.getHandSelectAction(gameState, player, gameState.pendingHandSelectEffect);
     }
 
+    // Check for pending field select effects
+    if (gameState.pendingFieldSelectEffect && gameState.pendingFieldSelectEffect.playerId === this.playerId) {
+      return this.getFieldSelectAction(gameState, player, gameState.pendingFieldSelectEffect);
+    }
+
+    // Check for pending choice effects (cost alternatives / choose-one)
+    if (gameState.pendingChoiceEffect && gameState.pendingChoiceEffect.playerId === this.playerId) {
+      return this.getChoiceAction(gameState, player, gameState.pendingChoiceEffect);
+    }
+
     // Check for pending additional cost decision
     if (gameState.pendingAdditionalCost && gameState.pendingAdditionalCost.playerId === this.playerId) {
       return this.getAdditionalCostAction(gameState, player, gameState.pendingAdditionalCost);
@@ -303,6 +313,66 @@ export class AIService {
     return {
       action: ActionType.RESOLVE_HAND_SELECT,
       data: { selectedCardIds: [] },
+    };
+  }
+
+  /**
+   * Handle field select effect resolution (trash/rest from field)
+   */
+  private getFieldSelectAction(_gameState: GameState, player: PlayerState, pendingEffect: any): AIDecision {
+    console.log('[AI] Handling pending FIELD_SELECT effect');
+
+    const validTargetIds: string[] = pendingEffect.validTargetIds || [];
+    const minSelections: number = pendingEffect.minSelections || 0;
+    const maxSelections: number = pendingEffect.maxSelections || minSelections;
+
+    if (validTargetIds.length === 0) {
+      if (pendingEffect.canSkip) {
+        return { action: ActionType.SKIP_FIELD_SELECT, data: {} };
+      }
+      return { action: ActionType.RESOLVE_FIELD_SELECT, data: { selectedCardIds: [] } };
+    }
+
+    // Prefer lower-cost cards when selecting sacrifices from field.
+    const sorted = [...validTargetIds].sort((a, b) => {
+      const cardA = player.field.find(c => c.id === a);
+      const cardB = player.field.find(c => c.id === b);
+      return (cardA?.cost || 0) - (cardB?.cost || 0);
+    });
+
+    const selectedCount = Math.min(maxSelections, sorted.length);
+    const selectedCardIds = sorted.slice(0, selectedCount);
+
+    if (selectedCardIds.length < minSelections) {
+      if (pendingEffect.canSkip) {
+        return { action: ActionType.SKIP_FIELD_SELECT, data: {} };
+      }
+      return { action: ActionType.RESOLVE_FIELD_SELECT, data: { selectedCardIds: [] } };
+    }
+
+    return {
+      action: ActionType.RESOLVE_FIELD_SELECT,
+      data: { selectedCardIds },
+    };
+  }
+
+  /**
+   * Handle choice effect resolution (cost alternatives / choose one)
+   */
+  private getChoiceAction(_gameState: GameState, _player: PlayerState, pendingEffect: any): AIDecision | null {
+    console.log('[AI] Handling pending CHOICE effect');
+
+    const options: Array<{ id: string; enabled: boolean }> = pendingEffect.options || [];
+    const enabledOptions = options.filter(option => option.enabled);
+    if (enabledOptions.length === 0) {
+      return null;
+    }
+
+    // Prefer paying a real option over skipping when possible.
+    const selected = enabledOptions.find(option => option.id !== 'cost-skip') || enabledOptions[0];
+    return {
+      action: ActionType.RESOLVE_CHOICE,
+      data: { optionId: selected.id },
     };
   }
 

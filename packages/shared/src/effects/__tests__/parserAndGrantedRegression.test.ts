@@ -545,4 +545,180 @@ describe('Continuous and gameplay regression fixes', () => {
 
     expect(manager.declareAttack('attacker', 'defender', 'character')).toBe(false);
   });
+
+  it('accepts legacy selectedIds payload for RESOLVE_FIELD_SELECT', () => {
+    const manager = new GameStateManager('game-field-payload', 'player1', 'player2');
+    const state = manager.getState();
+
+    state.phase = GamePhase.FIELD_SELECT_STEP;
+    state.pendingFieldSelectEffect = {
+      id: 'field-select-1',
+      sourceCardId: 'source',
+      playerId: 'player1',
+      description: 'Select up to 1 card',
+      selectAction: 'TRASH',
+      validTargetIds: [],
+      minSelections: 0,
+      maxSelections: 1,
+      canSkip: true,
+    };
+
+    const success = manager.processAction({
+      id: 'a-field-1',
+      type: ActionType.RESOLVE_FIELD_SELECT,
+      playerId: 'player1',
+      timestamp: Date.now(),
+      data: { selectedIds: [] },
+    } as any);
+
+    expect(success).toBe(true);
+    expect(state.phase).toBe(GamePhase.MAIN_PHASE);
+  });
+
+  it('continues pending effect after hand cost even without sourceCardInstanceId', () => {
+    const manager = new GameStateManager('game-hand-cost-continue', 'player1', 'player2');
+    const state = manager.getState();
+
+    const source = createMockCard({
+      id: 'source',
+      cardId: 'SOURCE-CARD',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+    });
+    const handCard = createMockCard({
+      id: 'discard-me',
+      cardId: 'HAND-CARD',
+      owner: 'player1',
+      zone: CardZone.HAND,
+      state: CardState.ACTIVE,
+    });
+
+    state.phase = GamePhase.HAND_SELECT_STEP;
+    state.players.player1.field = [source];
+    state.players.player1.hand = [handCard];
+    state.pendingHandSelectEffect = {
+      id: 'pending-hand-select',
+      sourceCardId: source.id,
+      playerId: 'player1',
+      description: 'Trash 1 card',
+      selectAction: 'TRASH',
+      minSelections: 1,
+      maxSelections: 1,
+      canSkip: false,
+      isCostPayment: true,
+      pendingEffectId: 'pending-effect-1',
+      // Intentionally omitted to validate fallback logic:
+      // sourceCardInstanceId
+    };
+
+    (manager.getEffectEngine() as any).addPendingEffect({
+      id: 'pending-effect-1',
+      sourceCardId: source.id,
+      playerId: 'player1',
+      trigger: EffectTrigger.ON_PLAY,
+      requiresChoice: true,
+      priority: 0,
+      effect: {
+        id: 'effect-1',
+        trigger: EffectTrigger.ON_PLAY,
+        description: 'Choose a target',
+        effects: [{
+          type: EffectType.KO_CHARACTER,
+          target: { type: TargetType.OPPONENT_CHARACTER, count: 1 },
+        }],
+      },
+    });
+
+    const success = manager.resolveHandSelect('player1', [handCard.id]);
+
+    expect(success).toBe(true);
+    expect(state.phase).toBe(GamePhase.PLAY_EFFECT_STEP);
+    expect(state.pendingPlayEffects?.length).toBe(1);
+  });
+
+  it('detaches DON when TRASH is selected in FIELD_SELECT_STEP', () => {
+    const manager = new GameStateManager('game-field-detach', 'player1', 'player2');
+    const state = manager.getState();
+
+    const target = createMockCard({
+      id: 'field-target',
+      cardId: 'FIELD-TARGET',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+    });
+    const don = createMockCard({
+      id: 'attached-don',
+      cardId: 'DON',
+      owner: 'player1',
+      zone: CardZone.DON_FIELD,
+      state: CardState.ATTACHED,
+      attachedTo: target.id,
+    });
+
+    state.phase = GamePhase.FIELD_SELECT_STEP;
+    state.players.player1.field = [target];
+    state.players.player1.donField = [don];
+    state.pendingFieldSelectEffect = {
+      id: 'pending-field-select',
+      sourceCardId: 'source',
+      playerId: 'player1',
+      description: 'Trash 1 character',
+      selectAction: 'TRASH',
+      validTargetIds: [target.id],
+      minSelections: 1,
+      maxSelections: 1,
+      canSkip: false,
+    };
+
+    const success = manager.resolveFieldSelect('player1', [target.id]);
+
+    expect(success).toBe(true);
+    expect(state.players.player1.donField[0].attachedTo).toBeUndefined();
+    expect(state.players.player1.donField[0].state).toBe(CardState.ACTIVE);
+  });
+
+  it('allows skipping optional cost alternatives from CHOICE_STEP', () => {
+    const manager = new GameStateManager('game-choice-skip', 'player1', 'player2');
+    const state = manager.getState();
+
+    state.phase = GamePhase.CHOICE_STEP;
+    state.pendingChoiceEffect = {
+      id: 'choice-1',
+      sourceCardId: 'source',
+      playerId: 'player1',
+      description: 'Choose a cost',
+      choiceType: 'COST_ALTERNATIVE',
+      options: [
+        { id: 'cost-0', label: 'Trash 1 character', enabled: true },
+        { id: 'cost-skip', label: 'Do not pay this cost (skip effect)', enabled: true },
+      ],
+      minSelections: 1,
+      maxSelections: 1,
+      pendingEffectId: 'pending-effect-to-remove',
+    };
+
+    (manager.getEffectEngine() as any).addPendingEffect({
+      id: 'pending-effect-to-remove',
+      sourceCardId: 'source',
+      playerId: 'player1',
+      trigger: EffectTrigger.ON_PLAY,
+      requiresChoice: true,
+      priority: 0,
+      effect: {
+        id: 'effect-to-remove',
+        trigger: EffectTrigger.ON_PLAY,
+        description: 'Optional effect',
+        effects: [{ type: EffectType.DRAW_CARDS, value: 1 }],
+      },
+    });
+
+    const success = manager.resolveChoice('player1', 'cost-skip');
+
+    expect(success).toBe(true);
+    expect(state.phase).toBe(GamePhase.MAIN_PHASE);
+    expect(state.pendingChoiceEffect).toBeUndefined();
+    expect(manager.getEffectEngine().getPendingEffects()).toHaveLength(0);
+  });
 });

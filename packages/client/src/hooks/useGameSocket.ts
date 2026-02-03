@@ -220,7 +220,7 @@ export function useGameSocket({
   }, [sendAction, createAction]);
 
   const resolveFieldSelect = useCallback((selectedCardIds: string[]) => {
-    sendAction(createAction(ActionType.RESOLVE_FIELD_SELECT, { selectedIds: selectedCardIds }));
+    sendAction(createAction(ActionType.RESOLVE_FIELD_SELECT, { selectedCardIds }));
   }, [sendAction, createAction]);
 
   const skipFieldSelect = useCallback(() => {
