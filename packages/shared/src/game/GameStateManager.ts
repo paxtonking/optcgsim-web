@@ -3827,6 +3827,75 @@ export class GameStateManager {
     // Check and pay costs
     if (activateEffect.costs) {
       for (const cost of activateEffect.costs) {
+        // Check if cost has alternatives (e.g., "trash 1 Character OR 1 card from hand")
+        if (cost.alternatives && cost.alternatives.length > 0) {
+          const isOptional = cost.optional === true;
+
+          // Map alternatives to choice options
+          const options: ChoiceOption[] = cost.alternatives.map((alt, idx) => {
+            const canPay = this.canPaySingleCost(alt, player);
+            const label = this.describeCost(alt);
+            return {
+              id: `cost-${idx}`,
+              label,
+              enabled: canPay,
+              disabledReason: canPay ? undefined : 'Cannot pay this cost'
+            };
+          });
+
+          // Add skip option for optional costs
+          if (isOptional) {
+            options.push({
+              id: 'cost-skip',
+              label: 'Do not pay this cost (skip effect)',
+              enabled: true,
+            });
+          }
+
+          // Validate at least one option can be paid
+          const anyCanPay = options.some(o => o.enabled);
+          if (!anyCanPay && !isOptional) {
+            console.log('[activateAbility] Cannot pay any cost alternative');
+            return false;
+          } else if (!anyCanPay && isOptional) {
+            console.log('[activateAbility] Cannot pay optional alternatives, skipping');
+            return true;
+          }
+
+          // Mark as activated BEFORE entering choice step
+          if (activateEffect.oncePerTurn) {
+            card.activatedThisTurn = true;
+          }
+
+          // Add pending effect to effect engine for later execution
+          this.effectEngine.addPendingEffect({
+            id: `activate-${card.id}-${Date.now()}`,
+            sourceCardId: card.id,
+            playerId,
+            effect: activateEffect,
+            trigger: EffectTrigger.ACTIVATE_MAIN,
+            requiresChoice: false,
+            priority: 1,
+          });
+
+          // Create pending choice effect
+          this.state.pendingChoiceEffect = {
+            id: `cost-choice-${card.id}-${Date.now()}`,
+            sourceCardId: card.id,
+            playerId: playerId,
+            description: 'Choose which cost to pay',
+            choiceType: 'COST_ALTERNATIVE',
+            options,
+            minSelections: 1,
+            maxSelections: 1,
+            pendingEffectId: `activate-${card.id}-${Date.now()}`
+          };
+          this.state.phase = GamePhase.CHOICE_STEP;
+
+          console.log('[activateAbility] Cost has alternatives, entering CHOICE_STEP with options:', options);
+          return true;
+        }
+
         if (cost.type === 'REST_DON') {
           const activeDon = player.donField.filter(d => d.state === CardState.ACTIVE && !d.attachedTo);
           if (activeDon.length < (cost.count || 0)) {
@@ -3894,6 +3963,74 @@ export class GameStateManager {
           this.state.phase = GamePhase.HAND_SELECT_STEP;
 
           return true; // Effect will be executed after cost is paid
+        } else if (cost.type === 'TRASH_CHARACTER') {
+          // Trash character(s) from field as cost
+          const requiredCount = cost.count || 1;
+          const validTargets = this.getValidFieldCharactersForCost(cost, player);
+
+          if (validTargets.length < requiredCount) {
+            return false; // Not enough valid characters
+          }
+
+          // Mark as activated this turn BEFORE creating pending
+          if (activateEffect.oncePerTurn) {
+            card.activatedThisTurn = true;
+          }
+
+          const traitDesc = cost.traitFilter ? ` ${cost.traitFilter}` : '';
+
+          // Add pending effect to effect engine for later execution
+          this.effectEngine.addPendingEffect({
+            id: `activate-${card.id}-${Date.now()}`,
+            sourceCardId: card.id,
+            playerId,
+            effect: activateEffect,
+            trigger: EffectTrigger.ACTIVATE_MAIN,
+            requiresChoice: false,
+            priority: 1,
+          });
+
+          // Create pending field select for cost payment
+          this.state.pendingFieldSelectEffect = {
+            id: `cost-trash-field-${card.id}-${Date.now()}`,
+            sourceCardId: card.id,
+            playerId,
+            description: `Trash ${requiredCount}${traitDesc} Character(s) to activate ${cardDef.name}'s ability`,
+            selectAction: 'TRASH',
+            validTargetIds: validTargets,
+            minSelections: requiredCount,
+            maxSelections: requiredCount,
+            traitFilter: cost.traitFilter,
+            canSkip: false,
+            isCostPayment: true,
+            pendingEffectId: activateEffect.id,
+          };
+
+          this.state.phase = GamePhase.FIELD_SELECT_STEP;
+          console.log('[activateAbility] TRASH_CHARACTER cost, entering FIELD_SELECT_STEP with targets:', validTargets);
+          return true;
+        } else if (cost.type === 'RETURN_DON') {
+          // Return DON to DON deck as cost
+          const requiredCount = cost.count || 1;
+          const activeDon = player.donField.filter(d => d.state === CardState.ACTIVE && !d.attachedTo);
+
+          if (activeDon.length < requiredCount) {
+            return false; // Not enough DON
+          }
+
+          // Return DON to DON deck
+          for (let i = 0; i < requiredCount; i++) {
+            const don = activeDon[i];
+            const idx = player.donField.indexOf(don);
+            if (idx !== -1) {
+              player.donField.splice(idx, 1);
+              player.donDeck++;
+            }
+          }
+        } else if (cost.type === 'REST_CHARACTER') {
+          // REST_CHARACTER would need field selection UI
+          // For now, log and continue (cost assumed payable)
+          console.log('[activateAbility] REST_CHARACTER cost - implementation pending');
         }
       }
     }
@@ -4057,18 +4194,23 @@ export class GameStateManager {
     // Check costs
     if (activateEffect.costs) {
       for (const cost of activateEffect.costs) {
-        if (cost.type === 'REST_DON' || cost.type === 'DON') {
-          const activeDon = player.donField.filter(d => d.state === CardState.ACTIVE && !d.attachedTo);
-          if (activeDon.length < (cost.count || 0)) {
-            return { canActivate: false, reason: `Need ${cost.count} active DON` };
+        // Check if cost has alternatives (e.g., "trash 1 Character OR 1 card from hand")
+        if (cost.alternatives && cost.alternatives.length > 0) {
+          const canPayAny = cost.alternatives.some(alt => this.canPaySingleCost(alt, player));
+          if (!canPayAny && !cost.optional) {
+            return { canActivate: false, reason: 'Cannot pay any cost option' };
           }
-        } else if (cost.type === 'LIFE') {
-          if (player.lifeCards.length < (cost.count || 0)) {
-            return { canActivate: false, reason: `Need ${cost.count} life` };
-          }
-        } else if (cost.type === 'REST_SELF') {
-          if (card.state === CardState.RESTED) {
+          continue; // Move to next cost
+        }
+
+        // Single cost validation using helper
+        if (!this.canPaySingleCost(cost, player)) {
+          // Special case: REST_SELF needs to check if already rested
+          if (cost.type === 'REST_SELF' && card.state === CardState.RESTED) {
             return { canActivate: false, reason: 'Card is already rested' };
+          }
+          if (!cost.optional) {
+            return { canActivate: false, reason: `Cannot pay ${this.describeCost(cost)}` };
           }
         }
       }
