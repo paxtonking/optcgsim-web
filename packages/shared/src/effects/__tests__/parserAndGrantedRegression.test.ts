@@ -722,3 +722,215 @@ describe('Continuous and gameplay regression fixes', () => {
     expect(manager.getEffectEngine().getPendingEffects()).toHaveLength(0);
   });
 });
+
+describe('Activate-main cost flow regressions', () => {
+  it('keeps alternative-cost pending IDs aligned and continues after RETURN_DON payment', () => {
+    const manager = new GameStateManager('game-alt-return-don', 'player1', 'player2');
+    manager.loadCardDefinitions([
+      createMockCardDefinition({
+        id: 'ALT-ACTIVATE',
+        effects: [{
+          id: 'alt-activate',
+          trigger: EffectTrigger.ACTIVATE_MAIN,
+          description: 'Choose one cost and draw 1.',
+          costs: [{
+            type: 'TRASH_FROM_HAND',
+            alternatives: [
+              { type: 'RETURN_DON', count: 1 },
+              { type: 'TRASH_FROM_HAND', count: 1 },
+            ],
+          }],
+          effects: [{ type: EffectType.DRAW_CARDS, value: 1 }],
+        }],
+      }),
+    ]);
+
+    const state = createMockGameState({
+      phase: GamePhase.MAIN_PHASE,
+      activePlayerId: 'player1',
+    });
+
+    const source = createMockCard({
+      id: 'alt-source',
+      cardId: 'ALT-ACTIVATE',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+    });
+    const handCard = createMockCard({
+      id: 'hand-card',
+      owner: 'player1',
+      zone: CardZone.HAND,
+    });
+    const don = createMockCard({
+      id: 'don-1',
+      cardId: 'DON',
+      owner: 'player1',
+      zone: CardZone.DON_FIELD,
+      state: CardState.ACTIVE,
+    });
+
+    state.players.player1.field = [source];
+    state.players.player1.hand = [handCard];
+    state.players.player1.donField = [don];
+
+    manager.setState(state);
+
+    expect(manager.activateAbility('player1', source.id)).toBe(true);
+    expect(state.phase).toBe(GamePhase.CHOICE_STEP);
+    expect(state.pendingChoiceEffect?.pendingEffectId).toBeDefined();
+
+    const pendingId = state.pendingChoiceEffect!.pendingEffectId!;
+    expect(manager.getEffectEngine().getPendingEffects().some(effect => effect.id === pendingId)).toBe(true);
+
+    expect(manager.resolveChoice('player1', 'cost-0')).toBe(true);
+    expect(state.phase).toBe(GamePhase.MAIN_PHASE);
+    expect(state.pendingChoiceEffect).toBeUndefined();
+    expect(state.players.player1.donField).toHaveLength(0);
+    expect(state.players.player1.donDeck).toBe(11);
+    expect(state.players.player1.hand).toHaveLength(2);
+    expect(manager.getEffectEngine().getPendingEffects()).toHaveLength(0);
+  });
+
+  it('continues activate-main effects after paying TRASH_CHARACTER costs', () => {
+    const manager = new GameStateManager('game-trash-character-cost', 'player1', 'player2');
+    manager.loadCardDefinitions([
+      createMockCardDefinition({
+        id: 'TRASH-COST-ACTIVATE',
+        effects: [{
+          id: 'trash-activate',
+          trigger: EffectTrigger.ACTIVATE_MAIN,
+          description: 'Trash 1 of your characters: Draw 1.',
+          costs: [{ type: 'TRASH_CHARACTER', count: 1 }],
+          effects: [{ type: EffectType.DRAW_CARDS, value: 1 }],
+        }],
+      }),
+    ]);
+
+    const state = createMockGameState({
+      phase: GamePhase.MAIN_PHASE,
+      activePlayerId: 'player1',
+    });
+
+    const source = createMockCard({
+      id: 'trash-source',
+      cardId: 'TRASH-COST-ACTIVATE',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+    });
+    const fodder = createMockCard({
+      id: 'trash-fodder',
+      cardId: 'FODDER',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+    });
+
+    state.players.player1.field = [source, fodder];
+    state.players.player1.hand = [];
+    manager.setState(state);
+
+    expect(manager.activateAbility('player1', source.id)).toBe(true);
+    expect(state.phase).toBe(GamePhase.FIELD_SELECT_STEP);
+    expect(state.pendingFieldSelectEffect?.pendingEffectId).toBeDefined();
+
+    const pendingId = state.pendingFieldSelectEffect!.pendingEffectId!;
+    expect(manager.getEffectEngine().getPendingEffects().some(effect => effect.id === pendingId)).toBe(true);
+
+    expect(manager.resolveFieldSelect('player1', [fodder.id])).toBe(true);
+    expect(state.phase).toBe(GamePhase.MAIN_PHASE);
+    expect(state.players.player1.trash.some(card => card.id === fodder.id)).toBe(true);
+    expect(state.players.player1.hand).toHaveLength(1);
+    expect(manager.getEffectEngine().getPendingEffects()).toHaveLength(0);
+  });
+
+  it('requires REST_CHARACTER cost payment before resolving activate-main effect', () => {
+    const manager = new GameStateManager('game-rest-character-cost', 'player1', 'player2');
+    manager.loadCardDefinitions([
+      createMockCardDefinition({
+        id: 'REST-COST-ACTIVATE',
+        effects: [{
+          id: 'rest-activate',
+          trigger: EffectTrigger.ACTIVATE_MAIN,
+          description: 'Rest 1 of your characters: Draw 1.',
+          costs: [{ type: 'REST_CHARACTER', count: 1 }],
+          effects: [{ type: EffectType.DRAW_CARDS, value: 1 }],
+        }],
+      }),
+    ]);
+
+    const state = createMockGameState({
+      phase: GamePhase.MAIN_PHASE,
+      activePlayerId: 'player1',
+    });
+
+    const source = createMockCard({
+      id: 'rest-source',
+      cardId: 'REST-COST-ACTIVATE',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+    });
+    const target = createMockCard({
+      id: 'rest-target',
+      cardId: 'REST-TARGET',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+    });
+
+    state.players.player1.field = [source, target];
+    state.players.player1.hand = [];
+    manager.setState(state);
+
+    expect(manager.activateAbility('player1', source.id)).toBe(true);
+    expect(state.phase).toBe(GamePhase.FIELD_SELECT_STEP);
+    expect(target.state).toBe(CardState.ACTIVE);
+    expect(state.players.player1.hand).toHaveLength(0);
+
+    expect(manager.resolveFieldSelect('player1', [target.id])).toBe(true);
+    expect(target.state).toBe(CardState.RESTED);
+    expect(state.players.player1.hand).toHaveLength(1);
+    expect(state.phase).toBe(GamePhase.MAIN_PHASE);
+  });
+
+  it('blocks activate-main when RETURN_DON costs cannot be paid', () => {
+    const manager = new GameStateManager('game-cannot-return-don', 'player1', 'player2');
+    manager.loadCardDefinitions([
+      createMockCardDefinition({
+        id: 'RETURN-DON-ACTIVATE',
+        effects: [{
+          id: 'return-don-activate',
+          trigger: EffectTrigger.ACTIVATE_MAIN,
+          description: 'Return 1 DON!!: Draw 1.',
+          costs: [{ type: 'RETURN_DON', count: 1 }],
+          effects: [{ type: EffectType.DRAW_CARDS, value: 1 }],
+        }],
+      }),
+    ]);
+
+    const state = createMockGameState({
+      phase: GamePhase.MAIN_PHASE,
+      activePlayerId: 'player1',
+    });
+
+    const source = createMockCard({
+      id: 'return-don-source',
+      cardId: 'RETURN-DON-ACTIVATE',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+    });
+
+    state.players.player1.field = [source];
+    state.players.player1.donField = [];
+    manager.setState(state);
+
+    expect(manager.canActivateAbility('player1', source.id)).toEqual({
+      canActivate: false,
+      reason: 'Cannot pay Return 1 DON!!',
+    });
+    expect(manager.activateAbility('player1', source.id)).toBe(false);
+  });
+});

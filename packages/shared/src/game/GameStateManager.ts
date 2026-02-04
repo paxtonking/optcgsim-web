@@ -2243,6 +2243,9 @@ export class GameStateManager {
       case 'TRASH_CHARACTER':
         const validChars = this.getValidFieldCharactersForCost(cost, player);
         return validChars.length >= count;
+      case 'RETURN_DON':
+        const donToReturn = player.donField.filter(d => d.state === CardState.ACTIVE && !d.attachedTo);
+        return donToReturn.length >= count;
       case 'REST_DON':
       case 'DON':
         const activeDon = player.donField.filter(d => d.state === CardState.ACTIVE && !d.attachedTo);
@@ -2250,17 +2253,27 @@ export class GameStateManager {
       case 'LIFE':
         return player.lifeCards.length >= count;
       case 'REST_SELF':
+        return true; // REST_SELF is validated against source card state elsewhere.
       case 'REST_CHARACTER':
-        return true; // Assume can rest
+        const restableChars = this.getValidFieldCharactersForCost(cost, player, true);
+        return restableChars.length >= count;
       default:
-        return true;
+        // Unknown cost types should not be assumed payable.
+        return false;
     }
   }
 
   // Helper: Get valid field characters for a TRASH_CHARACTER cost
-  private getValidFieldCharactersForCost(cost: EffectCost, player: PlayerState): string[] {
+  private getValidFieldCharactersForCost(
+    cost: EffectCost,
+    player: PlayerState,
+    requireActive: boolean = false
+  ): string[] {
     return player.field
       .filter(char => {
+        if (requireActive && char.state !== CardState.ACTIVE) {
+          return false;
+        }
         // Apply trait filter if present
         if (cost.traitFilter) {
           const cardDef = this.effectEngine.getCardDefinition(char.cardId);
@@ -2286,6 +2299,8 @@ export class GameStateManager {
       case 'REST_DON':
       case 'DON':
         return `Rest ${count} DON!!`;
+      case 'RETURN_DON':
+        return `Return ${count} DON!!`;
       case 'LIFE':
         return `Take ${count} damage`;
       case 'REST_SELF':
@@ -3867,9 +3882,11 @@ export class GameStateManager {
             card.activatedThisTurn = true;
           }
 
+          const pendingEffectId = `activate-${card.id}-${Date.now()}`;
+
           // Add pending effect to effect engine for later execution
           this.effectEngine.addPendingEffect({
-            id: `activate-${card.id}-${Date.now()}`,
+            id: pendingEffectId,
             sourceCardId: card.id,
             playerId,
             effect: activateEffect,
@@ -3888,7 +3905,7 @@ export class GameStateManager {
             options,
             minSelections: 1,
             maxSelections: 1,
-            pendingEffectId: `activate-${card.id}-${Date.now()}`
+            pendingEffectId: pendingEffectId
           };
           this.state.phase = GamePhase.CHOICE_STEP;
 
@@ -3944,6 +3961,17 @@ export class GameStateManager {
             card.activatedThisTurn = true;
           }
 
+          const pendingEffectId = `activate-${card.id}-${Date.now()}`;
+          this.effectEngine.addPendingEffect({
+            id: pendingEffectId,
+            sourceCardId: card.id,
+            playerId,
+            effect: activateEffect,
+            trigger: EffectTrigger.ACTIVATE_MAIN,
+            requiresChoice: false,
+            priority: 1,
+          });
+
           // Create pending hand select for cost payment
           const pendingEffect: PendingHandSelectEffect = {
             id: `cost-trash-${card.id}-${Date.now()}`,
@@ -3955,7 +3983,7 @@ export class GameStateManager {
             maxSelections: requiredCount,
             canSkip: false, // Must pay the cost once activated
             isCostPayment: true,
-            pendingEffectId: activateEffect.id,
+            pendingEffectId: pendingEffectId,
             sourceCardInstanceId: card.id,
           };
 
@@ -3979,9 +4007,11 @@ export class GameStateManager {
 
           const traitDesc = cost.traitFilter ? ` ${cost.traitFilter}` : '';
 
+          const pendingEffectId = `activate-${card.id}-${Date.now()}`;
+
           // Add pending effect to effect engine for later execution
           this.effectEngine.addPendingEffect({
-            id: `activate-${card.id}-${Date.now()}`,
+            id: pendingEffectId,
             sourceCardId: card.id,
             playerId,
             effect: activateEffect,
@@ -4003,7 +4033,7 @@ export class GameStateManager {
             traitFilter: cost.traitFilter,
             canSkip: false,
             isCostPayment: true,
-            pendingEffectId: activateEffect.id,
+            pendingEffectId: pendingEffectId,
           };
 
           this.state.phase = GamePhase.FIELD_SELECT_STEP;
@@ -4028,9 +4058,48 @@ export class GameStateManager {
             }
           }
         } else if (cost.type === 'REST_CHARACTER') {
-          // REST_CHARACTER would need field selection UI
-          // For now, log and continue (cost assumed payable)
-          console.log('[activateAbility] REST_CHARACTER cost - implementation pending');
+          const requiredCount = cost.count || 1;
+          const validTargets = this.getValidFieldCharactersForCost(cost, player, true);
+          if (validTargets.length < requiredCount) {
+            return false;
+          }
+
+          // Mark as activated this turn BEFORE creating pending
+          if (activateEffect.oncePerTurn) {
+            card.activatedThisTurn = true;
+          }
+
+          const traitDesc = cost.traitFilter ? ` ${cost.traitFilter}` : '';
+          const pendingEffectId = `activate-${card.id}-${Date.now()}`;
+
+          this.effectEngine.addPendingEffect({
+            id: pendingEffectId,
+            sourceCardId: card.id,
+            playerId,
+            effect: activateEffect,
+            trigger: EffectTrigger.ACTIVATE_MAIN,
+            requiresChoice: false,
+            priority: 1,
+          });
+
+          this.state.pendingFieldSelectEffect = {
+            id: `cost-rest-field-${card.id}-${Date.now()}`,
+            sourceCardId: card.id,
+            playerId,
+            description: `Rest ${requiredCount}${traitDesc} Character(s) to activate ${cardDef.name}'s ability`,
+            selectAction: 'REST',
+            validTargetIds: validTargets,
+            minSelections: requiredCount,
+            maxSelections: requiredCount,
+            traitFilter: cost.traitFilter,
+            canSkip: false,
+            isCostPayment: true,
+            pendingEffectId: pendingEffectId,
+          };
+
+          this.state.phase = GamePhase.FIELD_SELECT_STEP;
+          console.log('[activateAbility] REST_CHARACTER cost, entering FIELD_SELECT_STEP with targets:', validTargets);
+          return true;
         }
       }
     }
@@ -5188,56 +5257,154 @@ export class GameStateManager {
         const pendingEffect = pending.pendingEffectId ?
           this.effectEngine.getPendingEffects().find(e => e.id === pending.pendingEffectId) : null;
 
-        if (pendingEffect) {
-          const cost = pendingEffect.effect.costs?.find(c => c.alternatives);
-          if (cost?.alternatives && cost.alternatives[costIndex]) {
-            const selectedCost = cost.alternatives[costIndex];
+        if (!pendingEffect) {
+          console.log('[resolveChoice] Pending effect not found for selected alternative');
+          this.state.pendingChoiceEffect = undefined;
+          this.state.phase = GamePhase.MAIN_PHASE;
+          return true;
+        }
 
-            // Now handle the selected cost
-            if (selectedCost.type === 'TRASH_CHARACTER') {
-              // Set up field select for this cost
-              const validTargets = this.getValidFieldCharactersForCost(selectedCost, player);
-              const traitDesc = selectedCost.traitFilter ? ` ${selectedCost.traitFilter}` : '';
+        const cost = pendingEffect.effect.costs?.find(c => c.alternatives);
+        if (!cost?.alternatives || !cost.alternatives[costIndex]) {
+          console.log('[resolveChoice] Could not map selected alternative to a cost');
+          return false;
+        }
 
-              this.state.pendingChoiceEffect = undefined;
-              this.state.pendingFieldSelectEffect = {
-                id: `field-cost-${Date.now()}`,
-                sourceCardId: pending.sourceCardId,
-                playerId: playerId,
-                description: `Trash ${selectedCost.count || 1}${traitDesc} Character(s) to activate effect`,
-                selectAction: 'TRASH',
-                validTargetIds: validTargets,
-                minSelections: selectedCost.count || 1,
-                maxSelections: selectedCost.count || 1,
-                traitFilter: selectedCost.traitFilter,
-                canSkip: false, // Already chose to pay, can't skip now
-                isCostPayment: true,
-                pendingEffectId: pendingEffect.id
-              };
-              this.state.phase = GamePhase.FIELD_SELECT_STEP;
-              return true;
-            } else if (selectedCost.type === 'TRASH_FROM_HAND') {
-              // Set up hand select for this cost
-              this.state.pendingChoiceEffect = undefined;
-              this.state.pendingHandSelectEffect = {
-                id: `cost-payment-${Date.now()}`,
-                sourceCardId: pending.sourceCardId,
-                playerId: playerId,
-                description: `Trash ${selectedCost.count || 1} card(s) from your hand to activate effect`,
-                selectAction: 'TRASH',
-                minSelections: selectedCost.count || 1,
-                maxSelections: selectedCost.count || 1,
-                canSkip: false, // Already chose to pay, can't skip now
-                isCostPayment: true,
-                pendingEffectId: pendingEffect.id,
-                sourceCardInstanceId: pending.sourceCardId,
-              };
-              this.state.phase = GamePhase.HAND_SELECT_STEP;
-              return true;
+        const selectedCost = cost.alternatives[costIndex];
+        const selectedCount = selectedCost.count || 1;
+        const continueAfterImmediatePayment = (): boolean => {
+          this.state.pendingChoiceEffect = undefined;
+          if (this.continuePendingEffectAfterCost(pendingEffect, playerId)) {
+            return true;
+          }
+          this.state.phase = GamePhase.MAIN_PHASE;
+          return true;
+        };
+
+        // Handle the selected cost
+        if (selectedCost.type === 'TRASH_CHARACTER') {
+          const validTargets = this.getValidFieldCharactersForCost(selectedCost, player);
+          if (validTargets.length < selectedCount) {
+            console.log('[resolveChoice] Not enough valid characters to trash');
+            return false;
+          }
+          const traitDesc = selectedCost.traitFilter ? ` ${selectedCost.traitFilter}` : '';
+
+          this.state.pendingChoiceEffect = undefined;
+          this.state.pendingFieldSelectEffect = {
+            id: `field-cost-${Date.now()}`,
+            sourceCardId: pending.sourceCardId,
+            playerId: playerId,
+            description: `Trash ${selectedCount}${traitDesc} Character(s) to activate effect`,
+            selectAction: 'TRASH',
+            validTargetIds: validTargets,
+            minSelections: selectedCount,
+            maxSelections: selectedCount,
+            traitFilter: selectedCost.traitFilter,
+            canSkip: false, // Already chose to pay, can't skip now
+            isCostPayment: true,
+            pendingEffectId: pendingEffect.id
+          };
+          this.state.phase = GamePhase.FIELD_SELECT_STEP;
+          return true;
+        } else if (selectedCost.type === 'TRASH_FROM_HAND' || selectedCost.type === 'TRASH_CARD') {
+          if (player.hand.length < selectedCount) {
+            console.log('[resolveChoice] Not enough cards in hand to trash');
+            return false;
+          }
+
+          this.state.pendingChoiceEffect = undefined;
+          this.state.pendingHandSelectEffect = {
+            id: `cost-payment-${Date.now()}`,
+            sourceCardId: pending.sourceCardId,
+            playerId: playerId,
+            description: `Trash ${selectedCount} card(s) from your hand to activate effect`,
+            selectAction: 'TRASH',
+            minSelections: selectedCount,
+            maxSelections: selectedCount,
+            canSkip: false, // Already chose to pay, can't skip now
+            isCostPayment: true,
+            pendingEffectId: pendingEffect.id,
+            sourceCardInstanceId: pending.sourceCardId,
+          };
+          this.state.phase = GamePhase.HAND_SELECT_STEP;
+          return true;
+        } else if (selectedCost.type === 'REST_CHARACTER') {
+          const validTargets = this.getValidFieldCharactersForCost(selectedCost, player, true);
+          if (validTargets.length < selectedCount) {
+            console.log('[resolveChoice] Not enough valid characters to rest');
+            return false;
+          }
+          const traitDesc = selectedCost.traitFilter ? ` ${selectedCost.traitFilter}` : '';
+
+          this.state.pendingChoiceEffect = undefined;
+          this.state.pendingFieldSelectEffect = {
+            id: `field-cost-${Date.now()}`,
+            sourceCardId: pending.sourceCardId,
+            playerId: playerId,
+            description: `Rest ${selectedCount}${traitDesc} Character(s) to activate effect`,
+            selectAction: 'REST',
+            validTargetIds: validTargets,
+            minSelections: selectedCount,
+            maxSelections: selectedCount,
+            traitFilter: selectedCost.traitFilter,
+            canSkip: false,
+            isCostPayment: true,
+            pendingEffectId: pendingEffect.id
+          };
+          this.state.phase = GamePhase.FIELD_SELECT_STEP;
+          return true;
+        } else if (selectedCost.type === 'REST_DON' || selectedCost.type === 'DON') {
+          const activeDon = player.donField.filter(d => d.state === CardState.ACTIVE && !d.attachedTo);
+          if (activeDon.length < selectedCount) {
+            console.log('[resolveChoice] Not enough active DON to rest');
+            return false;
+          }
+          for (let i = 0; i < selectedCount; i++) {
+            activeDon[i].state = CardState.RESTED;
+          }
+          return continueAfterImmediatePayment();
+        } else if (selectedCost.type === 'RETURN_DON') {
+          const activeDon = player.donField.filter(d => d.state === CardState.ACTIVE && !d.attachedTo);
+          if (activeDon.length < selectedCount) {
+            console.log('[resolveChoice] Not enough active DON to return');
+            return false;
+          }
+          for (let i = 0; i < selectedCount; i++) {
+            const don = activeDon[i];
+            const idx = player.donField.indexOf(don);
+            if (idx !== -1) {
+              player.donField.splice(idx, 1);
+              player.donDeck++;
             }
           }
+          return continueAfterImmediatePayment();
+        } else if (selectedCost.type === 'LIFE') {
+          if (player.lifeCards.length < selectedCount) {
+            console.log('[resolveChoice] Not enough life cards to pay cost');
+            return false;
+          }
+          for (let i = 0; i < selectedCount; i++) {
+            const lifeCard = player.lifeCards.pop();
+            if (lifeCard) {
+              lifeCard.zone = CardZone.DECK;
+              player.deck.push(lifeCard);
+              player.life--;
+            }
+          }
+          return continueAfterImmediatePayment();
+        } else if (selectedCost.type === 'REST_SELF') {
+          const sourceCard = this.findCard(pending.sourceCardId);
+          if (!sourceCard || sourceCard.state === CardState.RESTED) {
+            console.log('[resolveChoice] Source card cannot be rested for REST_SELF cost');
+            return false;
+          }
+          sourceCard.state = CardState.RESTED;
+          return continueAfterImmediatePayment();
         }
-        break;
+
+        console.log('[resolveChoice] Unsupported selected cost type:', selectedCost.type);
+        return false;
 
       case 'EFFECT_OPTION':
         // Handle effect option selection (for "Choose one" effects)
