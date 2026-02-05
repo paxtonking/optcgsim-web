@@ -17,6 +17,7 @@ interface AnimatingCardProps {
   endRotation?: number;  // rotation at end position in degrees (default 0)
   flipDuringFlight?: boolean;  // flip from face-down to face-up during flight
   isDon?: boolean;  // DON card (smaller size)
+  cardImageUrl?: string;  // Pre-resolved image URL matching GameCard's URL logic
   onComplete?: () => void;  // callback when animation completes
 }
 
@@ -30,6 +31,7 @@ export const AnimatingCard: React.FC<AnimatingCardProps> = ({
   endRotation = 0,
   flipDuringFlight = false,
   isDon = false,
+  cardImageUrl,
   onComplete
 }) => {
   const [animationState, setAnimationState] = useState<'waiting' | 'flying' | 'landing' | 'done'>('waiting');
@@ -201,7 +203,7 @@ export const AnimatingCard: React.FC<AnimatingCardProps> = ({
               /* Regular card - try to load image with fallback */
               <>
                 <img
-                  src={`${import.meta.env.VITE_API_URL || ''}/api/images/cards/${card.cardId}.png`}
+                  src={cardImageUrl || `${import.meta.env.VITE_API_URL || ''}/api/images/cards/${card.cardId}.png`}
                   alt={card.cardId}
                   style={{
                     width: '100%',

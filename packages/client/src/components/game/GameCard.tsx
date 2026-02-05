@@ -78,14 +78,8 @@ export const GameCard: React.FC<GameCardProps> = ({
   onDragStart,
   className = ''
 }) => {
+  const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
   const [imageError, setImageError] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
-
-  // Reset image state when card changes
-  useEffect(() => {
-    setImageError(false);
-    setImageLoaded(false);
-  }, [card.id, cardDef?.imageUrl]);
 
   const isRested = card.state === CardState.RESTED;
 
@@ -109,6 +103,17 @@ export const GameCard: React.FC<GameCardProps> = ({
   };
   const imageUrl = getImageUrl();
 
+  // Preload image in background - keep showing old image until new one is ready
+  useEffect(() => {
+    if (!imageUrl) return;
+    setImageError(false);
+    const img = new Image();
+    img.onload = () => setLoadedUrl(imageUrl);
+    img.onerror = () => { setImageError(true); setLoadedUrl(null); };
+    img.src = imageUrl;
+    return () => { img.onload = null; img.onerror = null; };
+  }, [imageUrl]);
+
   const handleMouseEnter = useCallback(() => {
     onHover?.(card);
   }, [card, onHover]);
@@ -131,13 +136,6 @@ export const GameCard: React.FC<GameCardProps> = ({
     onDragStart?.(card);
   }, [card, onDragStart]);
 
-  const handleImageError = useCallback(() => {
-    setImageError(true);
-  }, []);
-
-  const handleImageLoad = useCallback(() => {
-    setImageLoaded(true);
-  }, []);
 
   // Build class names
   const classes = [
@@ -200,20 +198,18 @@ export const GameCard: React.FC<GameCardProps> = ({
     >
       {faceUp ? (
         <>
-          {/* Card image */}
-          {!imageError && (
+          {/* Card image - show last successfully loaded URL */}
+          {!imageError && loadedUrl && (
             <img
-              src={imageUrl}
+              src={loadedUrl}
               alt={cardDef?.name || card.cardId}
-              className={`game-card__image ${imageLoaded ? 'game-card__image--loaded' : ''}`}
-              onError={handleImageError}
-              onLoad={handleImageLoad}
+              className="game-card__image game-card__image--loaded"
               draggable={false}
             />
           )}
 
-          {/* Placeholder fallback when image fails or is loading */}
-          {(imageError || !imageLoaded) && (
+          {/* Placeholder fallback when image fails or first load */}
+          {(imageError || !loadedUrl) && (
             <div
               className="game-card__placeholder"
               style={{ backgroundColor: getCardColor() }}
@@ -326,6 +322,7 @@ export const CardPile: React.FC<CardPileProps> = ({
             <div className="card-pile__top">
               {faceUp && topCard ? (
                 <GameCard
+                  key={topCard.id}
                   card={{ ...topCard, state: CardState.ACTIVE }}
                   cardDef={topCardDef}
                   faceUp={true}

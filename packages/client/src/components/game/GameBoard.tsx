@@ -42,6 +42,7 @@ interface AnimatingCardData {
   isOpponent: boolean;
   endRotation?: number;  // rotation at end (90 for life cards)
   flipDuringFlight?: boolean;  // for DON cards that flip from face-down to face-up
+  cardImageUrl?: string;  // Pre-resolved image URL matching GameCard's URL logic
 }
 
 interface GameBoardProps {
@@ -125,16 +126,20 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
   // Mill animation state (deck to trash)
   const [animatingMill, setAnimatingMill] = useState<AnimatingCardData[]>([]);
-  const previousTrashCountRef = useRef<{ player: number; opponent: number }>({ player: 0, opponent: 0 });
-  const previousDeckCountRef = useRef<{ player: number; opponent: number }>({ player: 0, opponent: 0 });
 
   // Discard animation state (hand to trash)
-  // Uses dedicated refs to avoid race conditions with hand draw and mill useEffects
   const [animatingDiscard, setAnimatingDiscard] = useState<AnimatingCardData[]>([]);
-  const previousFieldCountRef = useRef<{ player: number; opponent: number }>({ player: 0, opponent: 0 });
-  const previousHandCountForDiscardRef = useRef<{ player: number; opponent: number }>({ player: 0, opponent: 0 });
-  const previousTrashCountForDiscardRef = useRef<{ player: number; opponent: number }>({ player: 0, opponent: 0 });
-  const previousDeckCountForDiscardRef = useRef<{ player: number; opponent: number }>({ player: 0, opponent: 0 });
+
+  // Card ID tracking for trash animation source detection
+  const previousHandCardIdsRef = useRef<{ player: Set<string>; opponent: Set<string> }>({
+    player: new Set(), opponent: new Set()
+  });
+  const previousTrashCardIdsRef = useRef<{ player: Set<string>; opponent: Set<string> }>({
+    player: new Set(), opponent: new Set()
+  });
+  const previousFieldCardIdsRef = useRef<{ player: Set<string>; opponent: Set<string> }>({
+    player: new Set(), opponent: new Set()
+  });
 
   // Random playmat selection (assigned once per game session)
   const [playerPlaymat, opponentPlaymat] = useMemo(() => {
@@ -466,6 +471,24 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     return { x, y };
   }, []);
 
+  // Helper to build a Set of card IDs from a card array
+  const getCardIdSet = useCallback((cards: GameCardType[]): Set<string> => new Set(cards.map(c => c.id)), []);
+
+  // Resolve card image URL matching GameCard's URL logic (for AnimatingCard cache alignment)
+  const resolveCardImageUrl = useCallback((card: GameCardType): string => {
+    const apiBase = import.meta.env.VITE_API_URL || '';
+    if (card.cardId === 'DON') return '/assets/cardbacks/CardFrontDon.png';
+    const cardDef = cardDefinitions.get(card.cardId);
+    if (cardDef?.imageUrl) {
+      const filename = cardDef.imageUrl.split('/').pop();
+      if (cardDef.imageUrl.includes('onepiece-cardgame.com')) {
+        return `${apiBase}/api/images/official/${filename}`;
+      }
+      return `${apiBase}/api/images/cards/${filename}`;
+    }
+    return `${apiBase}/api/images/cards/${card.cardId}.png`;
+  }, [cardDefinitions]);
+
   const getLifeCardPosition = useCallback((index: number, isOpponent: boolean): { x: number; y: number } => {
     const lifeZone = document.querySelector(
       isOpponent ? '.player-area--opponent .zone--life' : '.player-area--player .zone--life'
@@ -720,16 +743,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       console.log('[GameBoard] Hand dealing complete, waiting for mulligan');
       setDealingPhase('waiting-mulligan');
       setIsAnimationBlocked(false);
-      // Initialize hand count ref after initial dealing
+      // Initialize card ID refs after initial dealing
       if (myPlayer && opponent) {
         previousHandCountRef.current = { player: myPlayer.hand.length, opponent: opponent.hand.length };
-        previousTrashCountRef.current = { player: myPlayer.trash.length, opponent: opponent.trash.length };
-        previousDeckCountRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
-        previousFieldCountRef.current = { player: myPlayer.field.length, opponent: opponent.field.length };
-        // Initialize discard-specific refs
-        previousHandCountForDiscardRef.current = { player: myPlayer.hand.length, opponent: opponent.hand.length };
-        previousTrashCountForDiscardRef.current = { player: myPlayer.trash.length, opponent: opponent.trash.length };
-        previousDeckCountForDiscardRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
+        previousHandCardIdsRef.current = { player: getCardIdSet(myPlayer.hand), opponent: getCardIdSet(opponent.hand) };
+        previousTrashCardIdsRef.current = { player: getCardIdSet(myPlayer.trash), opponent: getCardIdSet(opponent.trash) };
+        previousFieldCardIdsRef.current = { player: getCardIdSet(myPlayer.field), opponent: getCardIdSet(opponent.field) };
       }
     } else if (dealingPhase === 'dealing-life') {
       // Life dealing complete, game can proceed
@@ -743,15 +762,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         previousLifeCountRef.current = { player: myPlayer.lifeCards.length, opponent: opponent.lifeCards.length };
         // Sync visible life count to actual values (fixes race condition where animation callbacks may not all fire)
         setVisibleLifeCount({ player: myPlayer.lifeCards.length, opponent: opponent.lifeCards.length });
-        // Initialize trash and deck count refs to prevent false mill animation triggers
-        previousTrashCountRef.current = { player: myPlayer.trash.length, opponent: opponent.trash.length };
-        previousDeckCountRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
-        // Initialize field count refs to prevent false discard animation triggers
-        previousFieldCountRef.current = { player: myPlayer.field.length, opponent: opponent.field.length };
-        // Initialize discard-specific refs
-        previousHandCountForDiscardRef.current = { player: myPlayer.hand.length, opponent: opponent.hand.length };
-        previousTrashCountForDiscardRef.current = { player: myPlayer.trash.length, opponent: opponent.trash.length };
-        previousDeckCountForDiscardRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
+        // Initialize card ID refs to prevent false trash animation triggers
+        previousHandCardIdsRef.current = { player: getCardIdSet(myPlayer.hand), opponent: getCardIdSet(opponent.hand) };
+        previousTrashCardIdsRef.current = { player: getCardIdSet(myPlayer.trash), opponent: getCardIdSet(opponent.trash) };
+        previousFieldCardIdsRef.current = { player: getCardIdSet(myPlayer.field), opponent: getCardIdSet(opponent.field) };
         // DON counts: set to 0 so the animation useEffect will detect the initial DON and animate it
         // visibleDonCount stays at 0 so cards are hidden until animation completes
         previousDonCountRef.current = { player: 0, opponent: 0 };
@@ -782,15 +796,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         setDealingPhase('waiting-mulligan');
         setVisibleHandCount({ player: myPlayer.hand.length, opponent: opponent.hand.length });
         setVisibleLifeCount({ player: 0, opponent: 0 }); // Life not dealt yet during mulligan
-        // Initialize hand count ref to prevent false draw animations
+        // Initialize refs to prevent false animations
         previousHandCountRef.current = { player: myPlayer.hand.length, opponent: opponent.hand.length };
-        previousTrashCountRef.current = { player: myPlayer.trash.length, opponent: opponent.trash.length };
-        previousDeckCountRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
-        previousFieldCountRef.current = { player: myPlayer.field.length, opponent: opponent.field.length };
-        // Initialize discard-specific refs
-        previousHandCountForDiscardRef.current = { player: myPlayer.hand.length, opponent: opponent.hand.length };
-        previousTrashCountForDiscardRef.current = { player: myPlayer.trash.length, opponent: opponent.trash.length };
-        previousDeckCountForDiscardRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
+        previousHandCardIdsRef.current = { player: getCardIdSet(myPlayer.hand), opponent: getCardIdSet(opponent.hand) };
+        previousTrashCardIdsRef.current = { player: getCardIdSet(myPlayer.trash), opponent: getCardIdSet(opponent.trash) };
+        previousFieldCardIdsRef.current = { player: getCardIdSet(myPlayer.field), opponent: getCardIdSet(opponent.field) };
       } else {
         // Small delay to let DOM render first
         animationTriggeredRef.current = true;
@@ -821,17 +831,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           previousDonCountRef.current = { player: playerDonCount, opponent: opponentDonCount };
           // Also set visible DON count to prevent flash before animation
           setVisibleDonCount({ player: playerDonCount, opponent: opponentDonCount });
-          // Initialize hand count refs to prevent false draw animations
+          // Initialize refs to prevent false animations
           previousHandCountRef.current = { player: myPlayer.hand.length, opponent: opponent.hand.length };
-          // Initialize trash and deck count refs to prevent false mill animations
-          previousTrashCountRef.current = { player: myPlayer.trash.length, opponent: opponent.trash.length };
-          previousDeckCountRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
-          // Initialize field count refs to prevent false discard animations
-          previousFieldCountRef.current = { player: myPlayer.field.length, opponent: opponent.field.length };
-          // Initialize discard-specific refs
-          previousHandCountForDiscardRef.current = { player: myPlayer.hand.length, opponent: opponent.hand.length };
-          previousTrashCountForDiscardRef.current = { player: myPlayer.trash.length, opponent: opponent.trash.length };
-          previousDeckCountForDiscardRef.current = { player: myPlayer.deck.length, opponent: opponent.deck.length };
+          previousHandCardIdsRef.current = { player: getCardIdSet(myPlayer.hand), opponent: getCardIdSet(opponent.hand) };
+          previousTrashCardIdsRef.current = { player: getCardIdSet(myPlayer.trash), opponent: getCardIdSet(opponent.trash) };
+          previousFieldCardIdsRef.current = { player: getCardIdSet(myPlayer.field), opponent: getCardIdSet(opponent.field) };
         }
       }
     }
@@ -1195,209 +1199,164 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     playSound('draw');
   }, [playSound]);
 
-  // Detect and animate mill (deck to trash) effects
+  // Detect and animate cards going to trash (mill from deck OR discard from hand)
+  // Uses card ID tracking instead of count-based heuristics to correctly identify source zone
   useEffect(() => {
     if (!myPlayer || !opponent) return;
     if (dealingPhase !== 'complete') return;
 
-    const playerTrashCount = myPlayer.trash.length;
-    const opponentTrashCount = opponent.trash.length;
-    const playerDeckCount = myPlayer.deck.length;
-    const opponentDeckCount = opponent.deck.length;
+    // Build current ID sets
+    const currentPlayerHandIds = getCardIdSet(myPlayer.hand);
+    const currentOpponentHandIds = getCardIdSet(opponent.hand);
+    const currentPlayerTrashIds = getCardIdSet(myPlayer.trash);
+    const currentOpponentTrashIds = getCardIdSet(opponent.trash);
+    const currentPlayerFieldIds = getCardIdSet(myPlayer.field);
+    const currentOpponentFieldIds = getCardIdSet(opponent.field);
 
-    const prevPlayerTrashCount = previousTrashCountRef.current.player;
-    const prevOpponentTrashCount = previousTrashCountRef.current.opponent;
-    const prevPlayerDeckCount = previousDeckCountRef.current.player;
-    const prevOpponentDeckCount = previousDeckCountRef.current.opponent;
+    // Find NEW trash cards (present now but not in previous snapshot)
+    const newPlayerTrashCards = myPlayer.trash.filter(
+      c => !previousTrashCardIdsRef.current.player.has(c.id)
+    );
+    const newOpponentTrashCards = opponent.trash.filter(
+      c => !previousTrashCardIdsRef.current.opponent.has(c.id)
+    );
 
-    // Check if cards were milled (trash increased AND deck decreased = deck-to-trash transfer)
-    const playerTrashIncrease = playerTrashCount - prevPlayerTrashCount;
-    const opponentTrashIncrease = opponentTrashCount - prevOpponentTrashCount;
-    const playerDeckDecrease = prevPlayerDeckCount - playerDeckCount;
-    const opponentDeckDecrease = prevOpponentDeckCount - opponentDeckCount;
+    // Categorize each new trash card by its source zone
+    const playerDiscards = newPlayerTrashCards.filter(
+      c => previousHandCardIdsRef.current.player.has(c.id)
+    );
+    const playerKOs = newPlayerTrashCards.filter(
+      c => previousFieldCardIdsRef.current.player.has(c.id)
+    );
+    const playerMills = newPlayerTrashCards.filter(
+      c => !previousHandCardIdsRef.current.player.has(c.id) &&
+           !previousFieldCardIdsRef.current.player.has(c.id)
+    );
 
-    // Only animate if trash increased AND deck decreased by the same amount (indicates mill from deck)
-    // This prevents animations when discarding from hand or KO'ing characters
-    const playerMilled = (playerTrashIncrease > 0 && playerDeckDecrease > 0) ? Math.min(playerTrashIncrease, playerDeckDecrease) : 0;
-    const opponentMilled = (opponentTrashIncrease > 0 && opponentDeckDecrease > 0) ? Math.min(opponentTrashIncrease, opponentDeckDecrease) : 0;
+    const opponentDiscards = newOpponentTrashCards.filter(
+      c => previousHandCardIdsRef.current.opponent.has(c.id)
+    );
+    const opponentKOs = newOpponentTrashCards.filter(
+      c => previousFieldCardIdsRef.current.opponent.has(c.id)
+    );
+    const opponentMills = newOpponentTrashCards.filter(
+      c => !previousHandCardIdsRef.current.opponent.has(c.id) &&
+           !previousFieldCardIdsRef.current.opponent.has(c.id)
+    );
 
-    if (playerMilled > 0 || opponentMilled > 0) {
-      console.log('[GameBoard] Mill from deck detected - player:', playerMilled, 'opponent:', opponentMilled);
-      const newAnimations: AnimatingCardData[] = [];
+    const millAnimations: AnimatingCardData[] = [];
+    const discardAnimations: AnimatingCardData[] = [];
+
+    // Create MILL animations (from deck position, face-down, flip during flight)
+    if (playerMills.length > 0 || opponentMills.length > 0) {
+      console.log('[GameBoard] Mill from deck detected - player:', playerMills.length, 'opponent:', opponentMills.length);
       const cardDelay = 150;
 
-      // Player mill animations
-      if (playerMilled > 0) {
-        for (let i = 0; i < playerMilled; i++) {
-          const cardIndex = prevPlayerTrashCount + i;
-          const card = myPlayer.trash[cardIndex];
-          if (card) {
-            newAnimations.push({
-              id: `player-mill-${card.id}-${Date.now()}-${i}`,
-              card,
-              faceUp: false,  // Start face-down (from deck)
-              startPos: getDeckPosition(false),
-              endPos: getTrashPosition(false),
-              delay: i * cardDelay,
-              targetZone: 'trash',
-              isOpponent: false,
-              flipDuringFlight: true  // Flip to face-up during flight
-            });
-          }
+      playerMills.forEach((card, i) => {
+        if (card && card.id && card.cardId) {
+          millAnimations.push({
+            id: `player-mill-${card.id}-${Date.now()}-${i}`,
+            card,
+            faceUp: false,
+            startPos: getDeckPosition(false),
+            endPos: getTrashPosition(false),
+            delay: i * cardDelay,
+            targetZone: 'trash',
+            isOpponent: false,
+            flipDuringFlight: true,
+            cardImageUrl: resolveCardImageUrl(card),
+          });
         }
-      }
+      });
 
-      // Opponent mill animations
-      if (opponentMilled > 0) {
-        for (let i = 0; i < opponentMilled; i++) {
-          const cardIndex = prevOpponentTrashCount + i;
-          const card = opponent.trash[cardIndex];
-          if (card) {
-            newAnimations.push({
-              id: `opponent-mill-${card.id}-${Date.now()}-${i}`,
-              card,
-              faceUp: false,  // Start face-down (from deck)
-              startPos: getDeckPosition(true),
-              endPos: getTrashPosition(true),
-              delay: i * cardDelay,
-              targetZone: 'trash',
-              isOpponent: true,
-              flipDuringFlight: true  // Flip to face-up during flight
-            });
-          }
+      opponentMills.forEach((card, i) => {
+        if (card && card.id && card.cardId) {
+          millAnimations.push({
+            id: `opponent-mill-${card.id}-${Date.now()}-${i}`,
+            card,
+            faceUp: false,
+            startPos: getDeckPosition(true),
+            endPos: getTrashPosition(true),
+            delay: i * cardDelay,
+            targetZone: 'trash',
+            isOpponent: true,
+            flipDuringFlight: true,
+            cardImageUrl: resolveCardImageUrl(card),
+          });
         }
-      }
+      });
+    }
 
-      if (newAnimations.length > 0) {
-        console.log('[GameBoard] Spawning mill animations:', newAnimations.length);
-        setAnimatingMill(prev => [...prev, ...newAnimations]);
-      }
+    // Create DISCARD animations (from hand position, face-up for player)
+    if (playerDiscards.length > 0 || opponentDiscards.length > 0) {
+      console.log('[GameBoard] Discard from hand detected - player:', playerDiscards.length, 'opponent:', opponentDiscards.length);
+      const cardDelay = 100;
+
+      playerDiscards.forEach((card, i) => {
+        if (card && card.id && card.cardId) {
+          const prevHandCount = previousHandCardIdsRef.current.player.size;
+          const handCenterIndex = Math.floor(prevHandCount / 2);
+          discardAnimations.push({
+            id: `player-discard-${card.id}-${Date.now()}-${i}`,
+            card,
+            faceUp: true,
+            startPos: getHandCardPosition(handCenterIndex, prevHandCount, false),
+            endPos: getTrashPosition(false),
+            delay: i * cardDelay,
+            targetZone: 'trash',
+            isOpponent: false,
+            flipDuringFlight: false,
+            cardImageUrl: resolveCardImageUrl(card),
+          });
+        }
+      });
+
+      opponentDiscards.forEach((card, i) => {
+        if (card && card.id && card.cardId) {
+          const prevHandCount = previousHandCardIdsRef.current.opponent.size;
+          const handCenterIndex = Math.floor(prevHandCount / 2);
+          discardAnimations.push({
+            id: `opponent-discard-${card.id}-${Date.now()}-${i}`,
+            card,
+            faceUp: false,
+            startPos: getHandCardPosition(handCenterIndex, prevHandCount, true),
+            endPos: getTrashPosition(true),
+            delay: i * cardDelay,
+            targetZone: 'trash',
+            isOpponent: true,
+            flipDuringFlight: true,
+            cardImageUrl: resolveCardImageUrl(card),
+          });
+        }
+      });
+    }
+
+    // KO animations are handled separately by effect animations - no flight needed here
+    if (playerKOs.length > 0 || opponentKOs.length > 0) {
+      console.log('[GameBoard] KO to trash detected (no flight animation) - player:', playerKOs.length, 'opponent:', opponentKOs.length);
+    }
+
+    // Spawn animations
+    if (millAnimations.length > 0) {
+      console.log('[GameBoard] Spawning mill animations:', millAnimations.length);
+      setAnimatingMill(prev => [...prev, ...millAnimations]);
+    }
+    if (discardAnimations.length > 0) {
+      console.log('[GameBoard] Spawning discard animations:', discardAnimations.length);
+      setAnimatingDiscard(prev => [...prev, ...discardAnimations]);
     }
 
     // Update refs
-    previousTrashCountRef.current = { player: playerTrashCount, opponent: opponentTrashCount };
-    previousDeckCountRef.current = { player: playerDeckCount, opponent: opponentDeckCount };
-  }, [myPlayer, opponent, dealingPhase, getDeckPosition, getTrashPosition]);
+    previousHandCardIdsRef.current = { player: currentPlayerHandIds, opponent: currentOpponentHandIds };
+    previousTrashCardIdsRef.current = { player: currentPlayerTrashIds, opponent: currentOpponentTrashIds };
+    previousFieldCardIdsRef.current = { player: currentPlayerFieldIds, opponent: currentOpponentFieldIds };
+  }, [myPlayer, opponent, dealingPhase, getDeckPosition, getTrashPosition, getHandCardPosition, getCardIdSet, resolveCardImageUrl]);
 
   // Handle mill animation completion
   const handleMillAnimationComplete = useCallback((cardId: string) => {
     setAnimatingMill(prev => prev.filter(c => c.id !== cardId));
-    // Play a sound for milling (reuse damage sound or add a new one)
     playSound('damage');
   }, [playSound]);
-
-  // Detect and animate discard (hand to trash) effects
-  useEffect(() => {
-    if (!myPlayer || !opponent) return;
-    if (dealingPhase !== 'complete') return;
-
-    const playerHandCount = myPlayer.hand.length;
-    const opponentHandCount = opponent.hand.length;
-    const playerTrashCount = myPlayer.trash.length;
-    const opponentTrashCount = opponent.trash.length;
-    const playerDeckCount = myPlayer.deck.length;
-    const opponentDeckCount = opponent.deck.length;
-    const playerFieldCount = myPlayer.field.length;
-    const opponentFieldCount = opponent.field.length;
-
-    // Use dedicated refs for discard detection to avoid race conditions with other useEffects
-    const prevPlayerHandCount = previousHandCountForDiscardRef.current.player;
-    const prevOpponentHandCount = previousHandCountForDiscardRef.current.opponent;
-    const prevPlayerTrashCount = previousTrashCountForDiscardRef.current.player;
-    const prevOpponentTrashCount = previousTrashCountForDiscardRef.current.opponent;
-    const prevPlayerDeckCount = previousDeckCountForDiscardRef.current.player;
-    const prevOpponentDeckCount = previousDeckCountForDiscardRef.current.opponent;
-    const prevPlayerFieldCount = previousFieldCountRef.current.player;
-    const prevOpponentFieldCount = previousFieldCountRef.current.opponent;
-
-    // Check for discard: hand decreased AND trash increased AND deck unchanged AND field unchanged
-    // This differentiates from: mill (deck->trash), KO (field->trash), play (hand->field)
-    const playerHandDecrease = prevPlayerHandCount - playerHandCount;
-    const opponentHandDecrease = prevOpponentHandCount - opponentHandCount;
-    const playerTrashIncrease = playerTrashCount - prevPlayerTrashCount;
-    const opponentTrashIncrease = opponentTrashCount - prevOpponentTrashCount;
-    const playerDeckChanged = playerDeckCount !== prevPlayerDeckCount;
-    const opponentDeckChanged = opponentDeckCount !== prevOpponentDeckCount;
-    const playerFieldChanged = playerFieldCount !== prevPlayerFieldCount;
-    const opponentFieldChanged = opponentFieldCount !== prevOpponentFieldCount;
-
-    // Discard detected when: hand decreased, trash increased, deck unchanged, field unchanged
-    const playerDiscarded = (playerHandDecrease > 0 && playerTrashIncrease > 0 && !playerDeckChanged && !playerFieldChanged)
-      ? Math.min(playerHandDecrease, playerTrashIncrease)
-      : 0;
-    const opponentDiscarded = (opponentHandDecrease > 0 && opponentTrashIncrease > 0 && !opponentDeckChanged && !opponentFieldChanged)
-      ? Math.min(opponentHandDecrease, opponentTrashIncrease)
-      : 0;
-
-    if (playerDiscarded > 0 || opponentDiscarded > 0) {
-      console.log('[GameBoard] Discard from hand detected - player:', playerDiscarded, 'opponent:', opponentDiscarded);
-      const newAnimations: AnimatingCardData[] = [];
-      const cardDelay = 100;
-
-      // Player discard animations
-      if (playerDiscarded > 0) {
-        for (let i = 0; i < playerDiscarded; i++) {
-          const cardIndex = prevPlayerTrashCount + i;
-          const card = myPlayer.trash[cardIndex];
-          // Validate card has required data (id and cardId for image loading)
-          if (card && card.id && card.cardId) {
-            // Start from approximate center of previous hand
-            const handCenterIndex = Math.floor(prevPlayerHandCount / 2);
-            newAnimations.push({
-              id: `player-discard-${card.id}-${Date.now()}-${i}`,
-              card,
-              faceUp: true,  // Cards in hand are face-up
-              startPos: getHandCardPosition(handCenterIndex, prevPlayerHandCount, false),
-              endPos: getTrashPosition(false),
-              delay: i * cardDelay,
-              targetZone: 'trash',
-              isOpponent: false,
-              flipDuringFlight: false  // Already face-up
-            });
-          } else if (card) {
-            console.warn('[GameBoard] Skipping discard animation for invalid card data:', card);
-          }
-        }
-      }
-
-      // Opponent discard animations
-      if (opponentDiscarded > 0) {
-        for (let i = 0; i < opponentDiscarded; i++) {
-          const cardIndex = prevOpponentTrashCount + i;
-          const card = opponent.trash[cardIndex];
-          // Validate card has required data (id and cardId for image loading)
-          if (card && card.id && card.cardId) {
-            // Start from approximate center of previous hand
-            const handCenterIndex = Math.floor(prevOpponentHandCount / 2);
-            newAnimations.push({
-              id: `opponent-discard-${card.id}-${Date.now()}-${i}`,
-              card,
-              faceUp: false,  // Opponent cards are face-down in hand
-              startPos: getHandCardPosition(handCenterIndex, prevOpponentHandCount, true),
-              endPos: getTrashPosition(true),
-              delay: i * cardDelay,
-              targetZone: 'trash',
-              isOpponent: true,
-              flipDuringFlight: true  // Flip to reveal the card as it goes to trash
-            });
-          } else if (card) {
-            console.warn('[GameBoard] Skipping opponent discard animation for invalid card data:', card);
-          }
-        }
-      }
-
-      if (newAnimations.length > 0) {
-        console.log('[GameBoard] Spawning discard animations:', newAnimations.length);
-        setAnimatingDiscard(prev => [...prev, ...newAnimations]);
-      }
-    }
-
-    // Update all dedicated refs for discard detection
-    previousFieldCountRef.current = { player: playerFieldCount, opponent: opponentFieldCount };
-    previousHandCountForDiscardRef.current = { player: playerHandCount, opponent: opponentHandCount };
-    previousTrashCountForDiscardRef.current = { player: playerTrashCount, opponent: opponentTrashCount };
-    previousDeckCountForDiscardRef.current = { player: playerDeckCount, opponent: opponentDeckCount };
-  }, [myPlayer, opponent, dealingPhase, getHandCardPosition, getTrashPosition]);
 
   // Handle discard animation completion
   const handleDiscardAnimationComplete = useCallback((cardId: string) => {
@@ -3082,6 +3041,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           endPos={animCard.endPos}
           delay={animCard.delay}
           flipDuringFlight={animCard.flipDuringFlight}
+          cardImageUrl={animCard.cardImageUrl}
           onComplete={() => handleMillAnimationComplete(animCard.id)}
         />
       ))}
@@ -3096,6 +3056,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           endPos={animCard.endPos}
           delay={animCard.delay}
           flipDuringFlight={animCard.flipDuringFlight}
+          cardImageUrl={animCard.cardImageUrl}
           onComplete={() => handleDiscardAnimationComplete(animCard.id)}
         />
       ))}
