@@ -791,6 +791,7 @@ export class EffectEngine {
       }
 
       default:
+        console.warn(`[checkCondition] Unhandled condition type: ${(condition as any).type}`);
         return true;
     }
   }
@@ -1288,6 +1289,7 @@ export class EffectEngine {
       // ============ KO EFFECTS ============
       case EffectType.KO_CHARACTER:
         targets.forEach(targetId => {
+          if (this.isRemovalBlocked(gameState, targetId, 'KO', sourcePlayer.id)) return;
           const result = this.koCard(gameState, targetId);
           changes.push(...result);
         });
@@ -1295,6 +1297,7 @@ export class EffectEngine {
 
       case EffectType.KO_COST_OR_LESS:
         targets.forEach(targetId => {
+          if (this.isRemovalBlocked(gameState, targetId, 'KO', sourcePlayer.id)) return;
           const card = this.findCard(gameState, targetId);
           if (card && (card.cost || 0) <= (action.value || 0)) {
             const result = this.koCard(gameState, targetId);
@@ -1305,6 +1308,7 @@ export class EffectEngine {
 
       case EffectType.KO_POWER_OR_LESS:
         targets.forEach(targetId => {
+          if (this.isRemovalBlocked(gameState, targetId, 'KO', sourcePlayer.id)) return;
           const card = this.findCard(gameState, targetId);
           if (card && (card.power || 0) <= (action.value || 0)) {
             const result = this.koCard(gameState, targetId);
@@ -1316,6 +1320,7 @@ export class EffectEngine {
       // ============ CARD MOVEMENT ============
       case EffectType.RETURN_TO_HAND:
         targets.forEach(targetId => {
+          if (this.isRemovalBlocked(gameState, targetId, 'BOUNCE', sourcePlayer.id)) return;
           const result = this.returnToHand(gameState, targetId);
           changes.push(...result);
         });
@@ -1323,6 +1328,7 @@ export class EffectEngine {
 
       case EffectType.SEND_TO_DECK_BOTTOM:
         targets.forEach(targetId => {
+          if (this.isRemovalBlocked(gameState, targetId, 'DECK', sourcePlayer.id)) return;
           const result = this.sendToDeckBottom(gameState, targetId);
           changes.push(...result);
         });
@@ -1330,6 +1336,7 @@ export class EffectEngine {
 
       case EffectType.SEND_TO_TRASH:
         targets.forEach(targetId => {
+          if (this.isRemovalBlocked(gameState, targetId, 'TRASH', sourcePlayer.id)) return;
           const result = this.sendToTrash(gameState, targetId);
           changes.push(...result);
         });
@@ -1338,6 +1345,7 @@ export class EffectEngine {
       // ============ REST/ACTIVATE ============
       case EffectType.REST_CHARACTER:
         targets.forEach(targetId => {
+          if (this.isRestBlocked(gameState, targetId, sourcePlayer.id)) return;
           const card = this.findCard(gameState, targetId);
           if (card && card.state === CardState.ACTIVE) {
             card.state = CardState.RESTED;
@@ -1369,6 +1377,7 @@ export class EffectEngine {
       case EffectType.FREEZE:
         // Card can't be activated at start of next turn
         targets.forEach(targetId => {
+          if (this.isRestBlocked(gameState, targetId, sourcePlayer.id)) return;
           const card = this.findCard(gameState, targetId);
           if (card) {
             card.state = CardState.RESTED;
@@ -2253,6 +2262,7 @@ export class EffectEngine {
       // ============================================
       case EffectType.SEND_TO_DECK_TOP:
         targets.forEach(targetId => {
+          if (this.isRemovalBlocked(gameState, targetId, 'DECK', sourcePlayer.id)) return;
           const result = this.sendToDeckTop(gameState, targetId);
           changes.push(...result);
         });
@@ -2313,6 +2323,7 @@ export class EffectEngine {
         const oppPlayer = Object.values(gameState.players).find(p => p.id !== sourcePlayer.id);
         if (oppPlayer) {
           targets.forEach(targetId => {
+            if (this.isRemovalBlocked(gameState, targetId, 'TRASH', sourcePlayer.id)) return;
             const fieldIndex = oppPlayer.field.findIndex(c => c.id === targetId);
             if (fieldIndex !== -1) {
               const card = oppPlayer.field.splice(fieldIndex, 1)[0];
@@ -2674,19 +2685,42 @@ export class EffectEngine {
     for (const cost of costs) {
       switch (cost.type) {
         case 'DON':
+        case 'REST_DON': {
           const activeDon = context.sourcePlayer.donField.filter(
             d => d.state === CardState.ACTIVE
           );
           if (activeDon.length < (cost.count || 0)) return false;
           break;
+        }
+
+        case 'RETURN_DON':
+          if (context.sourcePlayer.donField.length < (cost.count || 0)) return false;
+          break;
 
         case 'TRASH_CARD':
+        case 'TRASH_FROM_HAND':
           if (context.sourcePlayer.hand.length < (cost.count || 0)) return false;
           break;
 
         case 'LIFE':
           if (context.sourcePlayer.life < (cost.count || 0)) return false;
           break;
+
+        case 'REST_SELF':
+          if (!context.sourceCard || context.sourceCard.state !== CardState.ACTIVE) return false;
+          break;
+
+        case 'TRASH_CHARACTER':
+          if (context.sourcePlayer.field.length < (cost.count || 0)) return false;
+          break;
+
+        case 'REST_CHARACTER': {
+          const activeChars = context.sourcePlayer.field.filter(
+            c => c.state === CardState.ACTIVE
+          );
+          if (activeChars.length < (cost.count || 0)) return false;
+          break;
+        }
       }
     }
     return true;
@@ -2791,6 +2825,86 @@ export class EffectEngine {
       }
     }
     return undefined;
+  }
+
+  /**
+   * Check if a card is protected from removal effects (KO, bounce, trash, deck).
+   * Checks temporaryKeywords (ImmuneEffects, ImmuneKO) and immunities[] array.
+   */
+  private isRemovalBlocked(
+    gameState: GameState,
+    cardId: string,
+    removalType: 'KO' | 'BOUNCE' | 'TRASH' | 'DECK',
+    effectOwnerId?: string
+  ): boolean {
+    const card = this.findCard(gameState, cardId);
+    if (!card) return false;
+
+    const cardOwner = this.findCardOwner(gameState, cardId);
+    const isOpponentEffect = effectOwnerId != null && cardOwner != null && effectOwnerId !== cardOwner.id;
+
+    // ImmuneEffects blocks opponent removal effects
+    if (isOpponentEffect && card.temporaryKeywords?.includes('ImmuneEffects')) {
+      console.log(`[IMMUNITY] Card ${cardId} is immune to opponent effects (ImmuneEffects)`);
+      return true;
+    }
+
+    // ImmuneKO blocks KO from any source
+    if (removalType === 'KO' && card.temporaryKeywords?.includes('ImmuneKO')) {
+      console.log(`[IMMUNITY] Card ${cardId} is immune to KO (ImmuneKO)`);
+      return true;
+    }
+
+    // Check immunities[] array for KO immunity
+    if (removalType === 'KO' && card.immunities?.length) {
+      for (const immunity of card.immunities) {
+        if (immunity.type === 'KO') {
+          console.log(`[IMMUNITY] Card ${cardId} has KO immunity from immunities[]`);
+          return true;
+        }
+      }
+    }
+
+    // Check immunities[] for general EFFECTS immunity
+    if (isOpponentEffect && card.immunities?.length) {
+      for (const immunity of card.immunities) {
+        if (immunity.type === 'EFFECTS') {
+          console.log(`[IMMUNITY] Card ${cardId} has EFFECTS immunity from immunities[]`);
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if a card is protected from rest/freeze effects.
+   */
+  private isRestBlocked(
+    gameState: GameState,
+    cardId: string,
+    effectOwnerId?: string
+  ): boolean {
+    const card = this.findCard(gameState, cardId);
+    if (!card) return false;
+
+    const cardOwner = this.findCardOwner(gameState, cardId);
+    const isOpponentEffect = effectOwnerId != null && cardOwner != null && effectOwnerId !== cardOwner.id;
+
+    // CantBeRested blocks rest from any source
+    if (card.temporaryKeywords?.includes('CantBeRested')) {
+      console.log(`[IMMUNITY] Card ${cardId} cannot be rested (CantBeRested)`);
+      return true;
+    }
+
+    // ImmuneEffects blocks opponent rest effects
+    if (isOpponentEffect && card.temporaryKeywords?.includes('ImmuneEffects')) {
+      console.log(`[IMMUNITY] Card ${cardId} is immune to opponent rest (ImmuneEffects)`);
+      return true;
+    }
+
+    return false;
   }
 
   private getAttachedDonCount(card: GameCard, player: PlayerState): number {
@@ -2914,17 +3028,27 @@ export class EffectEngine {
   }
 
   private effectRequiresChoice(effect: CardEffectDefinition): boolean {
+    // Effect types that always need player target selection
+    const targetingEffects = [
+      EffectType.ATTACH_DON,
+      // Opponent-targeting removal
+      EffectType.KO_CHARACTER, EffectType.KO_COST_OR_LESS, EffectType.KO_POWER_OR_LESS,
+      EffectType.RETURN_TO_HAND, EffectType.SEND_TO_TRASH,
+      EffectType.SEND_TO_DECK_BOTTOM, EffectType.SEND_TO_DECK_TOP,
+      EffectType.OPPONENT_TRASH_CARDS, EffectType.SILENCE,
+      EffectType.REST_CHARACTER, EffectType.FREEZE,
+      // Buff/debuff with target selection
+      EffectType.BUFF_POWER, EffectType.BUFF_ANY,
+      EffectType.DEBUFF_POWER, EffectType.SET_POWER_ZERO,
+      EffectType.GRANT_KEYWORD,
+    ];
+
     return effect.effects.some(action => {
-      // ATTACH_DON always requires target selection (leader or character)
-      if (action.type === EffectType.ATTACH_DON) {
+      if (targetingEffects.includes(action.type as EffectType)) {
         return true;
       }
-      // KO effects targeting opponent's characters require choice
-      const koEffectTypes = [EffectType.KO_CHARACTER, EffectType.KO_COST_OR_LESS, EffectType.KO_POWER_OR_LESS];
-      if (koEffectTypes.includes(action.type as EffectType) && (action.target?.type === TargetType.OPPONENT_CHARACTER || action.target?.type === TargetType.OPPONENT_STAGE)) {
-        return true;
-      }
-      return action.target && action.target.count !== undefined;
+      // Fallback: any action with a target count requires choice
+      return action.target && (action.target.count !== undefined || action.target.maxCount !== undefined);
     });
   }
 
@@ -3193,6 +3317,85 @@ export class EffectEngine {
         targets = opponent?.stage ? [opponent.stage] : [];
         break;
 
+      case TargetType.SELF:
+        targets = context.sourceCard ? [context.sourceCard] : [];
+        break;
+
+      case TargetType.ANY_LEADER:
+        targets = [
+          ...(sourcePlayer.leaderCard ? [sourcePlayer.leaderCard] : []),
+          ...(opponent?.leaderCard ? [opponent.leaderCard] : []),
+        ];
+        break;
+
+      case TargetType.YOUR_FIELD:
+        targets = [
+          ...(sourcePlayer.leaderCard ? [sourcePlayer.leaderCard] : []),
+          ...sourcePlayer.field,
+          ...(sourcePlayer.stage ? [sourcePlayer.stage] : []),
+        ];
+        break;
+
+      case TargetType.OPPONENT_FIELD:
+        targets = [
+          ...(opponent?.leaderCard ? [opponent.leaderCard] : []),
+          ...(opponent?.field || []),
+          ...(opponent?.stage ? [opponent.stage] : []),
+        ];
+        break;
+
+      case TargetType.ALL_CHARACTERS:
+        targets = [...sourcePlayer.field, ...(opponent?.field || [])];
+        break;
+
+      case TargetType.OPPONENT_HAND:
+        targets = opponent?.hand || [];
+        break;
+
+      case TargetType.YOUR_DECK:
+        targets = sourcePlayer.deck;
+        break;
+
+      case TargetType.YOUR_LIFE:
+        targets = sourcePlayer.lifeCards;
+        break;
+
+      case TargetType.OPPONENT_LIFE:
+        targets = opponent?.lifeCards || [];
+        break;
+
+      case TargetType.ATTACKER:
+        if (gameState.currentCombat?.attackerId) {
+          const attacker = this.findCard(gameState, gameState.currentCombat.attackerId);
+          targets = attacker ? [attacker] : [];
+        }
+        break;
+
+      case TargetType.DEFENDER:
+        if (gameState.currentCombat?.targetId) {
+          const defender = this.findCard(gameState, gameState.currentCombat.targetId);
+          targets = defender ? [defender] : [];
+        }
+        break;
+
+      case TargetType.BATTLING_CHARACTER: {
+        const battlers: GameCard[] = [];
+        if (gameState.currentCombat?.attackerId) {
+          const atk = this.findCard(gameState, gameState.currentCombat.attackerId);
+          if (atk) battlers.push(atk);
+        }
+        if (gameState.currentCombat?.targetId) {
+          const def = this.findCard(gameState, gameState.currentCombat.targetId);
+          if (def) battlers.push(def);
+        }
+        targets = battlers;
+        break;
+      }
+
+      case TargetType.OPPONENT_DON:
+        targets = opponent?.donField || [];
+        break;
+
       default:
         targets = [];
     }
@@ -3200,6 +3403,36 @@ export class EffectEngine {
     // Apply filters
     if (action.target.filters) {
       targets = this.applyFilters(targets, action.target.filters, context);
+    }
+
+    // Filter out immune cards so they're not selectable in UI
+    const removalTypes = [
+      EffectType.KO_CHARACTER, EffectType.KO_COST_OR_LESS, EffectType.KO_POWER_OR_LESS,
+      EffectType.RETURN_TO_HAND, EffectType.SEND_TO_TRASH,
+      EffectType.SEND_TO_DECK_BOTTOM, EffectType.SEND_TO_DECK_TOP,
+      EffectType.OPPONENT_TRASH_CARDS,
+    ];
+    const restTypes = [EffectType.REST_CHARACTER, EffectType.FREEZE];
+
+    if (removalTypes.includes(action.type)) {
+      const removalKindMap: Record<string, 'KO' | 'BOUNCE' | 'TRASH' | 'DECK'> = {
+        [EffectType.KO_CHARACTER]: 'KO',
+        [EffectType.KO_COST_OR_LESS]: 'KO',
+        [EffectType.KO_POWER_OR_LESS]: 'KO',
+        [EffectType.RETURN_TO_HAND]: 'BOUNCE',
+        [EffectType.SEND_TO_TRASH]: 'TRASH',
+        [EffectType.SEND_TO_DECK_BOTTOM]: 'DECK',
+        [EffectType.SEND_TO_DECK_TOP]: 'DECK',
+        [EffectType.OPPONENT_TRASH_CARDS]: 'TRASH',
+      };
+      const removalKind = removalKindMap[action.type] || 'KO';
+      targets = targets.filter(c =>
+        !this.isRemovalBlocked(gameState, c.id, removalKind, sourcePlayer.id)
+      );
+    } else if (restTypes.includes(action.type)) {
+      targets = targets.filter(c =>
+        !this.isRestBlocked(gameState, c.id, sourcePlayer.id)
+      );
     }
 
     return targets.map(c => c.id);

@@ -251,6 +251,7 @@ export interface PendingCounterEffect {
   maxTargets: number;
   minTargets: number;          // 0 means optional / can skip
   conditionsMet: boolean;      // Whether leader/other conditions are satisfied
+  effectIndex?: number;        // Index into cardDef.effects[] for correct counter effect resolution
 }
 
 // Pending effect for deck reveal effects ("Look at X cards from deck")

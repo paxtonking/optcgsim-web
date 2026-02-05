@@ -445,6 +445,11 @@ export class GameStateManager {
       }
     }
 
+    // Re-evaluate continuous effects so newly drawn cards get cost reductions etc.
+    if (drawnCards.length > 0) {
+      this.applyStageEffects(playerId);
+    }
+
     return drawnCards;
   }
 
@@ -534,6 +539,9 @@ export class GameStateManager {
 
     if (targetZone === CardZone.FIELD) {
       player.field.push(card);
+
+      // Re-evaluate continuous effects so new character gets stage/continuous buffs
+      this.applyStageEffects(playerId);
 
       // Trigger ON_PLAY effects
       const triggerEvent: TriggerEvent = {
@@ -2866,7 +2874,8 @@ export class GameStateManager {
         continue;
       }
 
-      const counterEffect = cardDef.effects.find(e => e.trigger === EffectTrigger.COUNTER);
+      const counterEffectIdx = cardDef.effects.findIndex(e => e.trigger === EffectTrigger.COUNTER);
+      const counterEffect = counterEffectIdx !== -1 ? cardDef.effects[counterEffectIdx] : undefined;
       if (!counterEffect) {
         continue;
       }
@@ -2901,6 +2910,7 @@ export class GameStateManager {
           maxTargets,
           minTargets,
           conditionsMet,
+          effectIndex: counterEffectIdx,
         });
       } else {
         // No target selection needed (or no valid targets). Resolve immediately.
@@ -4555,7 +4565,10 @@ export class GameStateManager {
     const sourceCard = this.findCard(pendingEffect.sourceCardId);
     const player = this.state.players[playerId];
     const cardDef = sourceCard ? this.effectEngine.getCardDefinition(sourceCard.cardId) : undefined;
-    const counterEffect = cardDef?.effects.find(e => e.trigger === EffectTrigger.COUNTER);
+    // Use stored effectIndex to find the correct counter effect (handles cards with multiple effects)
+    const counterEffect = pendingEffect.effectIndex !== undefined && cardDef
+      ? cardDef.effects[pendingEffect.effectIndex]
+      : cardDef?.effects.find(e => e.trigger === EffectTrigger.COUNTER);
 
     if (sourceCard && player && counterEffect) {
       this.resolveEffectWithEngine(counterEffect, sourceCard, player, selectedTargets, true);

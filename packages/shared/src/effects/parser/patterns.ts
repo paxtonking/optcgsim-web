@@ -363,20 +363,6 @@ export const ACTION_PATTERNS: ActionPattern[] = [
     actionType: EffectType.ATTACH_DON
   },
 
-  // Play named card from hand - "Play up to 1 [CardName] from your hand"
-  {
-    pattern: /[Pp]lay\s+(?:up to\s+)?(\d+)?\s*\[[^\]]+\]\s+from\s+(?:your\s+)?hand/i,
-    actionType: EffectType.PLAY_FROM_HAND,
-    extractValue: (m) => m[1] ? parseInt(m[1]) : 1
-  },
-
-  // Play named card from trash - "Play up to 1 [CardName] from your trash"
-  {
-    pattern: /[Pp]lay\s+(?:up to\s+)?(\d+)?\s*\[[^\]]+\]\s+from\s+(?:your\s+)?trash/i,
-    actionType: EffectType.PLAY_FROM_TRASH,
-    extractValue: (m) => m[1] ? parseInt(m[1]) : 1
-  },
-
   // Look at Life cards - "Look at up to X card(s) from the top of your Life cards"
   {
     pattern: /[Ll]ook at\s+(?:up to\s+)?(\d+)?\s*cards?\s+from.*[Ll]ife/i,
@@ -410,38 +396,10 @@ export const ACTION_PATTERNS: ActionPattern[] = [
     extractValue: (m) => m[1] ? parseInt(m[1]) : 1
   },
 
-  // Add named card from trash to hand - "Add up to 1 [Name] from your trash to your hand"
-  {
-    pattern: /[Aa]dd\s+(?:up to\s+)?(\d+)?\s*\[[^\]]+\]\s+from\s+(?:your\s+)?trash\s+to\s+(?:your\s+)?hand/i,
-    actionType: EffectType.DRAW_FROM_TRASH,
-    extractValue: (m) => m[1] ? parseInt(m[1]) : 1
-  },
-
   // Reveal and add named card from deck - "Reveal up to 1 [Name] from your deck and add it to your hand"
   {
     pattern: /[Rr]eveal\s+(?:up to\s+)?(\d+)?\s*\[[^\]]+\]\s+from\s+(?:your\s+)?deck\s+and\s+add/i,
     actionType: EffectType.SEARCH_DECK,
-    extractValue: (m) => m[1] ? parseInt(m[1]) : 1
-  },
-
-  // Play named card with cost condition - "Play up to 1 [Name] with a cost of X or less from your hand"
-  {
-    pattern: /[Pp]lay\s+(?:up to\s+)?(\d+)?\s*\[[^\]]+\]\s+with\s+a\s+cost\s+of\s+\d+\s+or\s+less\s+from\s+(?:your\s+)?hand/i,
-    actionType: EffectType.PLAY_FROM_HAND,
-    extractValue: (m) => m[1] ? parseInt(m[1]) : 1
-  },
-
-  // Play named card with cost condition from trash - "Play up to 1 [Name] with a cost of X or less from your trash"
-  {
-    pattern: /[Pp]lay\s+(?:up to\s+)?(\d+)?\s*\[[^\]]+\]\s+with\s+a\s+cost\s+of\s+\d+\s+or\s+less\s+from\s+(?:your\s+)?trash/i,
-    actionType: EffectType.PLAY_FROM_TRASH,
-    extractValue: (m) => m[1] ? parseInt(m[1]) : 1
-  },
-
-  // Play card from deck - "Play up to 1 [Name] from your deck"
-  {
-    pattern: /[Pp]lay\s+(?:up to\s+)?(\d+)?\s*\[[^\]]+\]\s+from\s+(?:your\s+)?deck/i,
-    actionType: EffectType.PLAY_FROM_DECK,
     extractValue: (m) => m[1] ? parseInt(m[1]) : 1
   },
 
@@ -746,7 +704,11 @@ export const TARGET_PATTERNS: TargetPattern[] = [
     extractCount: (m) => ({ maxCount: m[1] ? parseInt(m[1]) : 1 })
   },
 
-  // Your targets - general
+  // Your targets - general (SPECIFIC patterns first, greedy patterns after)
+  {
+    pattern: /your Leader or (?:\d+ of your )?Characters?/i,
+    targetType: TargetType.YOUR_LEADER_OR_CHARACTER
+  },
   {
     pattern: /(?:up to )?(\d+)?\s*(?:of )?your (?:Leader or )?Characters?/i,
     targetType: TargetType.YOUR_CHARACTER,
@@ -757,12 +719,12 @@ export const TARGET_PATTERNS: TargetPattern[] = [
     targetType: TargetType.YOUR_LEADER,
     extractCount: () => ({ count: 1 })
   },
-  {
-    pattern: /your Leader or (?:\d+ of your )?Characters?/i,
-    targetType: TargetType.YOUR_LEADER_OR_CHARACTER
-  },
 
-  // Opponent targets
+  // Opponent targets (SPECIFIC patterns first, greedy patterns after)
+  {
+    pattern: /your opponent'?s?\s*Leader or Characters?/i,
+    targetType: TargetType.OPPONENT_LEADER_OR_CHARACTER
+  },
   {
     pattern: /(?:up to )?(?:a total of )?(\d+)?\s*(?:of )?your opponent'?s?\s*(?:Leader or )?Characters?/i,
     targetType: TargetType.OPPONENT_CHARACTER,
@@ -772,10 +734,6 @@ export const TARGET_PATTERNS: TargetPattern[] = [
     pattern: /your opponent'?s?\s*Leader/i,
     targetType: TargetType.OPPONENT_LEADER,
     extractCount: () => ({ count: 1 })
-  },
-  {
-    pattern: /your opponent'?s?\s*(?:Leader or )?Character/i,
-    targetType: TargetType.OPPONENT_LEADER_OR_CHARACTER
   },
 
   // Combined targets
