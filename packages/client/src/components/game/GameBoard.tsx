@@ -1318,12 +1318,25 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
     const playerDiscards = playerClassification.discards;
     const playerKOs = playerClassification.kos;
-    const playerMills = playerClassification.mills;
-    const playerOtherTrash = playerClassification.others;
+    let playerMills = [...playerClassification.mills];
+    const playerOtherTrash = [...playerClassification.others];
     const opponentDiscards = opponentClassification.discards;
     const opponentKOs = opponentClassification.kos;
-    const opponentMills = opponentClassification.mills;
-    const opponentOtherTrash = opponentClassification.others;
+    let opponentMills = [...opponentClassification.mills];
+    const opponentOtherTrash = [...opponentClassification.others];
+
+    // Never show deck->trash alongside hand->trash for the same player update.
+    // This avoids dual visuals when a discard action also changes deck count in the same state tick.
+    if (playerDiscards.length > 0 && playerMills.length > 0) {
+      console.log('[GameBoard] Suppressing player mill animation because discard animation is present in the same update');
+      playerOtherTrash.push(...playerMills);
+      playerMills = [];
+    }
+    if (opponentDiscards.length > 0 && opponentMills.length > 0) {
+      console.log('[GameBoard] Suppressing opponent mill animation because discard animation is present in the same update');
+      opponentOtherTrash.push(...opponentMills);
+      opponentMills = [];
+    }
 
     if (!opponentHandIdsReliable && newOpponentTrashCards.length > 0) {
       console.log('[GameBoard] Opponent hand is sanitized; using count-based discard inference and disabling unknown mill inference');
