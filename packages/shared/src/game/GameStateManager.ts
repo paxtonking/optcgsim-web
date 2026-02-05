@@ -495,7 +495,7 @@ export class GameStateManager {
 
     // Get card definition to check cost
     const cardDef = this.effectEngine.getCardDefinition(card.cardId);
-    const cardCost = cardDef?.cost || 0;
+    const cardCost = card.modifiedCost ?? cardDef?.cost ?? 0;
 
     // Check if player has enough ACTIVE DON to pay the cost
     const activeDon = player.donField.filter(don => don.state === CardState.ACTIVE);

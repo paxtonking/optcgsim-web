@@ -198,7 +198,7 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
               {cardType}
             </div>
             <div style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '8px' }}>
-              {card.power || cardDef?.power || '?'}
+              {card.basePower || card.power || cardDef?.power || '?'}
             </div>
             <div style={{ fontSize: '14px', textAlign: 'center' }}>
               {cardDef?.name || card.cardId}
@@ -234,8 +234,8 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
               <span className="card-preview__stat-label">Cost</span>
             </div>
           )}
-          {(card.power != null || cardDef?.power != null) && (() => {
-            const basePower = card.power ?? cardDef?.power ?? 0;
+          {(card.basePower != null || card.power != null || cardDef?.power != null) && (() => {
+            const basePower = card.basePower ?? card.power ?? cardDef?.power ?? 0;
             // Only add DON bonus if it's the card owner's turn
             const donBonus = showDonBonus ? (attachedDonCount * 1000) : 0;
             const totalPower = basePower + donBonus + combatBuffPower;

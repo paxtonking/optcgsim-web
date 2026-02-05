@@ -2183,7 +2183,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
     myPlayer.hand.forEach(card => {
       const def = cardDefinitions.get(card.cardId);
-      if (def?.cost != null && activeDonCount >= def.cost) {
+      const effectiveCost = card.modifiedCost ?? def?.cost;
+      if (effectiveCost != null && activeDonCount >= effectiveCost) {
         playable.add(card.id);
       }
     });
@@ -3337,8 +3338,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       {/* Sidebar: Card Preview + Actions */}
       <div className="game-board__sidebar">
         <CardPreview
-          card={pinnedCard || hoveredCard}
-          cardDef={(pinnedCard || hoveredCard) ? cardDefinitions.get((pinnedCard || hoveredCard)!.cardId) : undefined}
+          card={previewedCard}
+          cardDef={previewedCard ? cardDefinitions.get(previewedCard.cardId) : undefined}
           isHidden={!pinnedCard && isHoveredCardHidden}
           attachedDonCount={previewedCardDonCount}
           showDonBonus={previewedCardShowDonBonus}

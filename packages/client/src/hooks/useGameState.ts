@@ -142,9 +142,10 @@ export function useGameState(playerId: string | null): UseGameStateReturn {
     // Cards with null/undefined cost (like some leaders) can't be played from hand
     if (def.cost === null || def.cost === undefined) return false;
 
-    // Check if player has enough active DON to pay the cost
+    // Check if player has enough active DON to pay the cost (use modifiedCost from stage effects)
+    const effectiveCost = card.modifiedCost ?? def.cost;
     const activeDonCount = myPlayer.donField.filter(don => don.state === 'ACTIVE').length;
-    return activeDonCount >= def.cost;
+    return activeDonCount >= effectiveCost;
   }, [gameState, myPlayer, isMyTurn, phase, cardDefinitions]);
 
   // Determine the target zone based on card type

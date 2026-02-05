@@ -489,6 +489,7 @@ export class EffectTextParser {
       type: parsed.type,
       value: parsed.value,
       traits: parsed.traits,
+      leaderName: parsed.leaderName,
     };
   }
 

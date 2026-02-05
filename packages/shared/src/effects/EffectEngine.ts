@@ -2764,6 +2764,7 @@ export class EffectEngine {
         ...player.lifeCards,
         ...player.donField,
         player.leaderCard,
+        player.stage,
       ].filter(Boolean) as GameCard[];
 
       const card = allCards.find(c => c.id === cardId);
@@ -2782,6 +2783,7 @@ export class EffectEngine {
         ...player.lifeCards,
         ...player.donField,
         player.leaderCard,
+        player.stage,
       ].filter(Boolean) as GameCard[];
 
       if (allCards.some(c => c.id === cardId)) {
@@ -2919,7 +2921,7 @@ export class EffectEngine {
       }
       // KO effects targeting opponent's characters require choice
       const koEffectTypes = [EffectType.KO_CHARACTER, EffectType.KO_COST_OR_LESS, EffectType.KO_POWER_OR_LESS];
-      if (koEffectTypes.includes(action.type as EffectType) && action.target?.type === TargetType.OPPONENT_CHARACTER) {
+      if (koEffectTypes.includes(action.type as EffectType) && (action.target?.type === TargetType.OPPONENT_CHARACTER || action.target?.type === TargetType.OPPONENT_STAGE)) {
         return true;
       }
       return action.target && action.target.count !== undefined;
@@ -2948,6 +2950,20 @@ export class EffectEngine {
           don.state = CardState.ACTIVE;
         }
       });
+
+      changes.push({
+        type: 'CARD_DESTROYED',
+        cardId: cardId,
+        playerId: owner.id,
+      });
+    }
+
+    // Also check stage slot
+    if (owner.stage && owner.stage.id === cardId) {
+      const card = owner.stage;
+      owner.stage = null;
+      card.zone = CardZone.TRASH;
+      owner.trash.push(card);
 
       changes.push({
         type: 'CARD_DESTROYED',
@@ -3082,8 +3098,23 @@ export class EffectEngine {
           from: zone.name,
           to: 'TRASH',
         });
-        break;
+        return changes;
       }
+    }
+
+    // Also check stage slot
+    if (owner.stage && owner.stage.id === cardId) {
+      const card = owner.stage;
+      owner.stage = null;
+      card.zone = CardZone.TRASH;
+      owner.trash.push(card);
+
+      changes.push({
+        type: 'CARD_MOVED',
+        cardId: cardId,
+        from: 'STAGE',
+        to: 'TRASH',
+      });
     }
 
     return changes;
