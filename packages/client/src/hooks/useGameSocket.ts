@@ -29,6 +29,7 @@ export interface UseGameSocketReturn {
   resolveEventEffect: (effectId: string, selectedTargets: string[]) => void;
   skipEventEffect: (effectId: string) => void;
   resolveCounterEffect: (effectId: string, selectedTargets: string[]) => void;
+  skipCounterEffect: (effectId: string) => void;
   resolveDeckReveal: (selectedCardIds: string[]) => void;
   skipDeckReveal: () => void;
   resolveHandSelect: (selectedCardIds: string[]) => void;
@@ -203,6 +204,10 @@ export function useGameSocket({
     sendAction(createAction(ActionType.RESOLVE_COUNTER_EFFECT, { effectId, selectedTargets }));
   }, [sendAction, createAction]);
 
+  const skipCounterEffect = useCallback((effectId: string) => {
+    sendAction(createAction(ActionType.SKIP_COUNTER_EFFECT, { effectId }));
+  }, [sendAction, createAction]);
+
   const resolveDeckReveal = useCallback((selectedCardIds: string[]) => {
     sendAction(createAction(ActionType.RESOLVE_DECK_REVEAL, { selectedCardIds }));
   }, [sendAction, createAction]);
@@ -297,6 +302,7 @@ export function useGameSocket({
     resolveEventEffect,
     skipEventEffect,
     resolveCounterEffect,
+    skipCounterEffect,
     resolveDeckReveal,
     skipDeckReveal,
     resolveHandSelect,

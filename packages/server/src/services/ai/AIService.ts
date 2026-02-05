@@ -576,6 +576,9 @@ export class AIService {
       case GamePhase.BLOCKER_STEP:
         return this.strategy.decideBlock(gameState, player);
 
+      case GamePhase.TRIGGER_STEP:
+        return { action: ActionType.TRIGGER_LIFE, data: {} };
+
       default:
         return null;
     }

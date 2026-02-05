@@ -2614,6 +2614,11 @@ export class EffectEngine {
     if (card.temporaryKeywords?.includes(keyword)) return true;
     if (card.continuousKeywords?.includes(keyword)) return true;
 
+    // Fall back to static card definition keywords for cards that were instantiated
+    // without copying all keyword metadata onto the runtime card object.
+    const definition = this.cardDefinitions.get(card.cardId);
+    if (definition?.keywords?.includes(keyword)) return true;
+
     // Check grantedEffects for GRANT_KEYWORD effects (Bug 6 fix)
     if (card.grantedEffects) {
       for (const effect of card.grantedEffects) {

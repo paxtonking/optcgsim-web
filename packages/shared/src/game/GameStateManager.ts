@@ -33,7 +33,6 @@ import {
   EffectAction,
   TargetType,
   parseLeaderRestrictions,
-  ConditionType,
   extractSearchAndSelectDetails,
   EffectCost,
 } from '../effects';
@@ -524,16 +523,13 @@ export class GameStateManager {
     card.state = CardState.ACTIVE;
     card.turnPlayed = this.state.turn;
 
-    // Check for Rush keyword
-    if (cardDef && cardDef.keywords.includes('Rush')) {
-      if (!card.keywords) card.keywords = [];
-      card.keywords.push('Rush');
-    }
-
-    // Check for Blocker keyword
-    if (cardDef && cardDef.keywords.includes('Blocker')) {
-      if (!card.keywords) card.keywords = [];
-      card.keywords.push('Blocker');
+    // Copy static keywords from card definition to runtime card instance.
+    if (cardDef?.keywords?.length) {
+      const existingKeywords = new Set(card.keywords ?? []);
+      for (const keyword of cardDef.keywords) {
+        existingKeywords.add(keyword);
+      }
+      card.keywords = Array.from(existingKeywords);
     }
 
     if (targetZone === CardZone.FIELD) {
@@ -571,7 +567,7 @@ export class GameStateManager {
 
       if (searchSelectEffect) {
         console.log('[playCard] CHARACTER SEARCH_AND_SELECT ON_PLAY detected');
-        const conditionsMet = this.checkEffectConditions(searchSelectEffect.effect, playerId);
+        const conditionsMet = this.checkEffectConditions(searchSelectEffect.effect, playerId, card);
 
         if (conditionsMet) {
           const effectAction = searchSelectEffect.effect.effects.find(e => e.type === EffectType.SEARCH_AND_SELECT);
@@ -844,7 +840,7 @@ export class GameStateManager {
         if (isSearchAndSelect || searchDetails) {
           console.log('[playCard] SEARCH_AND_SELECT effect detected');
           // Check leader conditions first
-          const conditionsMet = this.checkEffectConditions(mainEffect, playerId);
+          const conditionsMet = this.checkEffectConditions(mainEffect, playerId, card);
           if (!conditionsMet) {
             console.log('[playCard] Leader conditions not met for SEARCH_AND_SELECT');
             // Effect fizzles - create a dummy event effect to show the message
@@ -888,13 +884,21 @@ export class GameStateManager {
         } else {
           // Standard event effect handling
           // Check if effect has leader conditions
-          const conditionsMet = this.checkEffectConditions(mainEffect, playerId);
+          const conditionsMet = this.checkEffectConditions(mainEffect, playerId, card);
 
           // Check for additional costs (e.g., "You may rest 1 DON")
           const additionalCost = this.extractAdditionalCost(mainEffect, playerId);
 
           // Get valid targets for the effect
-          const validTargets = this.getValidTargetsForEventEffect(mainEffect, playerId);
+          const validTargets = this.getValidTargetsForEventEffect(mainEffect, playerId, card);
+          const firstAction = mainEffect.effects[0];
+          const hasTarget = Boolean(firstAction?.target);
+          const maxTargets = hasTarget
+            ? (firstAction?.target?.maxCount || firstAction?.target?.count || 1)
+            : 0;
+          const minTargets = hasTarget
+            ? (firstAction?.target?.optional ? 0 : 1)
+            : 0;
 
           // Create pending event effect
           const pendingEvent: PendingEventEffect = {
@@ -903,9 +907,9 @@ export class GameStateManager {
             playerId: playerId,
             description: mainEffect.description || 'Activate event [Main] ability',
             validTargets: validTargets,
-            effectType: mainEffect.effects[0]?.type.toString() || 'UNKNOWN',
-            maxTargets: mainEffect.effects[0]?.target?.maxCount || mainEffect.effects[0]?.target?.count || 1,
-            minTargets: mainEffect.isOptional ? 0 : 1,
+            effectType: firstAction?.type.toString() || 'UNKNOWN',
+            maxTargets: maxTargets,
+            minTargets: minTargets,
             conditionsMet: conditionsMet,
             additionalCost: additionalCost
           };
@@ -917,7 +921,7 @@ export class GameStateManager {
             this.state.pendingEventEffects = [pendingEvent];
           }
           // If conditions are met and requires target selection
-          else if (conditionsMet && validTargets.length > 0) {
+          else if (conditionsMet && (maxTargets === 0 || validTargets.length > 0)) {
             this.state.phase = GamePhase.EVENT_EFFECT_STEP;
             this.state.pendingEventEffects = [pendingEvent];
           }
@@ -951,7 +955,7 @@ export class GameStateManager {
   /**
    * Check if effect conditions are met (e.g., "If your Leader is [Imu]")
    */
-  private checkEffectConditions(effect: CardEffectDefinition, playerId: string): boolean {
+  private checkEffectConditions(effect: CardEffectDefinition, playerId: string, sourceCard?: GameCard): boolean {
     if (!effect.conditions || effect.conditions.length === 0) {
       return true; // No conditions, always met
     }
@@ -959,40 +963,37 @@ export class GameStateManager {
     const player = this.state.players[playerId];
     if (!player) return false;
 
+    const context: EffectContext = {
+      gameState: this.state,
+      sourceCard: this.getEffectContextSourceCard(player, sourceCard),
+      sourcePlayer: player,
+    };
+
     for (const condition of effect.conditions) {
-      switch (condition.type) {
-        case ConditionType.LEADER_IS: {
-          // Check if leader matches the required name
-          if (!condition.leaderName) continue;
-          const leaderDef = this.effectEngine.getCardDefinition(player.leaderCard?.cardId || player.leaderId);
-          if (!leaderDef || leaderDef.name !== condition.leaderName) {
-            console.log('[checkEffectConditions] Leader check failed:', leaderDef?.name, '!==', condition.leaderName);
-            return false;
-          }
-          break;
-        }
-        case ConditionType.LEADER_HAS_TRAIT: {
-          // Check if leader has the required trait
-          if (!condition.traits || condition.traits.length === 0) continue;
-          const leaderDef = this.effectEngine.getCardDefinition(player.leaderCard?.cardId || player.leaderId);
-          if (!leaderDef) return false;
-          const hasRequiredTrait = condition.traits.some(trait =>
-            leaderDef.traits.includes(trait)
-          );
-          if (!hasRequiredTrait) {
-            console.log('[checkEffectConditions] Leader trait check failed');
-            return false;
-          }
-          break;
-        }
-        // Add more condition types as needed
-        default:
-          // Unknown condition type - skip for now
-          break;
+      if (!this.effectEngine.checkCondition(condition, context)) {
+        return false;
       }
     }
 
     return true;
+  }
+
+  private getEffectContextSourceCard(player: PlayerState, sourceCard?: GameCard): GameCard {
+    if (sourceCard) {
+      return sourceCard;
+    }
+
+    if (player.leaderCard) {
+      return player.leaderCard;
+    }
+
+    return {
+      id: `virtual-source-${player.id}`,
+      cardId: player.leaderId || 'virtual-card',
+      zone: CardZone.LEADER,
+      state: CardState.ACTIVE,
+      owner: player.id,
+    };
   }
 
   /**
@@ -1044,88 +1045,46 @@ export class GameStateManager {
   /**
    * Get valid targets for an event effect
    */
-  private getValidTargetsForEventEffect(effect: CardEffectDefinition, playerId: string): string[] {
+  private getValidTargetsForEventEffect(effect: CardEffectDefinition, playerId: string, sourceCard?: GameCard): string[] {
     const player = this.state.players[playerId];
-    const opponent = Object.values(this.state.players).find(p => p.id !== playerId);
-    if (!player || !opponent) return [];
+    if (!player) return [];
 
-    const validTargets: string[] = [];
     const effectAction = effect.effects[0];
     if (!effectAction || !effectAction.target) return [];
 
-    const targetType = effectAction.target.type;
-    const filters = effectAction.target.filters || [];
+    const context: EffectContext = {
+      gameState: this.state,
+      sourceCard: this.getEffectContextSourceCard(player, sourceCard),
+      sourcePlayer: player,
+    };
 
-    // Collect candidates based on target type
-    let candidates: GameCard[] = [];
-    switch (targetType) {
-      case TargetType.OPPONENT_STAGE:
-        if (opponent.stage) candidates = [opponent.stage];
-        break;
-      case TargetType.OPPONENT_CHARACTER:
-        candidates = opponent.field;
-        break;
-      case TargetType.YOUR_CHARACTER:
-        candidates = player.field;
-        break;
-      case TargetType.YOUR_LEADER:
-        if (player.leaderCard) candidates = [player.leaderCard];
-        break;
-      case TargetType.YOUR_LEADER_OR_CHARACTER:
-        candidates = [...player.field];
-        if (player.leaderCard) candidates.unshift(player.leaderCard);
-        break;
-      case TargetType.OPPONENT_LEADER:
-        if (opponent.leaderCard) candidates = [opponent.leaderCard];
-        break;
-      case TargetType.OPPONENT_LEADER_OR_CHARACTER:
-        candidates = [...opponent.field];
-        if (opponent.leaderCard) candidates.unshift(opponent.leaderCard);
-        break;
-      default:
-        break;
+    return this.effectEngine.getValidTargets(effectAction, context);
+  }
+
+  private resolveEffectWithEngine(
+    effect: CardEffectDefinition,
+    sourceCard: GameCard,
+    sourcePlayer: PlayerState,
+    selectedTargets: string[] = [],
+    ignoreCosts: boolean = false
+  ): boolean {
+    const context: EffectContext = {
+      gameState: this.state,
+      sourceCard,
+      sourcePlayer,
+      selectedTargets,
+    };
+
+    const effectToResolve = ignoreCosts
+      ? { ...effect, costs: undefined }
+      : effect;
+
+    const result = this.effectEngine.resolveEffect(effectToResolve, context);
+    if (result.childEffects?.length) {
+      this.processChildEffects(result.childEffects, sourcePlayer.id, sourceCard.id);
     }
 
-    // Apply filters
-    for (const candidate of candidates) {
-      const cardDef = this.effectEngine.getCardDefinition(candidate.cardId);
-      if (!cardDef) continue;
-
-      let passesFilters = true;
-      for (const filter of filters) {
-        switch (filter.property) {
-          case 'COST':
-            const cardCost = candidate.modifiedCost ?? cardDef.cost ?? 0;
-            if (filter.operator === 'OR_LESS' && cardCost > (filter.value as number)) passesFilters = false;
-            if (filter.operator === 'OR_MORE' && cardCost < (filter.value as number)) passesFilters = false;
-            if (filter.operator === 'EQUALS' && cardCost !== filter.value) passesFilters = false;
-            break;
-          case 'POWER':
-            // Calculate current power including buffs
-            let cardPower = candidate.basePower ?? cardDef.power ?? 0;
-            if (candidate.powerBuffs) {
-              for (const buff of candidate.powerBuffs) {
-                cardPower += buff.value;
-              }
-            }
-            if (filter.operator === 'OR_LESS' && cardPower > (filter.value as number)) passesFilters = false;
-            if (filter.operator === 'OR_MORE' && cardPower < (filter.value as number)) passesFilters = false;
-            break;
-          case 'TRAIT':
-            const traits = Array.isArray(filter.value) ? filter.value : [filter.value];
-            if (filter.operator === 'CONTAINS' && !traits.some(t => cardDef.traits.includes(t as string))) passesFilters = false;
-            break;
-          // Add more filter types as needed
-        }
-        if (!passesFilters) break;
-      }
-
-      if (passesFilters) {
-        validTargets.push(candidate.id);
-      }
-    }
-
-    return validTargets;
+    return result.success;
   }
 
   // Remove active effects that originated from a stage card
@@ -2893,58 +2852,59 @@ export class GameStateManager {
     // Remove counter cards from hand and move to trash
     for (const card of usedCards) {
       const cardIndex = player.hand.findIndex(c => c.id === card.id);
-      if (cardIndex !== -1) {
-        const removedCard = player.hand.splice(cardIndex, 1)[0];
-        removedCard.zone = CardZone.TRASH;
-        player.trash.push(removedCard);
+      if (cardIndex === -1) {
+        continue;
+      }
 
-        // Check if this is an event counter that needs target selection
-        const cardDef = this.effectEngine.getCardDefinition(removedCard.cardId);
-        if (cardDef?.type === 'EVENT') {
-          const counterEffect = cardDef.effects.find(e => e.trigger === EffectTrigger.COUNTER);
-          if (counterEffect) {
-            // Check conditions (e.g., "If your Leader is [Imu]")
-            const conditionsMet = this.checkEffectConditions(counterEffect, playerId);
+      const removedCard = player.hand.splice(cardIndex, 1)[0];
+      removedCard.zone = CardZone.TRASH;
+      player.trash.push(removedCard);
 
-            // Get valid targets for the counter effect
-            const validTargets = this.getValidTargetsForEventEffect(counterEffect, playerId);
+      // Character counters contribute their printed value only.
+      const cardDef = this.effectEngine.getCardDefinition(removedCard.cardId);
+      if (cardDef?.type !== 'EVENT') {
+        continue;
+      }
 
-            // Extract power boost value from effect
-            const powerBoostAction = counterEffect.effects.find(e => e.type === EffectType.BUFF_POWER);
-            const powerBoost = powerBoostAction?.value || 0;
+      const counterEffect = cardDef.effects.find(e => e.trigger === EffectTrigger.COUNTER);
+      if (!counterEffect) {
+        continue;
+      }
 
-            // If effect requires target selection (power buff to leader/character)
-            if (powerBoostAction && validTargets.length > 0) {
-              counterEffectsNeedingSelection.push({
-                id: `counter-${removedCard.id}-${Date.now()}`,
-                sourceCardId: removedCard.id,
-                playerId: playerId,
-                description: counterEffect.description || `Give +${powerBoost} power during this battle`,
-                validTargets: validTargets,
-                effectType: 'BUFF_POWER',
-                powerBoost: powerBoost,
-                maxTargets: powerBoostAction.target?.count || 1,
-                conditionsMet: conditionsMet
-              });
-            } else if (!powerBoostAction) {
-              // Trigger COUNTER effects that don't need selection
-              const triggerEvent: TriggerEvent = {
-                type: EffectTrigger.COUNTER,
-                cardId: removedCard.id,
-                playerId: playerId,
-              };
-              this.processTriggers(triggerEvent);
-            }
-          }
-        } else {
-          // Character counter - trigger effect normally (just power from counter stat)
-          const triggerEvent: TriggerEvent = {
-            type: EffectTrigger.COUNTER,
-            cardId: removedCard.id,
-            playerId: playerId,
-          };
-          this.processTriggers(triggerEvent);
-        }
+      const conditionsMet = this.checkEffectConditions(counterEffect, playerId, removedCard);
+      if (!conditionsMet) {
+        continue;
+      }
+
+      const primaryAction = counterEffect.effects[0];
+      const validTargets = this.getValidTargetsForEventEffect(counterEffect, playerId, removedCard);
+      const hasTargetSelection = Boolean(primaryAction?.target);
+      const maxTargets = hasTargetSelection
+        ? (primaryAction?.target?.maxCount || primaryAction?.target?.count || 1)
+        : 0;
+      const minTargets = hasTargetSelection
+        ? (primaryAction?.target?.optional ? 0 : 1)
+        : 0;
+
+      const powerBoostAction = counterEffect.effects.find(e => e.type === EffectType.BUFF_POWER);
+      const powerBoost = powerBoostAction?.value || 0;
+
+      if (hasTargetSelection && validTargets.length > 0) {
+        counterEffectsNeedingSelection.push({
+          id: `counter-${removedCard.id}-${Date.now()}`,
+          sourceCardId: removedCard.id,
+          playerId: playerId,
+          description: counterEffect.description || `Resolve ${primaryAction?.type || 'counter'} effect`,
+          validTargets,
+          effectType: primaryAction?.type?.toString() || 'UNKNOWN',
+          powerBoost,
+          maxTargets,
+          minTargets,
+          conditionsMet,
+        });
+      } else {
+        // No target selection needed (or no valid targets). Resolve immediately.
+        this.resolveEffectWithEngine(counterEffect, removedCard, player, [], true);
       }
     }
 
@@ -3150,8 +3110,11 @@ export class GameStateManager {
     this.clearBattleBuffs();
 
     this.state.currentCombat = undefined;
-    // Only return to MAIN_PHASE if game hasn't ended
-    if (this.state.phase !== GamePhase.GAME_OVER) {
+    // Preserve TRIGGER_STEP after life damage reveals a trigger card.
+    if (
+      this.state.phase !== GamePhase.GAME_OVER &&
+      this.state.phase !== GamePhase.TRIGGER_STEP
+    ) {
       this.state.phase = GamePhase.MAIN_PHASE;
     }
   }
@@ -3727,7 +3690,7 @@ export class GameStateManager {
         return this.activateAbility(action.playerId, actionData.cardId, actionData.targets);
 
       case ActionType.RESOLVE_EVENT_EFFECT:
-        return this.resolveEventEffect(action.playerId, actionData.effectId, actionData.selectedTargets);
+        return this.resolveEventEffect(action.playerId, actionData.effectId, actionData.selectedTargets || []);
 
       case ActionType.SKIP_EVENT_EFFECT:
         return this.skipEventEffect(action.playerId, actionData.effectId);
@@ -3739,7 +3702,7 @@ export class GameStateManager {
         return this.skipAdditionalCost(action.playerId, actionData.costId);
 
       case ActionType.RESOLVE_COUNTER_EFFECT:
-        return this.resolveCounterEffect(action.playerId, actionData.effectId, actionData.selectedTargets);
+        return this.resolveCounterEffect(action.playerId, actionData.effectId, actionData.selectedTargets || []);
 
       case ActionType.SKIP_COUNTER_EFFECT:
         return this.skipCounterEffect(action.playerId, actionData.effectId);
@@ -4380,6 +4343,14 @@ export class GameStateManager {
       return true;
     }
 
+    if (
+      selectedTargets.length < pendingEffect.minTargets ||
+      selectedTargets.length > pendingEffect.maxTargets
+    ) {
+      console.log('[resolveEventEffect] Invalid target count');
+      return false;
+    }
+
     const validTargetIds = new Set(pendingEffect.validTargets);
     for (const target of selectedTargets) {
       if (!validTargetIds.has(target)) {
@@ -4397,23 +4368,10 @@ export class GameStateManager {
 
     const cardDef = this.effectEngine.getCardDefinition(sourceCard.cardId);
     const mainEffect = cardDef?.effects.find(e => e.trigger === EffectTrigger.MAIN);
+    const player = this.state.players[playerId];
 
-    if (mainEffect) {
-      // Apply the effect to selected targets
-      const player = this.state.players[playerId];
-      if (player) {
-        const context: EffectContext = {
-          gameState: this.state,
-          sourceCard: sourceCard,
-          sourcePlayer: player,
-          selectedTargets: selectedTargets,
-        };
-
-        // Execute the effect actions
-        for (const action of mainEffect.effects) {
-          this.executeEffectAction(action, context, selectedTargets);
-        }
-      }
+    if (mainEffect && player) {
+      this.resolveEffectWithEngine(mainEffect, sourceCard, player, selectedTargets, true);
     }
 
     this.clearEventEffectState();
@@ -4477,9 +4435,27 @@ export class GameStateManager {
         break;
       }
       case 'TRASH_CARD': {
-        // Would need UI to select cards - for now auto-fail if not enough
-        console.log('[payAdditionalCost] TRASH_CARD requires card selection');
-        return false;
+        if (player.hand.length < pendingCost.amount) {
+          return false;
+        }
+
+        const pendingEventId = this.state.pendingEventEffects?.[0]?.id;
+        this.state.pendingAdditionalCost = undefined;
+        this.state.pendingHandSelectEffect = {
+          id: `event-cost-${Date.now()}`,
+          sourceCardId: pendingCost.sourceCardId,
+          playerId,
+          description: pendingCost.description,
+          selectAction: 'TRASH',
+          minSelections: pendingCost.amount,
+          maxSelections: pendingCost.amount,
+          canSkip: false,
+          isCostPayment: true,
+          pendingEffectId: pendingEventId,
+          sourceCardInstanceId: pendingCost.sourceCardId,
+        };
+        this.state.phase = GamePhase.HAND_SELECT_STEP;
+        return true;
       }
       case 'LIFE': {
         // Would deal damage to self
@@ -4496,10 +4472,12 @@ export class GameStateManager {
       this.state.pendingAdditionalCost = undefined;
       if (this.state.pendingEventEffects && this.state.pendingEventEffects.length > 0) {
         const pendingEvent = this.state.pendingEventEffects[0];
-        if (pendingEvent.conditionsMet && pendingEvent.validTargets.length > 0) {
+        if (
+          pendingEvent.conditionsMet &&
+          (pendingEvent.maxTargets === 0 || pendingEvent.validTargets.length > 0)
+        ) {
           this.state.phase = GamePhase.EVENT_EFFECT_STEP;
         } else {
-          // Conditions not met or no targets, effect fizzles
           this.clearEventEffectState();
         }
       } else {
@@ -4545,16 +4523,25 @@ export class GameStateManager {
       return false;
     }
 
-    const pendingEffect = this.state.pendingCounterEffects?.find(e => e.id === effectId);
-    if (!pendingEffect || pendingEffect.playerId !== playerId) {
+    const pendingEffects = this.state.pendingCounterEffects || [];
+    const pendingEffectIndex = pendingEffects.findIndex(e => e.id === effectId);
+    if (pendingEffectIndex === -1 || pendingEffects[pendingEffectIndex].playerId !== playerId) {
       return false;
     }
+    const pendingEffect = pendingEffects[pendingEffectIndex];
 
     // Validate targets
     if (!pendingEffect.conditionsMet) {
       console.log('[resolveCounterEffect] Conditions not met, effect fizzles');
-      this.clearCounterEffectState();
-      return true;
+      return this.skipCounterEffect(playerId, effectId);
+    }
+
+    if (
+      selectedTargets.length < pendingEffect.minTargets ||
+      selectedTargets.length > pendingEffect.maxTargets
+    ) {
+      console.log('[resolveCounterEffect] Invalid target count');
+      return false;
     }
 
     const validTargetIds = new Set(pendingEffect.validTargets);
@@ -4565,26 +4552,19 @@ export class GameStateManager {
       }
     }
 
-    // Apply power buff to selected target
-    if (selectedTargets.length > 0 && pendingEffect.powerBoost) {
-      for (const targetId of selectedTargets) {
-        const targetCard = this.findCard(targetId);
-        if (targetCard) {
-          // Add power buff for this battle
-          if (!targetCard.powerBuffs) {
-            targetCard.powerBuffs = [];
-          }
-          targetCard.powerBuffs.push({
-            id: `counter-buff-${Date.now()}`,
-            sourceCardId: pendingEffect.sourceCardId,
-            value: pendingEffect.powerBoost,
-            duration: 'THIS_BATTLE',
-            appliedCombatId: this.state.currentCombat?.attackerId,
-          });
+    const sourceCard = this.findCard(pendingEffect.sourceCardId);
+    const player = this.state.players[playerId];
+    const cardDef = sourceCard ? this.effectEngine.getCardDefinition(sourceCard.cardId) : undefined;
+    const counterEffect = cardDef?.effects.find(e => e.trigger === EffectTrigger.COUNTER);
 
-          console.log('[resolveCounterEffect] Applied +', pendingEffect.powerBoost, 'to', targetId);
-        }
-      }
+    if (sourceCard && player && counterEffect) {
+      this.resolveEffectWithEngine(counterEffect, sourceCard, player, selectedTargets, true);
+    }
+
+    this.state.pendingCounterEffects = pendingEffects.filter(e => e.id !== effectId);
+    if (this.state.pendingCounterEffects.length > 0) {
+      this.state.phase = GamePhase.COUNTER_EFFECT_STEP;
+      return true;
     }
 
     this.clearCounterEffectState();
@@ -4600,13 +4580,34 @@ export class GameStateManager {
   public skipCounterEffect(playerId: string, effectId: string): boolean {
     console.log('[skipCounterEffect] Called:', { playerId, effectId });
 
-    const pendingEffect = this.state.pendingCounterEffects?.find(e => e.id === effectId);
-    if (!pendingEffect || pendingEffect.playerId !== playerId) {
+    if (this.state.phase !== GamePhase.COUNTER_EFFECT_STEP) {
+      return false;
+    }
+
+    const pendingEffects = this.state.pendingCounterEffects || [];
+    const pendingEffectIndex = pendingEffects.findIndex(e => e.id === effectId);
+    if (pendingEffectIndex === -1 || pendingEffects[pendingEffectIndex].playerId !== playerId) {
       console.log('[skipCounterEffect] No matching pending effect');
       return false;
     }
 
-    // Clear the counter effect state
+    const pendingEffect = pendingEffects[pendingEffectIndex];
+    const canSkip =
+      !pendingEffect.conditionsMet ||
+      pendingEffect.validTargets.length === 0 ||
+      pendingEffect.minTargets === 0;
+
+    if (!canSkip) {
+      console.log('[skipCounterEffect] Effect is mandatory and has valid targets');
+      return false;
+    }
+
+    this.state.pendingCounterEffects = pendingEffects.filter(e => e.id !== effectId);
+    if (this.state.pendingCounterEffects.length > 0) {
+      this.state.phase = GamePhase.COUNTER_EFFECT_STEP;
+      return true;
+    }
+
     this.clearCounterEffectState();
 
     // Continue with combat resolution
@@ -5017,6 +5018,21 @@ export class GameStateManager {
         if (this.continuePendingEffectAfterCost(pendingEffect, playerId)) {
           return true;
         }
+      }
+
+      // Additional-cost path for event effects.
+      const pendingEvent = this.state.pendingEventEffects?.find(e => e.id === pending.pendingEffectId);
+      if (pendingEvent) {
+        this.state.pendingHandSelectEffect = undefined;
+        if (
+          pendingEvent.conditionsMet &&
+          (pendingEvent.maxTargets === 0 || pendingEvent.validTargets.length > 0)
+        ) {
+          this.state.phase = GamePhase.EVENT_EFFECT_STEP;
+        } else {
+          this.clearEventEffectState();
+        }
+        return true;
       }
     }
 
@@ -5614,7 +5630,7 @@ export class GameStateManager {
   /**
    * Execute a single effect action on targets
    */
-  private executeEffectAction(action: EffectAction, context: EffectContext, targetIds: string[]): void {
+  public executeEffectAction(action: EffectAction, context: EffectContext, targetIds: string[]): void {
     console.log('[executeEffectAction]', action.type, 'on targets:', targetIds);
 
     switch (action.type) {

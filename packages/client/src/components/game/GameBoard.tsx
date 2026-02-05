@@ -1422,6 +1422,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     resolveEventEffect,
     skipEventEffect,
     resolveCounterEffect,
+    skipCounterEffect,
     resolveDeckReveal,
     skipDeckReveal,
     resolveHandSelect,
@@ -2852,6 +2853,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     playSound('play');
   }, [currentCounterEffect, counterEffectSelectedTargets, resolveCounterEffect, playSound]);
 
+  const handleSkipCounterEffect = useCallback(() => {
+    if (!currentCounterEffect) return;
+    skipCounterEffect(currentCounterEffect.id);
+    setCounterEffectSelectedTargets([]);
+  }, [currentCounterEffect, skipCounterEffect]);
+
   // Additional cost handlers
   const handlePayAdditionalCost = useCallback(() => {
     if (!currentAdditionalCost) return;
@@ -3614,7 +3621,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               <p className="play-effect-prompt__warning">Leader condition not met - effect will fizzle</p>
             )}
             <p className="play-effect-prompt__instruction">
-              Select target for +{currentCounterEffect.powerBoost} power
+              {currentCounterEffect.powerBoost > 0
+                ? `Select target for +${currentCounterEffect.powerBoost} power`
+                : `Select target for ${currentCounterEffect.effectType}`}
             </p>
             <div className="play-effect-prompt__buttons">
               <button
@@ -3624,6 +3633,15 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               >
                 Apply
               </button>
+              {(!currentCounterEffect.conditionsMet ||
+                currentCounterEffect.validTargets.length === 0) && (
+                <button
+                  className="action-btn action-btn--skip-effect"
+                  onClick={handleSkipCounterEffect}
+                >
+                  Skip
+                </button>
+              )}
             </div>
           </div>
         </div>

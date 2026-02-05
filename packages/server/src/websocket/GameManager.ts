@@ -636,6 +636,7 @@ export class GameManager {
     // Phases where the NON-ACTIVE (defending) player primarily acts
     const defensivePhases = [
       GamePhase.COUNTER_STEP,    // Defender uses counter cards
+      GamePhase.COUNTER_EFFECT_STEP, // Defender resolves event counter targets
       GamePhase.BLOCKER_STEP,    // Defender declares blockers
       GamePhase.TRIGGER_STEP,    // Defender resolves life triggers
     ];

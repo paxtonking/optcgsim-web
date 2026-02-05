@@ -246,9 +246,10 @@ export interface PendingCounterEffect {
   playerId: string;
   description: string;         // Human-readable effect description
   validTargets: string[];      // IDs of valid targets (your Leader/Characters)
-  effectType: string;          // e.g., 'BUFF_POWER'
-  powerBoost: number;          // Amount of power to add
+  effectType: string;          // e.g., 'BUFF_POWER', 'KO_CHARACTER'
+  powerBoost: number;          // Display helper for BUFF_POWER prompts
   maxTargets: number;
+  minTargets: number;          // 0 means optional / can skip
   conditionsMet: boolean;      // Whether leader/other conditions are satisfied
 }
 

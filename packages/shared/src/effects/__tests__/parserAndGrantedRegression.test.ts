@@ -934,3 +934,362 @@ describe('Activate-main cost flow regressions', () => {
     expect(manager.activateAbility('player1', source.id)).toBe(false);
   });
 });
+
+describe('Gameplay flow audit fixes', () => {
+  it('keeps TRIGGER_STEP after combat when life trigger is revealed', () => {
+    const manager = new GameStateManager('game-trigger-phase', 'player1', 'player2');
+    manager.loadCardDefinitions([
+      createMockCardDefinition({ id: 'ATTACKER', effects: [] }),
+      createMockCardDefinition({
+        id: 'LIFE-TRIGGER',
+        type: 'EVENT',
+        effects: [{
+          id: 'life-trigger-effect',
+          trigger: EffectTrigger.TRIGGER,
+          description: 'Trigger: Draw 1 card.',
+          effects: [{ type: EffectType.DRAW_CARDS, value: 1 }],
+        }],
+      }),
+    ]);
+
+    const state = manager.getState();
+    state.phase = GamePhase.COUNTER_STEP;
+    state.turn = 2;
+    state.activePlayerId = 'player1';
+
+    const attacker = createMockCard({
+      id: 'attacker',
+      cardId: 'ATTACKER',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+      power: 7000,
+    });
+    const p1Leader = createMockCard({
+      id: 'p1-leader',
+      cardId: 'L1',
+      owner: 'player1',
+      zone: CardZone.LEADER,
+      state: CardState.ACTIVE,
+      power: 5000,
+    });
+    const p2Leader = createMockCard({
+      id: 'p2-leader',
+      cardId: 'L2',
+      owner: 'player2',
+      zone: CardZone.LEADER,
+      state: CardState.ACTIVE,
+      power: 5000,
+    });
+    const lifeTrigger = createMockCard({
+      id: 'life-trigger-card',
+      cardId: 'LIFE-TRIGGER',
+      owner: 'player2',
+      zone: CardZone.LIFE,
+      state: CardState.ACTIVE,
+      faceUp: false,
+    });
+
+    state.players.player1.leaderCard = p1Leader;
+    state.players.player2.leaderCard = p2Leader;
+    state.players.player1.field = [attacker];
+    state.players.player2.lifeCards = [lifeTrigger];
+    state.players.player2.life = 1;
+    state.currentCombat = {
+      attackerId: attacker.id,
+      targetId: p2Leader.id,
+      targetType: 'leader',
+      attackPower: 7000,
+      counterPower: 0,
+      effectBuffPower: 0,
+      isBlocked: false,
+    };
+
+    manager.resolveCombat();
+
+    expect(state.currentCombat).toBeUndefined();
+    expect(state.phase).toBe(GamePhase.TRIGGER_STEP);
+  });
+
+  it('resolves non-power event counter effects immediately after use', () => {
+    const manager = new GameStateManager('game-counter-immediate', 'player1', 'player2');
+    manager.loadCardDefinitions([
+      createMockCardDefinition({ id: 'ATTACKER', effects: [] }),
+      createMockCardDefinition({
+        id: 'COUNTER-DRAW-EVENT',
+        type: 'EVENT',
+        cost: 0,
+        counter: null,
+        effects: [{
+          id: 'counter-draw',
+          trigger: EffectTrigger.COUNTER,
+          description: '[Counter] Draw 1 card.',
+          effects: [{ type: EffectType.DRAW_CARDS, value: 1 }],
+        }],
+      }),
+      createMockCardDefinition({ id: 'DRAWN', effects: [] }),
+    ]);
+
+    const state = manager.getState();
+    state.phase = GamePhase.COUNTER_STEP;
+    state.turn = 2;
+    state.activePlayerId = 'player1';
+
+    const attacker = createMockCard({
+      id: 'attacker',
+      cardId: 'ATTACKER',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+      power: 5000,
+    });
+    const p1Leader = createMockCard({
+      id: 'p1-leader',
+      cardId: 'L1',
+      owner: 'player1',
+      zone: CardZone.LEADER,
+      state: CardState.ACTIVE,
+      power: 5000,
+    });
+    const p2Leader = createMockCard({
+      id: 'p2-leader',
+      cardId: 'L2',
+      owner: 'player2',
+      zone: CardZone.LEADER,
+      state: CardState.ACTIVE,
+      power: 5000,
+    });
+    const counterEvent = createMockCard({
+      id: 'counter-event',
+      cardId: 'COUNTER-DRAW-EVENT',
+      owner: 'player2',
+      zone: CardZone.HAND,
+      state: CardState.ACTIVE,
+    });
+    const drawCard = createMockCard({
+      id: 'drawn-card',
+      cardId: 'DRAWN',
+      owner: 'player2',
+      zone: CardZone.DECK,
+      state: CardState.ACTIVE,
+    });
+
+    state.players.player1.leaderCard = p1Leader;
+    state.players.player2.leaderCard = p2Leader;
+    state.players.player1.field = [attacker];
+    state.players.player2.hand = [counterEvent];
+    state.players.player2.deck = [drawCard];
+    state.currentCombat = {
+      attackerId: attacker.id,
+      targetId: p2Leader.id,
+      targetType: 'leader',
+      attackPower: 1000,
+      counterPower: 0,
+      effectBuffPower: 0,
+      isBlocked: false,
+    };
+
+    expect(manager.useCounter('player2', [counterEvent.id])).toBe(true);
+    expect(state.players.player2.trash.some(card => card.id === counterEvent.id)).toBe(true);
+    expect(state.players.player2.hand.some(card => card.id === drawCard.id)).toBe(true);
+    expect(state.phase).toBe(GamePhase.MAIN_PHASE);
+    expect(state.currentCombat).toBeUndefined();
+  });
+
+  it('resolves event [Main] effects through EffectEngine for KO_POWER_OR_LESS', () => {
+    const manager = new GameStateManager('game-event-main-engine', 'player1', 'player2');
+    manager.loadCardDefinitions([
+      createMockCardDefinition({
+        id: 'KO-EVENT',
+        type: 'EVENT',
+        cost: 0,
+        counter: null,
+        effects: [{
+          id: 'ko-main',
+          trigger: EffectTrigger.MAIN,
+          description: 'K.O. up to 1 of your opponent\'s Characters with 4000 power or less.',
+          effects: [{
+            type: EffectType.KO_POWER_OR_LESS,
+            value: 4000,
+            target: {
+              type: TargetType.OPPONENT_CHARACTER,
+              count: 1,
+              filters: [{
+                property: 'POWER',
+                operator: 'OR_LESS',
+                value: 4000,
+              }],
+            },
+          }],
+        }],
+      }),
+      createMockCardDefinition({
+        id: 'TARGET-CHAR',
+        power: 3000,
+        cost: 2,
+        effects: [],
+      }),
+    ]);
+
+    const state = manager.getState();
+    state.phase = GamePhase.MAIN_PHASE;
+    state.turn = 2;
+    state.activePlayerId = 'player1';
+    state.players.player1.leaderCard = createMockCard({
+      id: 'p1-leader',
+      cardId: 'L1',
+      owner: 'player1',
+      zone: CardZone.LEADER,
+      state: CardState.ACTIVE,
+      power: 5000,
+    });
+    state.players.player2.leaderCard = createMockCard({
+      id: 'p2-leader',
+      cardId: 'L2',
+      owner: 'player2',
+      zone: CardZone.LEADER,
+      state: CardState.ACTIVE,
+      power: 5000,
+    });
+
+    const eventCard = createMockCard({
+      id: 'ko-event-card',
+      cardId: 'KO-EVENT',
+      owner: 'player1',
+      zone: CardZone.HAND,
+      state: CardState.ACTIVE,
+    });
+    const target = createMockCard({
+      id: 'ko-target',
+      cardId: 'TARGET-CHAR',
+      owner: 'player2',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+      power: 3000,
+    });
+
+    state.players.player1.hand = [eventCard];
+    state.players.player2.field = [target];
+
+    expect(manager.playCard('player1', eventCard.id, CardZone.EVENT)).toBe(true);
+    expect(state.phase).toBe(GamePhase.EVENT_EFFECT_STEP);
+    expect(state.pendingEventEffects?.[0].validTargets).toContain(target.id);
+
+    const pendingEffectId = state.pendingEventEffects?.[0]?.id || '';
+    expect(manager.resolveEventEffect('player1', pendingEffectId, [target.id])).toBe(true);
+    expect(state.players.player2.field.some(card => card.id === target.id)).toBe(false);
+    expect(state.players.player2.trash.some(card => card.id === target.id)).toBe(true);
+  });
+
+  it('supports TRASH_CARD additional costs and continues event resolution flow', () => {
+    const manager = new GameStateManager('game-event-trash-cost', 'player1', 'player2');
+    manager.loadCardDefinitions([
+      createMockCardDefinition({
+        id: 'COST-EVENT',
+        type: 'EVENT',
+        cost: 0,
+        counter: null,
+        effects: [{
+          id: 'cost-main',
+          trigger: EffectTrigger.MAIN,
+          description: 'You may trash 1 card from your hand: Draw 1 card.',
+          costs: [{
+            type: 'TRASH_FROM_HAND',
+            count: 1,
+            optional: true,
+          }],
+          effects: [{ type: EffectType.DRAW_CARDS, value: 1 }],
+        }],
+      }),
+      createMockCardDefinition({ id: 'FODDER', effects: [] }),
+      createMockCardDefinition({ id: 'DRAWN', effects: [] }),
+    ]);
+
+    const state = manager.getState();
+    state.phase = GamePhase.MAIN_PHASE;
+    state.turn = 2;
+    state.activePlayerId = 'player1';
+    state.players.player1.leaderCard = createMockCard({
+      id: 'p1-leader',
+      cardId: 'L1',
+      owner: 'player1',
+      zone: CardZone.LEADER,
+      state: CardState.ACTIVE,
+      power: 5000,
+    });
+    state.players.player2.leaderCard = createMockCard({
+      id: 'p2-leader',
+      cardId: 'L2',
+      owner: 'player2',
+      zone: CardZone.LEADER,
+      state: CardState.ACTIVE,
+      power: 5000,
+    });
+
+    const eventCard = createMockCard({
+      id: 'cost-event-card',
+      cardId: 'COST-EVENT',
+      owner: 'player1',
+      zone: CardZone.HAND,
+      state: CardState.ACTIVE,
+    });
+    const fodder = createMockCard({
+      id: 'fodder-card',
+      cardId: 'FODDER',
+      owner: 'player1',
+      zone: CardZone.HAND,
+      state: CardState.ACTIVE,
+    });
+    const drawCard = createMockCard({
+      id: 'draw-after-cost',
+      cardId: 'DRAWN',
+      owner: 'player1',
+      zone: CardZone.DECK,
+      state: CardState.ACTIVE,
+    });
+
+    state.players.player1.hand = [eventCard, fodder];
+    state.players.player1.deck = [drawCard];
+
+    expect(manager.playCard('player1', eventCard.id, CardZone.EVENT)).toBe(true);
+    expect(state.phase).toBe(GamePhase.ADDITIONAL_COST_STEP);
+    expect(state.pendingAdditionalCost?.costType).toBe('TRASH_CARD');
+
+    const costId = state.pendingAdditionalCost?.id || '';
+    expect(manager.payAdditionalCost('player1', costId)).toBe(true);
+    expect(state.phase).toBe(GamePhase.HAND_SELECT_STEP);
+
+    expect(manager.resolveHandSelect('player1', [fodder.id])).toBe(true);
+    expect(state.phase).toBe(GamePhase.EVENT_EFFECT_STEP);
+
+    const pendingEffectId = state.pendingEventEffects?.[0]?.id || '';
+    expect(manager.resolveEventEffect('player1', pendingEffectId, [])).toBe(true);
+    expect(state.players.player1.hand.some(card => card.id === drawCard.id)).toBe(true);
+    expect(state.players.player1.trash.some(card => card.id === fodder.id)).toBe(true);
+    expect(state.phase).toBe(GamePhase.MAIN_PHASE);
+  });
+
+  it('detects static card-definition keywords when runtime keywords are absent', () => {
+    const manager = new GameStateManager('game-static-keywords', 'player1', 'player2');
+    manager.loadCardDefinitions([
+      createMockCardDefinition({
+        id: 'STATIC-DOUBLE-ATTACK',
+        keywords: ['Double Attack'],
+        effects: [],
+      }),
+    ]);
+
+    const state = manager.getState();
+    const attacker = createMockCard({
+      id: 'static-keyword-attacker',
+      cardId: 'STATIC-DOUBLE-ATTACK',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+      keywords: [],
+    });
+    state.players.player1.field = [attacker];
+
+    expect(manager.getEffectEngine().hasDoubleAttack(attacker, state)).toBe(true);
+  });
+});

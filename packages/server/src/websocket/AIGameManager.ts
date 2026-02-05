@@ -520,6 +520,7 @@ export class AIGameManager {
     // Phases where the NON-ACTIVE (defending) player primarily acts
     const defensivePhases = [
       GamePhase.COUNTER_STEP,    // Defender uses counter cards
+      GamePhase.COUNTER_EFFECT_STEP, // Defender resolves event counter targets
       GamePhase.BLOCKER_STEP,    // Defender declares blockers
       GamePhase.TRIGGER_STEP,    // Defender resolves life triggers
     ];
@@ -615,8 +616,13 @@ export class AIGameManager {
    * Check if AI needs to respond with a defensive action
    */
   private needsAIDefensiveAction(state: GameState, game: AIGameRoom): boolean {
-    // Check if it's counter or blocker step and AI is the defender
-    if (state.phase !== GamePhase.COUNTER_STEP && state.phase !== GamePhase.BLOCKER_STEP) {
+    // Check if it's a defensive step and AI is the defender
+    if (
+      state.phase !== GamePhase.COUNTER_STEP &&
+      state.phase !== GamePhase.COUNTER_EFFECT_STEP &&
+      state.phase !== GamePhase.BLOCKER_STEP &&
+      state.phase !== GamePhase.TRIGGER_STEP
+    ) {
       return false;
     }
 
