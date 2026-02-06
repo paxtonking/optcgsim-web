@@ -96,6 +96,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     amount: number;
     isOpponent: boolean;
     key: number;
+    x: number;
+    y: number;
   } | null>(null);
 
   // Sound effects
@@ -424,55 +426,112 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   }, []);
 
   // Position calculation helpers
-  const getDeckPosition = useCallback((isOpponent: boolean): { x: number; y: number } => {
-    const selector = isOpponent
-      ? '.player-area--opponent .card-pile'
-      : '.player-area--player .card-pile';
-    const deck = document.querySelector(selector);
-    if (!deck) return { x: window.innerWidth / 2, y: isOpponent ? 150 : window.innerHeight - 150 };
-    const rect = deck.getBoundingClientRect();
-    // For opponent area which is flipped, we need to account for scaleY(-1)
+  const getBoardViewport = useCallback(() => {
+    const main = document.querySelector('.game-board__main') as HTMLElement | null;
+    if (main) {
+      const rect = main.getBoundingClientRect();
+      return {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        right: rect.right,
+        bottom: rect.bottom,
+      };
+    }
+    return {
+      left: 0,
+      top: 0,
+      width: window.innerWidth,
+      height: window.innerHeight,
+      right: window.innerWidth,
+      bottom: window.innerHeight,
+    };
+  }, []);
+
+  const getRuntimeCardSize = useCallback((): { width: number; height: number } => {
+    const sampleCard = document.querySelector('.player-area--player .game-card:not(.game-card--small)') as HTMLElement | null;
+    if (sampleCard) {
+      const rect = sampleCard.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        return { width: rect.width, height: rect.height };
+      }
+    }
+
+    const board = document.querySelector('.game-board') as HTMLElement | null;
+    if (board) {
+      const styles = getComputedStyle(board);
+      const width = parseFloat(styles.getPropertyValue('--card-w'));
+      const height = parseFloat(styles.getPropertyValue('--card-h'));
+      if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+        return { width, height };
+      }
+    }
+
+    return { width: 100, height: 140 };
+  }, []);
+
+  const getElementCenter = useCallback((rect: DOMRect, isOpponent: boolean) => {
     if (isOpponent) {
       return { x: rect.left + rect.width / 2, y: rect.bottom - rect.height / 2 };
     }
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   }, []);
+
+  const getDeckPosition = useCallback((isOpponent: boolean): { x: number; y: number } => {
+    const selector = isOpponent
+      ? '.player-area--opponent .card-pile'
+      : '.player-area--player .card-pile';
+    const deck = document.querySelector(selector);
+    if (!deck) {
+      const viewport = getBoardViewport();
+      return {
+        x: viewport.left + viewport.width / 2,
+        y: isOpponent ? viewport.top + 150 : viewport.bottom - 150,
+      };
+    }
+    const rect = deck.getBoundingClientRect();
+    return getElementCenter(rect, isOpponent);
+  }, [getBoardViewport, getElementCenter]);
 
   const getTrashPosition = useCallback((isOpponent: boolean): { x: number; y: number } => {
     const selector = isOpponent
       ? '.player-area--opponent .zone--trash'
       : '.player-area--player .zone--trash';
     const trash = document.querySelector(selector);
-    if (!trash) return { x: window.innerWidth - 200, y: isOpponent ? 150 : window.innerHeight - 150 };
-    const rect = trash.getBoundingClientRect();
-    // For opponent area which is flipped, we need to account for scaleY(-1)
-    if (isOpponent) {
-      return { x: rect.left + rect.width / 2, y: rect.bottom - rect.height / 2 };
+    if (!trash) {
+      const viewport = getBoardViewport();
+      return {
+        x: viewport.right - 200,
+        y: isOpponent ? viewport.top + 150 : viewport.bottom - 150,
+      };
     }
-    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-  }, []);
+    const rect = trash.getBoundingClientRect();
+    return getElementCenter(rect, isOpponent);
+  }, [getBoardViewport, getElementCenter]);
 
   const getHandCardPosition = useCallback((index: number, total: number, isOpponent: boolean): { x: number; y: number } => {
     const handZone = document.querySelector(isOpponent ? '.hand-zone--opponent' : '.hand-zone:not(.hand-zone--opponent)');
+    const { width: cardWidth, height: cardHeight } = getRuntimeCardSize();
+    const overlap = Math.max(6, cardWidth * 0.2);
+    const safeTotal = Math.max(total, 1);
+    const totalWidth = cardWidth + (safeTotal - 1) * (cardWidth - overlap);
     if (!handZone) {
-      const centerX = window.innerWidth / 2 - 140; // Account for sidebar
-      const cardWidth = 100;
-      const overlap = 20;
-      const totalWidth = cardWidth + (total - 1) * (cardWidth - overlap);
+      const viewport = getBoardViewport();
+      const centerX = viewport.left + viewport.width / 2;
       const startX = centerX - totalWidth / 2;
       const x = startX + index * (cardWidth - overlap) + cardWidth / 2;
-      const y = isOpponent ? 60 : window.innerHeight - 80;
+      const y = isOpponent
+        ? viewport.top + cardHeight * 0.6
+        : viewport.bottom - cardHeight * 0.6;
       return { x, y };
     }
     const rect = handZone.getBoundingClientRect();
-    const cardWidth = 100;
-    const overlap = 20;
-    const totalWidth = cardWidth + (total - 1) * (cardWidth - overlap);
     const startX = rect.left + (rect.width - totalWidth) / 2;
     const x = startX + index * (cardWidth - overlap) + cardWidth / 2;
     const y = rect.top + rect.height / 2;
     return { x, y };
-  }, []);
+  }, [getBoardViewport, getRuntimeCardSize]);
 
   // Helper to build a Set of card IDs from a card array
   const getCardIdSet = useCallback((cards: GameCardType[]): Set<string> => new Set(cards.map(c => c.id)), []);
@@ -497,24 +556,26 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       isOpponent ? '.player-area--opponent .zone--life' : '.player-area--player .zone--life'
     );
     if (!lifeZone) {
-      return { x: 150, y: isOpponent ? 200 : window.innerHeight - 200 };
+      const viewport = getBoardViewport();
+      return { x: viewport.left + 150, y: isOpponent ? viewport.top + 200 : viewport.bottom - 200 };
     }
     const rect = lifeZone.getBoundingClientRect();
+    const { height: cardHeight } = getRuntimeCardSize();
     // Life cards are stacked vertically with offset for each card
-    // Cards stack from top to bottom, each offset by ~25px
-    const stackOffset = index * 25;
+    // Cards stack from top to bottom using card-height-relative offset
+    const stackOffset = index * Math.max(12, cardHeight * 0.18);
 
     if (isOpponent) {
       // Opponent area is flipped with scaleY(-1), so we need to invert calculations
       // The life stack appears at the bottom of the flipped area
-      const baseY = rect.top + 60;
+      const baseY = rect.top + Math.max(24, cardHeight * 0.45);
       return { x: rect.left + rect.width / 2, y: baseY + stackOffset };
     }
 
     // Player life zone - cards stack from top
-    const baseY = rect.top + 60;
+    const baseY = rect.top + Math.max(24, cardHeight * 0.45);
     return { x: rect.left + rect.width / 2, y: baseY + stackOffset };
-  }, []);
+  }, [getBoardViewport, getRuntimeCardSize]);
 
   // DON position helpers
   const getDonDeckPosition = useCallback((isOpponent: boolean): { x: number; y: number } => {
@@ -523,39 +584,37 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       : '.player-area--player .zone--don-deck';
     const donDeck = document.querySelector(selector);
     if (!donDeck) {
-      console.log('[DON Position] Deck element NOT FOUND for selector:', selector);
-      return { x: 200, y: isOpponent ? 300 : window.innerHeight - 300 };
+      const viewport = getBoardViewport();
+      return { x: viewport.left + 200, y: isOpponent ? viewport.top + 300 : viewport.bottom - 300 };
     }
     const rect = donDeck.getBoundingClientRect();
-    const pos = isOpponent
-      ? { x: rect.left + rect.width / 2, y: rect.bottom - rect.height / 2 }
-      : { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-    console.log('[DON Position] Deck found:', selector, 'rect:', { left: rect.left, top: rect.top, width: rect.width, height: rect.height }, 'pos:', pos);
-    return pos;
-  }, []);
+    return getElementCenter(rect, isOpponent);
+  }, [getBoardViewport, getElementCenter]);
 
   const getCostAreaPosition = useCallback((index: number, isOpponent: boolean, total: number = 1): { x: number; y: number } => {
     const selector = isOpponent
       ? '.player-area--opponent .zone--cost-area'
       : '.player-area--player .zone--cost-area';
     const costArea = document.querySelector(selector);
+    const { width: cardWidth } = getRuntimeCardSize();
+    const gap = Math.max(2, cardWidth * 0.03);
+    const safeTotal = Math.max(total, 1);
     if (!costArea) {
-      console.log('[DON Position] Cost area NOT FOUND for selector:', selector);
-      return { x: 300 + index * 55, y: isOpponent ? 300 : window.innerHeight - 300 };
+      const viewport = getBoardViewport();
+      return {
+        x: viewport.left + 300 + index * (cardWidth * 0.55),
+        y: isOpponent ? viewport.top + 300 : viewport.bottom - 300,
+      };
     }
     const rect = costArea.getBoundingClientRect();
-    const cardWidth = 100;
-    const gap = 3;
     // Calculate centered position
-    const totalWidth = total * cardWidth + (total - 1) * gap;
+    const totalWidth = safeTotal * cardWidth + (safeTotal - 1) * gap;
     const startX = rect.left + (rect.width - totalWidth) / 2;
     const x = startX + index * (cardWidth + gap) + cardWidth / 2;
-    const pos = isOpponent
+    return isOpponent
       ? { x, y: rect.bottom - rect.height / 2 }
       : { x, y: rect.top + rect.height / 2 };
-    console.log('[DON Position] Cost area found:', selector, 'index:', index, 'total:', total, 'pos:', pos);
-    return pos;
-  }, []);
+  }, [getBoardViewport, getRuntimeCardSize]);
 
   // Life pile position (for damage animation start)
   const getLifePilePosition = useCallback((isOpponent: boolean): { x: number; y: number } => {
@@ -564,44 +623,53 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       : '.player-area--player .zone--life';
     const lifeZone = document.querySelector(selector);
     if (!lifeZone) {
-      return { x: 100, y: isOpponent ? 200 : window.innerHeight - 200 };
+      const viewport = getBoardViewport();
+      return { x: viewport.left + 100, y: isOpponent ? viewport.top + 200 : viewport.bottom - 200 };
     }
     const rect = lifeZone.getBoundingClientRect();
     // Center of the life zone
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-  }, []);
+  }, [getBoardViewport]);
 
   // Hand zone center position (for damage animation end)
   const getHandZonePosition = useCallback((cardIndex: number, totalCards: number, isOpponent: boolean): { x: number; y: number } => {
     const handZone = document.querySelector(isOpponent ? '.hand-zone--opponent' : '.hand-zone:not(.hand-zone--opponent)');
+    const { width: cardWidth } = getRuntimeCardSize();
+    const overlap = Math.max(5, cardWidth * 0.1);
+    const safeTotal = Math.max(totalCards, 1);
     if (!handZone) {
-      const centerX = window.innerWidth / 2 - 140;
-      return { x: centerX, y: isOpponent ? 60 : window.innerHeight - 80 };
+      const viewport = getBoardViewport();
+      const centerX = viewport.left + viewport.width / 2;
+      return { x: centerX, y: isOpponent ? viewport.top + 60 : viewport.bottom - 80 };
     }
     const rect = handZone.getBoundingClientRect();
-    const cardWidth = 70;
-    const overlap = 10;
-    const totalWidth = cardWidth + (totalCards - 1) * (cardWidth - overlap);
+    const totalWidth = cardWidth + (safeTotal - 1) * (cardWidth - overlap);
     const startX = rect.left + (rect.width - totalWidth) / 2;
     const x = startX + cardIndex * (cardWidth - overlap) + cardWidth / 2;
     return { x, y: rect.top + rect.height / 2 };
-  }, []);
+  }, [getBoardViewport, getRuntimeCardSize]);
 
   // Get position of an attached DON card (for refresh animation)
   const getAttachedDonPosition = useCallback((attachedToId: string, donIndex: number, isOpponent: boolean): { x: number; y: number } => {
     // Try to find the card element by data attribute
     const cardSelector = `[data-card-id="${attachedToId}"]`;
     const cardElement = document.querySelector(cardSelector);
+    const { width: cardWidth, height: cardHeight } = getRuntimeCardSize();
     if (cardElement) {
       const rect = cardElement.getBoundingClientRect();
       // DON cards stack diagonally behind the card
-      const offsetX = 20 + donIndex * 20;
-      const offsetY = 20 + donIndex * 20;
-      return { x: rect.left + offsetX + 50, y: rect.top + offsetY + 70 };
+      const baseOffsetX = cardWidth * 0.2;
+      const baseOffsetY = cardHeight * 0.14;
+      const stepX = cardWidth * 0.2;
+      const stepY = cardHeight * 0.14;
+      const x = rect.left + baseOffsetX + (donIndex * stepX) + cardWidth / 2;
+      const y = rect.top + baseOffsetY + (donIndex * stepY) + cardHeight / 2;
+      return { x, y };
     }
     // Fallback position
-    return { x: window.innerWidth / 2, y: isOpponent ? 300 : window.innerHeight - 300 };
-  }, []);
+    const viewport = getBoardViewport();
+    return { x: viewport.left + viewport.width / 2, y: isOpponent ? viewport.top + 300 : viewport.bottom - 300 };
+  }, [getBoardViewport, getRuntimeCardSize]);
 
   // Start dealing hand animation
   const startDealingHand = useCallback(() => {
@@ -1012,16 +1080,19 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
       // Player took damage - cards go from life pile to hand
       if (playerDamage > 0) {
+        const startPos = getLifePilePosition(false);
+
         // Show damage indicator
         setLifeDamageIndicator({
           amount: playerDamage,
           isOpponent: false,
-          key: Date.now()
+          key: Date.now(),
+          x: startPos.x,
+          y: startPos.y
         });
 
         // Get the cards that moved to hand (last N cards added)
         const newHandCards = myPlayer.hand.slice(-playerDamage);
-        const startPos = getLifePilePosition(false);
 
         newHandCards.forEach((card, i) => {
           const endIndex = myPlayer.hand.length - playerDamage + i;
@@ -1056,16 +1127,19 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
       // Opponent took damage - cards go from life pile to their hand
       if (opponentDamage > 0) {
+        const startPos = getLifePilePosition(true);
+
         // Show damage indicator for opponent
         setLifeDamageIndicator({
           amount: opponentDamage,
           isOpponent: true,
-          key: Date.now()
+          key: Date.now(),
+          x: startPos.x,
+          y: startPos.y
         });
 
         // Get the cards that moved to hand (last N cards added)
         const newHandCards = opponent.hand.slice(-opponentDamage);
-        const startPos = getLifePilePosition(true);
 
         newHandCards.forEach((card, i) => {
           const endIndex = opponent.hand.length - opponentDamage + i;
@@ -3159,6 +3233,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         <div
           key={lifeDamageIndicator.key}
           className={`life-damage-indicator ${lifeDamageIndicator.isOpponent ? 'life-damage-indicator--opponent' : 'life-damage-indicator--player'}`}
+          style={{ left: lifeDamageIndicator.x, top: lifeDamageIndicator.y }}
         >
           <span className="life-damage-indicator__text">-{lifeDamageIndicator.amount}</span>
         </div>

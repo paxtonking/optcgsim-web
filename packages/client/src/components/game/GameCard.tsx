@@ -190,6 +190,7 @@ export const GameCard: React.FC<GameCardProps> = ({
   return (
     <div
       className={classes}
+      data-card-id={card.id}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onClick={handleClick}

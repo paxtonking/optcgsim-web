@@ -3,8 +3,24 @@
    =================================== */
 
 .game-board {
+  --sidebar-w: clamp(240px, 24vw, 360px);
+  --card-w: clamp(58px, 5.8vw, 100px);
+  --card-h: calc(var(--card-w) * 1.4);
+  --card-small-w: calc(var(--card-w) * 0.5);
+  --card-small-h: calc(var(--card-h) * 0.5);
+  --card-large-w: calc(var(--card-w) * 0.86);
+  --card-large-h: calc(var(--card-h) * 0.86);
+  --zone-col-w: clamp(88px, 9vw, 120px);
+  --zone-col-h: calc(var(--card-h) + clamp(32px, 4.2vh, 40px));
+  --zone-life-w: clamp(118px, 12vw, 160px);
+  --zone-life-h: calc(var(--card-h) + clamp(90px, 11vh, 100px));
+  --zone-stage-h: var(--zone-col-h);
+  --zone-char-min-h: calc(var(--card-h) + clamp(18px, 3vh, 24px));
+  --zone-character-w: min(100%, calc((var(--card-w) * 10) + 64px));
+  --layout-gap: clamp(8px, 1vw, 16px);
+  --hand-zone-reserved: clamp(88px, 12vh, 120px);
   display: grid;
-  grid-template-columns: 1fr 360px;
+  grid-template-columns: minmax(0, 1fr) var(--sidebar-w);
   grid-template-rows: auto 1fr auto;
   width: 100%;
   height: 100%;
@@ -170,12 +186,16 @@
 .game-board__main {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: auto;
+  min-width: 0;
+  min-height: 0;
+  gap: clamp(4px, 0.8vh, 8px);
 }
 
 .game-board__sidebar {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   background: #16162a;
   border-left: 1px solid rgba(255, 255, 255, 0.1);
   position: relative;
@@ -192,12 +212,13 @@
   flex-direction: row;
   justify-content: center;
   align-items: stretch;
-  gap: 16px;
-  padding: 8px 16px;
-  min-height: 280px;
+  gap: var(--layout-gap);
+  padding: clamp(6px, 1vh, 10px) clamp(10px, 1.4vw, 16px);
+  min-height: clamp(210px, 32vh, 280px);
   background-size: cover;
   background-position: center;
   flex: 1;
+  min-width: 0;
 }
 
 /* Left column: Life + DON Deck stacked */
@@ -206,7 +227,7 @@
   flex-direction: column;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: clamp(6px, 0.8vh, 8px);
   flex: 0 0 auto;
   order: 1;
 }
@@ -217,7 +238,7 @@
   flex-direction: row;
   justify-content: flex-start;
   align-items: stretch;
-  gap: 8px;
+  gap: clamp(6px, 0.8vh, 8px);
   flex: 0 0 auto;
   order: 3; /* Move to right side */
   align-self: center;
@@ -227,7 +248,7 @@
 .player-area__center {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: clamp(6px, 0.8vh, 8px);
   flex: 0 0 auto;
   justify-content: center;
   align-items: stretch;
@@ -239,15 +260,16 @@
 .player-area__bottom-row {
   display: flex;
   flex-direction: row;
-  gap: 12px;
+  gap: clamp(8px, 1vw, 12px);
   justify-content: flex-start;
   align-items: stretch;
+  min-width: 0;
 }
 
 /* Stage Zone - same size as other zones */
 .zone--stage {
-  width: 120px;
-  min-height: 180px;
+  width: var(--zone-col-w);
+  min-height: var(--zone-stage-h);
   height: auto;
   padding: 8px;
   display: flex;
@@ -260,8 +282,8 @@
 
 /* Empty placeholder for zones without cards */
 .zone-empty-placeholder {
-  width: 100px;
-  height: 140px;
+  width: var(--card-w);
+  height: var(--card-h);
   border: 2px dashed rgba(255, 255, 255, 0.2);
   border-radius: 6px;
   display: flex;
@@ -359,8 +381,8 @@
 
 /* Life Zone */
 .zone--life {
-  width: 160px;
-  min-height: 240px;
+  width: var(--zone-life-w);
+  min-height: var(--zone-life-h);
   flex-direction: column;
   gap: 4px;
   padding: 6px;
@@ -383,24 +405,24 @@
 /* Life Stack - Vertical stack of horizontal (rotated) cards */
 .life-stack {
   position: relative;
-  width: 140px;
-  height: 220px;
+  width: calc(var(--card-h) + clamp(28px, 3vw, 40px));
+  height: calc(var(--card-w) + clamp(105px, 11vh, 130px));
 }
 
 .life-stack .game-card {
   position: absolute;
-  width: 100px;
-  height: 140px;
+  width: var(--card-w);
+  height: var(--card-h);
   transform: rotate(90deg);
   transform-origin: center center;
-  left: 20px;
+  left: calc((var(--card-h) - var(--card-w)) / 2);
 }
 
-.life-stack .game-card:nth-child(1) { top: -5px; z-index: 5; }
-.life-stack .game-card:nth-child(2) { top: 15px; z-index: 4; }
-.life-stack .game-card:nth-child(3) { top: 35px; z-index: 3; }
-.life-stack .game-card:nth-child(4) { top: 55px; z-index: 2; }
-.life-stack .game-card:nth-child(5) { top: 75px; z-index: 1; }
+.life-stack .game-card:nth-child(1) { top: calc(var(--card-h) * -0.04); z-index: 5; }
+.life-stack .game-card:nth-child(2) { top: calc(var(--card-h) * 0.10); z-index: 4; }
+.life-stack .game-card:nth-child(3) { top: calc(var(--card-h) * 0.24); z-index: 3; }
+.life-stack .game-card:nth-child(4) { top: calc(var(--card-h) * 0.38); z-index: 2; }
+.life-stack .game-card:nth-child(5) { top: calc(var(--card-h) * 0.52); z-index: 1; }
 
 /* Disable hover effects on life stack cards */
 .life-stack .game-card:hover {
@@ -410,8 +432,8 @@
 
 /* DON Deck Zone - stacked pile */
 .zone--don-deck {
-  width: 120px;
-  min-height: 160px;
+  width: var(--zone-col-w);
+  min-height: calc(var(--zone-col-h) - clamp(18px, 2.2vh, 20px));
   padding: 8px;
   display: flex;
   flex-direction: column;
@@ -422,8 +444,8 @@
 
 /* Deck Zone */
 .zone--deck {
-  width: 120px;
-  min-height: 180px;
+  width: var(--zone-col-w);
+  min-height: var(--zone-col-h);
   height: auto;
   padding: 8px;
   display: flex;
@@ -435,8 +457,8 @@
 
 /* Trash Zone */
 .zone--trash {
-  width: 120px;
-  min-height: 160px;
+  width: var(--zone-col-w);
+  min-height: calc(var(--zone-col-h) - clamp(18px, 2.2vh, 20px));
   padding: 8px;
   display: flex;
   flex-direction: column;
@@ -446,8 +468,8 @@
 
 .don-deck-pile {
   position: relative;
-  width: 100px;
-  height: 140px;
+  width: var(--card-w);
+  height: var(--card-h);
   margin-left: -4px; /* Compensate for stacked layer offsets */
 }
 
@@ -511,7 +533,7 @@
   flex-direction: row;
   gap: 3px;
   padding: 4px 8px;
-  min-height: 80px;
+  min-height: calc(var(--card-h) * 0.62);
   flex: 1;
   align-items: center;
   justify-content: flex-start;
@@ -532,8 +554,8 @@
 
 /* Leader Zone */
 .zone--leader {
-  width: 120px;
-  min-height: 180px;
+  width: var(--zone-col-w);
+  min-height: var(--zone-col-h);
   height: auto;
   padding: 8px;
   border-style: solid;
@@ -643,8 +665,9 @@
   flex-direction: row;
   gap: 4px;
   padding: 4px 12px;
-  min-height: 160px;
-  width: 1060px;
+  min-height: var(--zone-char-min-h);
+  width: var(--zone-character-w);
+  max-width: 100%;
   align-items: flex-end;
   justify-content: center;
   flex-wrap: wrap;
@@ -675,8 +698,8 @@
   justify-content: center;
   align-items: center;
   position: relative;
-  padding: 4px 30px; /* Extra horizontal padding for rested cards on edges */
-  min-height: 80px;
+  padding: clamp(4px, 0.8vh, 8px) clamp(12px, 2vw, 30px); /* Extra horizontal padding for rested cards on edges */
+  min-height: calc(var(--card-h) * 0.58);
   background: linear-gradient(0deg, rgba(0, 0, 0, 0.3) 0%, transparent 100%);
 }
 
@@ -710,7 +733,7 @@
 }
 
 .hand-zone__cards .game-card {
-  margin-left: -10px;
+  margin-left: calc(var(--card-w) * -0.1);
   transition: margin 0.15s ease, transform 0.15s ease, z-index 0s;
 }
 
@@ -719,15 +742,15 @@
 }
 
 .hand-zone__cards .game-card:hover {
-  margin-left: 3px;
-  margin-right: 13px;
+  margin-left: calc(var(--card-w) * 0.03);
+  margin-right: calc(var(--card-w) * 0.13);
   z-index: 100;
 }
 
 /* Card wrapper for spacing control (especially for rested cards in hand zone) */
 .hand-zone__card-wrapper {
   display: inline-block;
-  margin-left: -10px;
+  margin-left: calc(var(--card-w) * -0.1);
   transition: margin 0.15s ease;
 }
 
@@ -737,29 +760,29 @@
 
 /* Extra spacing for rested cards shown in hand zone (during blocker step) */
 .hand-zone__card-wrapper--rested {
-  margin-left: 28px; /* Add space on left for rested card rotation */
-  margin-right: 35px; /* Add extra space on right because rested cards are rotated 90deg */
+  margin-left: calc(var(--card-w) * 0.28); /* Add space on left for rested card rotation */
+  margin-right: calc(var(--card-w) * 0.35); /* Add extra space on right because rested cards are rotated 90deg */
 }
 
 /* Override first-child margin for rested cards (higher specificity needed) */
 .hand-zone__card-wrapper--rested.hand-zone__card-wrapper:first-child {
-  margin-left: 28px; /* Ensure first rested card still gets left margin */
+  margin-left: calc(var(--card-w) * 0.28); /* Ensure first rested card still gets left margin */
 }
 
 .hand-zone__card-wrapper:hover {
-  margin-left: 3px;
-  margin-right: 13px;
+  margin-left: calc(var(--card-w) * 0.03);
+  margin-right: calc(var(--card-w) * 0.13);
   z-index: 100;
 }
 
 .hand-zone__card-wrapper--rested:hover {
-  margin-left: 30px; /* Extra space on left when hovering rested cards */
-  margin-right: 45px; /* Extra space on right when hovering rested cards */
+  margin-left: calc(var(--card-w) * 0.3); /* Extra space on left when hovering rested cards */
+  margin-right: calc(var(--card-w) * 0.45); /* Extra space on right when hovering rested cards */
 }
 
 /* Override first-child hover margin for rested cards */
 .hand-zone__card-wrapper--rested.hand-zone__card-wrapper:first-child:hover {
-  margin-left: 30px; /* Ensure first rested card still gets left margin on hover */
+  margin-left: calc(var(--card-w) * 0.3); /* Ensure first rested card still gets left margin on hover */
 }
 
 /* Override direct .game-card margins when using wrapper */
@@ -803,8 +826,8 @@
 
 .game-card {
   position: relative;
-  width: 100px;
-  height: 140px;
+  width: var(--card-w);
+  height: var(--card-h);
   border-radius: 4px;
   overflow: hidden;
   cursor: pointer;
@@ -814,13 +837,13 @@
 }
 
 .game-card--small {
-  width: 50px;
-  height: 70px;
+  width: var(--card-small-w);
+  height: var(--card-small-h);
 }
 
 .game-card--large {
-  width: 86px;
-  height: 120px;
+  width: var(--card-large-w);
+  height: var(--card-large-h);
 }
 
 .game-card:hover {
@@ -1240,8 +1263,9 @@
 }
 
 .card-preview__image-container {
-  width: 310px;
-  height: 434px;
+  width: min(100%, clamp(180px, 22vw, 310px));
+  aspect-ratio: 63 / 88;
+  height: auto;
   border-radius: 8px;
   overflow: hidden;
   background: #252540;
@@ -2408,27 +2432,44 @@
 
 @media (max-width: 1200px) {
   .game-board {
-    grid-template-columns: 1fr 280px;
-  }
-
-  .game-card {
-    width: 70px;
-    height: 98px;
-  }
-
-  .game-card--small {
-    width: 40px;
-    height: 56px;
+    --sidebar-w: clamp(220px, 24vw, 280px);
+    --card-w: clamp(54px, 5.4vw, 88px);
   }
 }
 
 @media (max-width: 900px) {
   .game-board {
     grid-template-columns: 1fr;
+    --sidebar-w: 0px;
   }
 
   .game-board__sidebar {
     display: none;
+  }
+
+  .game-board__main {
+    overflow: auto;
+  }
+}
+
+@media (max-width: 720px), (max-height: 820px) {
+  .game-board {
+    --card-w: clamp(48px, 6vw, 76px);
+    --zone-character-w: min(100%, calc((var(--card-w) * 10) + 48px));
+    --zone-col-w: clamp(74px, 10vw, 100px);
+  }
+
+  .game-board__header {
+    padding: 8px 12px;
+  }
+
+  .game-board__header-center {
+    gap: 10px;
+  }
+
+  .game-board__phase {
+    font-size: 14px;
+    letter-spacing: 0.5px;
   }
 }
 
@@ -3019,18 +3060,15 @@
   z-index: 2500;
   pointer-events: none;
   animation: lifeDamageAppear 1.5s ease forwards;
+  transform: translate(-50%, -50%);
 }
 
 .life-damage-indicator--player {
-  /* Position over player's life zone */
-  left: 100px;
-  bottom: 200px;
+  /* Position is injected inline from measured life-zone geometry */
 }
 
 .life-damage-indicator--opponent {
-  /* Position over opponent's life zone */
-  left: 100px;
-  top: 200px;
+  /* Position is injected inline from measured life-zone geometry */
 }
 
 .life-damage-indicator__text {

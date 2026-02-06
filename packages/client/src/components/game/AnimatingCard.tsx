@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { GameCard as GameCardType } from '@optcgsim/shared';
 import './GameBoard.css';
 
@@ -39,8 +39,29 @@ export const AnimatingCard: React.FC<AnimatingCardProps> = ({
   const [currentRotation, setCurrentRotation] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
 
-  const cardWidth = 70;
-  const cardHeight = 100;
+  const { cardWidth, cardHeight } = useMemo(() => {
+    const fallback = isDon ? { cardWidth: 58, cardHeight: 82 } : { cardWidth: 70, cardHeight: 100 };
+    const board = document.querySelector('.game-board') as HTMLElement | null;
+    const styles = board ? getComputedStyle(board) : null;
+    const cssWidth = styles ? parseFloat(styles.getPropertyValue('--card-w')) : NaN;
+    const cssHeight = styles ? parseFloat(styles.getPropertyValue('--card-h')) : NaN;
+
+    if (Number.isFinite(cssWidth) && Number.isFinite(cssHeight) && cssWidth > 0 && cssHeight > 0) {
+      const width = isDon ? Math.max(32, cssWidth) : cssWidth;
+      const height = isDon ? Math.max(44, cssHeight) : cssHeight;
+      return { cardWidth: width, cardHeight: height };
+    }
+
+    const sampleCard = document.querySelector('.player-area .game-card:not(.game-card--small)') as HTMLElement | null;
+    if (sampleCard) {
+      const rect = sampleCard.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        return { cardWidth: rect.width, cardHeight: rect.height };
+      }
+    }
+
+    return fallback;
+  }, [isDon]);
   const flyDuration = duration;
   const landDuration = 150; // Quick rotation/landing phase
 

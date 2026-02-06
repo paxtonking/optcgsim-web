@@ -6,8 +6,8 @@
   position: fixed;
   top: 0;
   left: 0;
-  right: 280px; /* Leave space for sidebar */
-  bottom: 120px; /* Leave space for hand zone */
+  right: var(--sidebar-w, 280px); /* Leave space for sidebar */
+  bottom: var(--hand-zone-reserved, 120px); /* Leave space for hand zone */
   background: rgba(0, 0, 0, 0.85);
   display: flex;
   align-items: center;
@@ -24,9 +24,11 @@
 .combat-modal {
   background: linear-gradient(135deg, #1a2e1a 0%, #0d1f0d 100%);
   border-radius: 16px;
-  padding: 24px 32px;
-  min-width: 500px;
-  max-width: 700px;
+  padding: clamp(16px, 2.4vh, 24px) clamp(18px, 2.2vw, 32px);
+  min-width: min(500px, 92vw);
+  max-width: min(700px, 94vw);
+  max-height: min(88vh, 760px);
+  overflow: auto;
   border: 2px solid rgba(255, 215, 0, 0.6);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 20px rgba(74, 222, 128, 0.2);
   animation: slideIn 0.3s ease;
@@ -74,8 +76,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 32px;
+  gap: clamp(16px, 2vw, 32px);
   margin-bottom: 24px;
+  flex-wrap: wrap;
 }
 
 .combat-modal__side {
@@ -345,13 +348,13 @@
 
 /* Card styling in modal */
 .combat-modal .game-card--large {
-  width: 100px;
-  height: 140px;
+  width: var(--card-w, 100px);
+  height: var(--card-h, 140px);
 }
 
 .combat-modal .game-card--small {
-  width: 50px;
-  height: 70px;
+  width: var(--card-small-w, 50px);
+  height: var(--card-small-h, 70px);
 }
 
 /* Ensure all cards in modal display upright (not rotated) */
@@ -398,4 +401,19 @@
   border-radius: 3px;
   border: 1px solid rgba(255, 255, 255, 0.3);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+@media (max-width: 900px) {
+  .combat-modal-overlay {
+    right: 0;
+    bottom: 0;
+    padding: 12px;
+  }
+
+  .combat-modal {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100vh - 24px);
+  }
 }
