@@ -198,7 +198,7 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
               {cardType}
             </div>
             <div style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '8px' }}>
-              {card.basePower || card.power || cardDef?.power || '?'}
+              {card.basePower ?? card.power ?? cardDef?.power ?? '?'}
             </div>
             <div style={{ fontSize: '14px', textAlign: 'center' }}>
               {cardDef?.name || card.cardId}

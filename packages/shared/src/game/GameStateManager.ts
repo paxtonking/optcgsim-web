@@ -447,10 +447,34 @@ export class GameStateManager {
 
     // Re-evaluate continuous effects so newly drawn cards get cost reductions etc.
     if (drawnCards.length > 0) {
-      this.applyStageEffects(playerId);
+      this.reapplyContinuousEffects();
     }
 
     return drawnCards;
+  }
+
+  /**
+   * Re-evaluate continuous effects using the active player as turn owner.
+   * This keeps [Your Turn]/[Opponent's Turn] polarity correct regardless of
+   * which player triggered the state change (draw/effect resolution/etc.).
+   */
+  private reapplyContinuousEffects(): void {
+    const activePlayerId = this.state.activePlayerId;
+    if (!activePlayerId || !this.state.players[activePlayerId]) return;
+    this.applyStageEffects(activePlayerId);
+  }
+
+  /**
+   * Activate/choice flows often pay costs in GameStateManager before calling
+   * EffectEngine. Strip costs for that second resolution pass to avoid
+   * double-payment checks.
+   */
+  private stripPrepaidCosts(effect: CardEffectDefinition): CardEffectDefinition {
+    if (!effect.costs || effect.costs.length === 0) return effect;
+    return {
+      ...effect,
+      costs: undefined,
+    };
   }
 
   private setupLife(playerId: string): void {
@@ -541,7 +565,7 @@ export class GameStateManager {
       player.field.push(card);
 
       // Re-evaluate continuous effects so new character gets stage/continuous buffs
-      this.applyStageEffects(playerId);
+      this.reapplyContinuousEffects();
 
       // Trigger ON_PLAY effects
       const triggerEvent: TriggerEvent = {
@@ -809,7 +833,7 @@ export class GameStateManager {
       player.stage = card;
 
       // Recalculate hand costs based on new stage's effects
-      this.applyStageEffects(playerId);
+      this.reapplyContinuousEffects();
 
       // Trigger ON_PLAY effects for stage
       const triggerEvent: TriggerEvent = {
@@ -1091,6 +1115,7 @@ export class GameStateManager {
     if (result.childEffects?.length) {
       this.processChildEffects(result.childEffects, sourcePlayer.id, sourceCard.id);
     }
+    this.reapplyContinuousEffects();
 
     return result.success;
   }
@@ -2070,6 +2095,8 @@ export class GameStateManager {
       this.processChildEffects(result.childEffects, pending.playerId, pending.sourceCardId);
     }
 
+    this.reapplyContinuousEffects();
+
     return result.changes;
   }
 
@@ -2668,7 +2695,7 @@ export class GameStateManager {
     console.log('[resolveActivateEffect] Resolving effect with targets:', selectedTargets);
 
     // Resolve the effect
-    const result = this.effectEngine.resolveEffect(activateEffect, context);
+    const result = this.effectEngine.resolveEffect(this.stripPrepaidCosts(activateEffect), context);
     console.log('[resolveActivateEffect] Effect result:', result);
 
     // Process childEffects if any
@@ -2676,6 +2703,8 @@ export class GameStateManager {
       console.log('[resolveActivateEffect] Processing', result.childEffects.length, 'childEffects');
       this.processChildEffects(result.childEffects, pendingEffect.playerId, pendingEffect.sourceCardId);
     }
+
+    this.reapplyContinuousEffects();
 
     return result.success;
   }
@@ -4152,7 +4181,7 @@ export class GameStateManager {
       effectTypes: activateEffect.effects.map(e => e.type),
     });
 
-    const result = this.effectEngine.resolveEffect(activateEffect, context);
+    const result = this.effectEngine.resolveEffect(this.stripPrepaidCosts(activateEffect), context);
     console.log('[ActivateAbility] Effect result:', result);
 
     // Process childEffects if any
@@ -4160,6 +4189,8 @@ export class GameStateManager {
       console.log('[ActivateAbility] Processing', result.childEffects.length, 'childEffects');
       this.processChildEffects(result.childEffects, playerId, cardId);
     }
+
+    this.reapplyContinuousEffects();
 
     // If effect requires target selection and none provided, add to pending
     if (result.success && activateEffect.effects.some(e => e.target && e.target.count)) {
@@ -4945,7 +4976,8 @@ export class GameStateManager {
       };
 
       console.log('[continuePendingEffectAfterCost] Resolving effect directly:', pendingEffect.effect.id);
-      this.effectEngine.resolveEffect(pendingEffect.effect, context);
+      this.effectEngine.resolveEffect(this.stripPrepaidCosts(pendingEffect.effect), context);
+      this.reapplyContinuousEffects();
     }
 
     this.effectEngine.removePendingEffect(pendingEffect.id);

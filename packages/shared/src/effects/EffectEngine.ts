@@ -2694,7 +2694,10 @@ export class EffectEngine {
         }
 
         case 'RETURN_DON':
-          if (context.sourcePlayer.donField.length < (cost.count || 0)) return false;
+          if (
+            context.sourcePlayer.donField.filter(d => d.state === CardState.ACTIVE && !d.attachedTo).length <
+            (cost.count || 0)
+          ) return false;
           break;
 
         case 'TRASH_CARD':
@@ -2710,13 +2713,24 @@ export class EffectEngine {
           if (!context.sourceCard || context.sourceCard.state !== CardState.ACTIVE) return false;
           break;
 
-        case 'TRASH_CHARACTER':
-          if (context.sourcePlayer.field.length < (cost.count || 0)) return false;
+        case 'TRASH_CHARACTER': {
+          const trashableChars = context.sourcePlayer.field.filter(card => {
+            if (!cost.traitFilter) return true;
+            const def = this.cardDefinitions.get(card.cardId);
+            return !!def?.traits?.some(t => t.includes(cost.traitFilter));
+          });
+          if (trashableChars.length < (cost.count || 0)) return false;
           break;
+        }
 
         case 'REST_CHARACTER': {
           const activeChars = context.sourcePlayer.field.filter(
-            c => c.state === CardState.ACTIVE
+            c => {
+              if (c.state !== CardState.ACTIVE) return false;
+              if (!cost.traitFilter) return true;
+              const def = this.cardDefinitions.get(c.cardId);
+              return !!def?.traits?.some(t => t.includes(cost.traitFilter));
+            }
           );
           if (activeChars.length < (cost.count || 0)) return false;
           break;
@@ -2764,6 +2778,97 @@ export class EffectEngine {
             }
           }
           break;
+
+        case 'RETURN_DON': {
+          const count = cost.count || 0;
+          for (let i = 0; i < count; i++) {
+            const don = context.sourcePlayer.donField.find(
+              d => d.state === CardState.ACTIVE && !d.attachedTo
+            );
+            if (don) {
+              const idx = context.sourcePlayer.donField.findIndex(d => d.id === don.id);
+              if (idx !== -1) {
+                context.sourcePlayer.donField.splice(idx, 1);
+                context.sourcePlayer.donDeck++;
+                changes.push({
+                  type: 'DON_CHANGED',
+                  playerId: context.sourcePlayer.id,
+                  cardId: don.id,
+                });
+              }
+            }
+          }
+          break;
+        }
+
+        case 'REST_SELF':
+          if (context.sourceCard && context.sourceCard.state === CardState.ACTIVE) {
+            context.sourceCard.state = CardState.RESTED;
+            changes.push({
+              type: 'CARD_MOVED',
+              cardId: context.sourceCard.id,
+              from: 'ACTIVE',
+              to: 'RESTED',
+            });
+          }
+          break;
+
+        case 'TRASH_CHARACTER': {
+          const count = cost.count || 0;
+          const trashableChars = context.sourcePlayer.field.filter(card => {
+            if (!cost.traitFilter) return true;
+            const def = this.cardDefinitions.get(card.cardId);
+            return !!def?.traits?.some(t => t.includes(cost.traitFilter));
+          });
+
+          for (let i = 0; i < count && i < trashableChars.length; i++) {
+            const cardToTrash = trashableChars[i];
+            const index = context.sourcePlayer.field.findIndex(c => c.id === cardToTrash.id);
+            if (index === -1) continue;
+
+            const card = context.sourcePlayer.field.splice(index, 1)[0];
+            card.zone = CardZone.TRASH;
+            context.sourcePlayer.trash.push(card);
+
+            // Detach DON! from trashed character
+            context.sourcePlayer.donField.forEach(don => {
+              if (don.attachedTo === card.id) {
+                don.attachedTo = undefined;
+                don.state = CardState.ACTIVE;
+              }
+            });
+
+            changes.push({
+              type: 'CARD_MOVED',
+              cardId: card.id,
+              from: 'FIELD',
+              to: 'TRASH',
+            });
+          }
+          break;
+        }
+
+        case 'REST_CHARACTER': {
+          const count = cost.count || 0;
+          const restableChars = context.sourcePlayer.field.filter(card => {
+            if (card.state !== CardState.ACTIVE) return false;
+            if (!cost.traitFilter) return true;
+            const def = this.cardDefinitions.get(card.cardId);
+            return !!def?.traits?.some(t => t.includes(cost.traitFilter));
+          });
+
+          for (let i = 0; i < count && i < restableChars.length; i++) {
+            const card = restableChars[i];
+            card.state = CardState.RESTED;
+            changes.push({
+              type: 'CARD_MOVED',
+              cardId: card.id,
+              from: 'ACTIVE',
+              to: 'RESTED',
+            });
+          }
+          break;
+        }
 
         // Note: TRASH_CARD and TRASH_FROM_HAND costs that require player selection
         // are handled by the HAND_SELECT_STEP flow in GameStateManager.

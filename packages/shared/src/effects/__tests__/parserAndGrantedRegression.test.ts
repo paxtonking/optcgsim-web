@@ -422,6 +422,64 @@ describe('Continuous and gameplay regression fixes', () => {
     expect(state.players.player2.field[0].modifiedCost).toBe(3);
   });
 
+  it('keeps YOUR_TURN continuous effects when the non-active player draws', () => {
+    const manager = new GameStateManager('game-draw-reapply-turn-owner', 'player1', 'player2');
+    manager.loadCardDefinitions([
+      createMockCardDefinition({ id: 'L1', type: 'LEADER', cost: 0, power: 5000, counter: null, effects: [] }),
+      createMockCardDefinition({ id: 'L2', type: 'LEADER', cost: 0, power: 5000, counter: null, effects: [] }),
+      createMockCardDefinition({
+        id: 'SRC-DEBUFF',
+        effects: [{
+          id: 'debuff-while-your-turn',
+          trigger: EffectTrigger.YOUR_TURN,
+          description: "During your turn, give up to 1 of your opponent's Characters -1 cost.",
+          effects: [{
+            type: EffectType.DEBUFF_COST,
+            value: 1,
+            target: {
+              type: TargetType.OPPONENT_CHARACTER,
+              filters: [{ property: 'TYPE', value: ['CHARACTER'] }],
+            },
+          }],
+        }],
+      }),
+      createMockCardDefinition({ id: 'TARGET', cost: 5, effects: [] }),
+      createMockCardDefinition({ id: 'FILL', effects: [] }),
+    ]);
+
+    const state = manager.getState();
+    state.players.player1.leaderCard = buildLeader('p1-leader', 'L1', 'player1');
+    state.players.player2.leaderCard = buildLeader('p2-leader', 'L2', 'player2');
+    state.players.player1.field = [
+      createMockCard({
+        id: 'source',
+        cardId: 'SRC-DEBUFF',
+        owner: 'player1',
+        zone: CardZone.FIELD,
+        state: CardState.ACTIVE,
+      }),
+    ];
+    state.players.player2.field = [
+      createMockCard({
+        id: 'target',
+        cardId: 'TARGET',
+        owner: 'player2',
+        zone: CardZone.FIELD,
+        state: CardState.ACTIVE,
+      }),
+    ];
+    state.players.player1.deck = [buildDeckCard('p1-d1', 'player1')];
+    state.players.player2.deck = [buildDeckCard('p2-d1', 'player2')];
+
+    manager.startTurn('player1');
+    expect(state.players.player2.field[0].modifiedCost).toBe(4);
+
+    manager.drawCards('player2', 1);
+
+    expect(state.activePlayerId).toBe('player1');
+    expect(state.players.player2.field[0].modifiedCost).toBe(4);
+  });
+
   it('applies continuous GRANT_KEYWORD to leader targets', () => {
     const manager = new GameStateManager('game-leader-keyword', 'player1', 'player2');
     manager.loadCardDefinitions([
@@ -932,6 +990,105 @@ describe('Activate-main cost flow regressions', () => {
       reason: 'Cannot pay Return 1 DON!!',
     });
     expect(manager.activateAbility('player1', source.id)).toBe(false);
+  });
+
+  it('does not treat attached DON as payable for RETURN_DON costs', () => {
+    const manager = new GameStateManager('game-return-don-attached-only', 'player1', 'player2');
+    manager.loadCardDefinitions([
+      createMockCardDefinition({
+        id: 'RETURN-DON-ACTIVATE-ATTACHED',
+        effects: [{
+          id: 'return-don-activate-attached',
+          trigger: EffectTrigger.ACTIVATE_MAIN,
+          description: 'Return 1 DON!!: Draw 1.',
+          costs: [{ type: 'RETURN_DON', count: 1 }],
+          effects: [{ type: EffectType.DRAW_CARDS, value: 1 }],
+        }],
+      }),
+    ]);
+
+    const state = createMockGameState({
+      phase: GamePhase.MAIN_PHASE,
+      activePlayerId: 'player1',
+    });
+
+    const source = createMockCard({
+      id: 'return-don-source-attached',
+      cardId: 'RETURN-DON-ACTIVATE-ATTACHED',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+    });
+    const host = createMockCard({
+      id: 'host-char',
+      cardId: 'HOST',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+    });
+    const attachedDon = createMockCard({
+      id: 'attached-don-1',
+      cardId: 'DON',
+      owner: 'player1',
+      zone: CardZone.DON_FIELD,
+      state: CardState.ATTACHED,
+      attachedTo: host.id,
+    });
+
+    state.players.player1.field = [source, host];
+    state.players.player1.donField = [attachedDon];
+    manager.setState(state);
+
+    expect(manager.canActivateAbility('player1', source.id)).toEqual({
+      canActivate: false,
+      reason: 'Cannot pay Return 1 DON!!',
+    });
+    expect(manager.activateAbility('player1', source.id)).toBe(false);
+  });
+
+  it('pays REST_SELF costs before resolving activate-main effects', () => {
+    const manager = new GameStateManager('game-rest-self-cost', 'player1', 'player2');
+    manager.loadCardDefinitions([
+      createMockCardDefinition({
+        id: 'REST-SELF-ACTIVATE',
+        effects: [{
+          id: 'rest-self-activate',
+          trigger: EffectTrigger.ACTIVATE_MAIN,
+          description: 'Rest this Character: Draw 1.',
+          costs: [{ type: 'REST_SELF' }],
+          effects: [{ type: EffectType.DRAW_CARDS, value: 1 }],
+        }],
+      }),
+      createMockCardDefinition({ id: 'FILL', effects: [] }),
+    ]);
+
+    const state = createMockGameState({
+      phase: GamePhase.MAIN_PHASE,
+      activePlayerId: 'player1',
+    });
+
+    const source = createMockCard({
+      id: 'rest-self-source',
+      cardId: 'REST-SELF-ACTIVATE',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+    });
+
+    state.players.player1.field = [source];
+    state.players.player1.deck = [createMockCard({
+      id: 'draw-1',
+      cardId: 'FILL',
+      owner: 'player1',
+      zone: CardZone.DECK,
+      state: CardState.ACTIVE,
+    })];
+    state.players.player1.hand = [];
+    manager.setState(state);
+
+    expect(manager.activateAbility('player1', source.id)).toBe(true);
+    expect(source.state).toBe(CardState.RESTED);
+    expect(state.players.player1.hand).toHaveLength(1);
   });
 });
 

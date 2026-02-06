@@ -2311,27 +2311,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   // give us stale data since those are stored references that don't update.
   const previewedCard = useMemo(() => {
     const cardRef = pinnedCard || hoveredCard;
-    if (!cardRef || !gameState) return null;
+    if (!cardRef) return null;
 
-    // Look up the current card data from gameState by ID
-    for (const player of Object.values(gameState.players)) {
-      // Check leader
-      if (player.leaderCard?.id === cardRef.id) {
-        return player.leaderCard;
-      }
-      // Check field
-      const fieldCard = player.field.find(c => c.id === cardRef.id);
-      if (fieldCard) return fieldCard;
-      // Check hand
-      const handCard = player.hand.find(c => c.id === cardRef.id);
-      if (handCard) return handCard;
-      // Check DON field
-      const donCard = player.donField.find(c => c.id === cardRef.id);
-      if (donCard) return donCard;
-    }
-    // Card not found in game state (might have been removed), fall back to reference
-    return cardRef;
-  }, [pinnedCard, hoveredCard, gameState]);
+    // Look up current data from gameState (includes stage slot) to avoid stale references.
+    return findCardInState(cardRef.id) || cardRef;
+  }, [pinnedCard, hoveredCard, findCardInState]);
 
   // Calculate attached DON count for the previewed card
   const previewedCardDonCount = useMemo(() => {
