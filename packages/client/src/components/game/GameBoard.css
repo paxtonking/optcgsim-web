@@ -916,8 +916,8 @@
 
 /* DON card styling */
 .game-card--don {
-  width: 100px;
-  height: 140px;
+  width: var(--card-w);
+  height: var(--card-h);
   border-radius: 4px;
 }
 
