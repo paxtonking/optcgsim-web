@@ -15,15 +15,25 @@
   --zone-life-w: clamp(118px, 12vw, 160px);
   --zone-life-h: calc(var(--card-h) + clamp(90px, 11vh, 100px));
   --zone-stage-h: var(--zone-col-h);
-  --zone-char-min-h: calc(var(--card-h) + clamp(24px, 3.2vh, 30px));
-  --zone-character-w: min(100%, calc((var(--card-w) * 10) + 104px));
-  --zone-cost-min-h: calc(var(--card-h) * 0.72);
+  --zone-char-min-h: calc(var(--card-h) + clamp(36px, 4.4vh, 48px));
+  --main-row-card-span: calc(var(--card-w) * 9);
+  --main-row-card-gap: clamp(4px, 0.45vw, 7px);
+  --main-row-side-pad: clamp(14px, 1.8vw, 24px);
+  --main-row-gap: clamp(8px, 1vw, 12px);
+  --main-row-w: min(100%, calc(var(--main-row-card-span) + (var(--main-row-side-pad) * 2) + clamp(32px, 4vw, 64px)));
+  --zone-character-w: var(--main-row-w);
+  --zone-cost-min-h: calc(var(--card-h) * 0.82);
   --zone-label-inside-size: clamp(24px, calc(var(--card-w) * 0.58), 56px);
   --zone-label-inside-spacing: clamp(2px, calc(var(--card-w) * 0.08), 7px);
   --zone-label-inside-offset: clamp(2px, 1vh, 10px);
   --zone-label-inside-opacity: 0.62;
+  --life-stack-width: calc(var(--card-h) + clamp(20px, 2.8vw, 34px));
+  --life-stack-height: calc(var(--card-w) + clamp(105px, 11vh, 130px));
+  --life-stack-first-top: calc(var(--card-h) * -0.04);
+  --life-stack-step: calc(var(--card-h) * 0.14);
   --playmat-bleed: clamp(40px, 8vh, 85px);
   --layout-gap: clamp(8px, 1vw, 16px);
+  --field-hand-gap: clamp(10px, 1.7vh, 16px);
   --hand-zone-reserved: clamp(88px, 12vh, 120px);
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--sidebar-w);
@@ -266,9 +276,12 @@
 .player-area__bottom-row {
   display: flex;
   flex-direction: row;
-  gap: clamp(8px, 1vw, 12px);
+  gap: var(--main-row-gap);
   justify-content: flex-start;
   align-items: stretch;
+  width: var(--zone-character-w);
+  max-width: 100%;
+  margin-inline: auto;
   min-width: 0;
 }
 
@@ -415,8 +428,8 @@
 /* Life Stack - Vertical stack of horizontal (rotated) cards */
 .life-stack {
   position: relative;
-  width: calc(var(--card-h) + clamp(28px, 3vw, 40px));
-  height: calc(var(--card-w) + clamp(105px, 11vh, 130px));
+  width: var(--life-stack-width);
+  height: var(--life-stack-height);
 }
 
 .life-stack .game-card {
@@ -425,14 +438,14 @@
   height: var(--card-h);
   transform: rotate(90deg);
   transform-origin: center center;
-  left: calc((var(--card-h) - var(--card-w)) / 2);
+  left: calc(50% - (var(--card-w) / 2));
 }
 
-.life-stack .game-card:nth-child(1) { top: calc(var(--card-h) * -0.04); z-index: 5; }
-.life-stack .game-card:nth-child(2) { top: calc(var(--card-h) * 0.10); z-index: 4; }
-.life-stack .game-card:nth-child(3) { top: calc(var(--card-h) * 0.24); z-index: 3; }
-.life-stack .game-card:nth-child(4) { top: calc(var(--card-h) * 0.38); z-index: 2; }
-.life-stack .game-card:nth-child(5) { top: calc(var(--card-h) * 0.52); z-index: 1; }
+.life-stack .game-card:nth-child(1) { top: var(--life-stack-first-top); z-index: 5; }
+.life-stack .game-card:nth-child(2) { top: calc(var(--life-stack-first-top) + var(--life-stack-step)); z-index: 4; }
+.life-stack .game-card:nth-child(3) { top: calc(var(--life-stack-first-top) + (var(--life-stack-step) * 2)); z-index: 3; }
+.life-stack .game-card:nth-child(4) { top: calc(var(--life-stack-first-top) + (var(--life-stack-step) * 3)); z-index: 2; }
+.life-stack .game-card:nth-child(5) { top: calc(var(--life-stack-first-top) + (var(--life-stack-step) * 4)); z-index: 1; }
 
 /* Disable hover effects on life stack cards */
 .life-stack .game-card:hover {
@@ -537,14 +550,15 @@
   border-radius: 4px;
 }
 
-/* Cost Area Zone - DON cards in play - fixed size (fits 10 cards) */
+/* Cost Area Zone - DON cards in play */
 .zone--cost-area {
   display: flex;
   flex-direction: row;
   gap: 3px;
   padding: 4px 8px;
   min-height: var(--zone-cost-min-h);
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   align-items: center;
   justify-content: flex-start;
   border-color: rgba(241, 196, 15, 0.3);
@@ -557,7 +571,7 @@
 .cost-area-cards {
   display: flex;
   flex-direction: row;
-  gap: 4px;
+  gap: var(--main-row-card-gap);
   align-items: center;
   flex-wrap: wrap;
 }
@@ -669,12 +683,12 @@
   left: 100px;
 }
 
-/* Character Zone - fixed size (fits 10 cards) */
+/* Character Zone */
 .zone--characters {
   display: flex;
   flex-direction: row;
-  gap: 4px;
-  padding: 4px 12px;
+  gap: var(--main-row-card-gap);
+  padding: 4px var(--main-row-side-pad);
   min-height: var(--zone-char-min-h);
   width: var(--zone-character-w);
   max-width: 100%;
@@ -717,12 +731,13 @@
 .hand-zone:not(.hand-zone--opponent) {
   border-top: 2px solid rgba(241, 196, 15, 0.6);
   box-shadow: 0 -4px 12px rgba(241, 196, 15, 0.3), 0 -2px 6px rgba(241, 196, 15, 0.4);
-  margin-top: 16px;
+  margin-top: var(--field-hand-gap);
   z-index: 2001; /* Stay above combat modal overlay */
 }
 
 .hand-zone--opponent {
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.3) 0%, transparent 100%);
+  margin-bottom: var(--field-hand-gap);
   position: relative;
   z-index: 1;
 }
@@ -2443,9 +2458,11 @@
 @media (max-width: 1200px) {
   .game-board {
     --sidebar-w: clamp(220px, 24vw, 280px);
-    --card-w: clamp(58px, 5.8vw, 94px);
-    --zone-character-w: min(100%, calc((var(--card-w) * 10) + 78px));
-    --zone-cost-min-h: calc(var(--card-h) * 0.68);
+    --card-w: clamp(58px, 5.8vw, 96px);
+    --main-row-side-pad: clamp(12px, 1.6vw, 18px);
+    --main-row-w: min(100%, calc(var(--main-row-card-span) + (var(--main-row-side-pad) * 2) + clamp(22px, 2.8vw, 44px)));
+    --zone-char-min-h: calc(var(--card-h) + clamp(28px, 3.6vh, 38px));
+    --zone-cost-min-h: calc(var(--card-h) * 0.76);
     --zone-label-inside-size: clamp(20px, calc(var(--card-w) * 0.5), 44px);
     --zone-label-inside-spacing: clamp(1px, calc(var(--card-w) * 0.06), 5px);
     --playmat-bleed: clamp(28px, 6vh, 56px);
@@ -2456,8 +2473,10 @@
   .game-board {
     grid-template-columns: 1fr;
     --sidebar-w: 0px;
-    --zone-character-w: min(100%, calc((var(--card-w) * 10) + 56px));
-    --zone-cost-min-h: calc(var(--card-h) * 0.64);
+    --main-row-side-pad: clamp(8px, 1.5vw, 14px);
+    --main-row-w: min(100%, calc(var(--main-row-card-span) + (var(--main-row-side-pad) * 2) + clamp(12px, 2vw, 24px)));
+    --zone-char-min-h: calc(var(--card-h) + clamp(20px, 3vh, 28px));
+    --zone-cost-min-h: calc(var(--card-h) * 0.7);
     --zone-label-inside-size: clamp(16px, calc(var(--card-w) * 0.42), 32px);
     --zone-label-inside-spacing: clamp(1px, calc(var(--card-w) * 0.04), 3px);
     --zone-label-inside-opacity: 0.4;
@@ -2476,12 +2495,15 @@
 @media (max-width: 720px), (max-height: 820px) {
   .game-board {
     --card-w: clamp(48px, 6vw, 76px);
-    --zone-character-w: min(100%, calc((var(--card-w) * 10) + 48px));
+    --main-row-side-pad: clamp(6px, 1.2vw, 10px);
+    --main-row-w: min(100%, calc(var(--main-row-card-span) + (var(--main-row-side-pad) * 2) + clamp(8px, 1.5vw, 16px)));
+    --zone-char-min-h: calc(var(--card-h) + clamp(16px, 2.2vh, 22px));
     --zone-col-w: clamp(74px, 10vw, 100px);
-    --zone-cost-min-h: calc(var(--card-h) * 0.58);
+    --zone-cost-min-h: calc(var(--card-h) * 0.6);
     --zone-label-inside-size: clamp(12px, calc(var(--card-w) * 0.28), 20px);
     --zone-label-inside-spacing: 1px;
     --zone-label-inside-opacity: 0.24;
+    --field-hand-gap: clamp(8px, 1.1vh, 12px);
   }
 
   .game-board__header {

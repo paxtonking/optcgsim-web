@@ -552,6 +552,24 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   }, [cardDefinitions]);
 
   const getLifeCardPosition = useCallback((index: number, isOpponent: boolean): { x: number; y: number } => {
+    const lifeStackSelector = isOpponent
+      ? '.player-area--opponent .life-stack'
+      : '.player-area--player .life-stack';
+    const lifeStack = document.querySelector(lifeStackSelector) as HTMLElement | null;
+    const { height: cardHeight } = getRuntimeCardSize();
+    const safeIndex = Math.max(0, Math.min(index, 4));
+    const firstTop = cardHeight * -0.04;
+    const stackStep = cardHeight * 0.14;
+
+    if (lifeStack) {
+      const rect = lifeStack.getBoundingClientRect();
+      const offsetToCenter = firstTop + (safeIndex * stackStep) + (cardHeight / 2);
+      return {
+        x: rect.left + rect.width / 2,
+        y: isOpponent ? rect.bottom - offsetToCenter : rect.top + offsetToCenter,
+      };
+    }
+
     const lifeZone = document.querySelector(
       isOpponent ? '.player-area--opponent .zone--life' : '.player-area--player .zone--life'
     );
@@ -559,22 +577,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       const viewport = getBoardViewport();
       return { x: viewport.left + 150, y: isOpponent ? viewport.top + 200 : viewport.bottom - 200 };
     }
+
     const rect = lifeZone.getBoundingClientRect();
-    const { height: cardHeight } = getRuntimeCardSize();
-    // Life cards are stacked vertically with offset for each card
-    // Cards stack from top to bottom using card-height-relative offset
-    const stackOffset = index * Math.max(12, cardHeight * 0.18);
-
-    if (isOpponent) {
-      // Opponent area is flipped with scaleY(-1), so we need to invert calculations
-      // The life stack appears at the bottom of the flipped area
-      const baseY = rect.top + Math.max(24, cardHeight * 0.45);
-      return { x: rect.left + rect.width / 2, y: baseY + stackOffset };
-    }
-
-    // Player life zone - cards stack from top
-    const baseY = rect.top + Math.max(24, cardHeight * 0.45);
-    return { x: rect.left + rect.width / 2, y: baseY + stackOffset };
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    };
   }, [getBoardViewport, getRuntimeCardSize]);
 
   // DON position helpers
@@ -618,6 +626,15 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
   // Life pile position (for damage animation start)
   const getLifePilePosition = useCallback((isOpponent: boolean): { x: number; y: number } => {
+    const lifeStackSelector = isOpponent
+      ? '.player-area--opponent .life-stack'
+      : '.player-area--player .life-stack';
+    const lifeStack = document.querySelector(lifeStackSelector) as HTMLElement | null;
+    if (lifeStack) {
+      const rect = lifeStack.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    }
+
     const selector = isOpponent
       ? '.player-area--opponent .zone--life'
       : '.player-area--player .zone--life';
