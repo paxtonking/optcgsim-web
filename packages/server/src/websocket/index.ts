@@ -393,6 +393,10 @@ export function setupWebSocket(io: SocketServer) {
       aiGameManager.startAIGame(socket, deckId, difficulty, callback);
     });
 
+    socket.on('ai:tutorial', (_data: any, callback: any) => {
+      aiGameManager.startTutorialGame(socket, callback);
+    });
+
     socket.on('ai:action', (data, callback) => {
       const parsed = z.object({ action: actionSchema }).safeParse(data);
       if (!parsed.success) {

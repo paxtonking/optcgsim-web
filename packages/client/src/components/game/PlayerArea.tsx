@@ -241,7 +241,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
       {/* Second column: Leader, Stage, Deck (stacked vertically) */}
       <div className="player-area__second-col">
         {/* Leader Zone */}
-        <div className="zone zone--leader">
+        <div className="zone zone--leader" {...(!isOpponent ? { 'data-zone': 'leader' } : {})}>
           <span className="zone__label zone__label--bottom">Leader</span>
           {player.leaderCard && (() => {
             const leaderDef = cardDefinitions.get(player.leaderCard.cardId);
@@ -338,6 +338,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
         {/* Character Area - clickable when pending card placement */}
         <div
           className={`zone zone--characters ${!isOpponent && pendingPlayCard ? 'zone--drop-target' : ''}`}
+          {...(!isOpponent ? { 'data-zone': 'character-field' } : {})}
           onClick={!isOpponent && pendingPlayCard && onCharacterZoneClick ? onCharacterZoneClick : undefined}
         >
           <span className="zone__label zone__label--inside">Characters</span>
@@ -414,7 +415,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
         {/* Bottom row: Cost Area | Trash */}
         <div className="player-area__bottom-row">
           {/* Cost Area (DON cards in play) */}
-          <div className="zone zone--cost-area">
+          <div className="zone zone--cost-area" {...(!isOpponent ? { 'data-zone': 'don-field' } : {})}>
             <span className="zone__label zone__label--inside">Cost Area</span>
             <div className="cost-area-cards">
               {unattachedDon.map((don) => (

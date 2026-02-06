@@ -37,15 +37,25 @@ import {
   EffectCost,
 } from '../effects';
 
+export interface GameStateManagerOptions {
+  isTutorial?: boolean;
+}
+
 export class GameStateManager {
   private state: GameState;
   private effectEngine: EffectEngine;
   private mulliganConfirmed: Set<string> = new Set();
   private mulliganUsed: Set<string> = new Set();
+  private isTutorial: boolean;
 
-  constructor(gameId: string, player1Id: string, player2Id: string) {
+  constructor(gameId: string, player1Id: string, player2Id: string, options?: GameStateManagerOptions) {
+    this.isTutorial = options?.isTutorial ?? false;
     this.state = this.initializeGameState(gameId, player1Id, player2Id);
     this.effectEngine = new EffectEngine();
+  }
+
+  public getIsTutorial(): boolean {
+    return this.isTutorial;
   }
 
   // Load card definitions for effect resolution
@@ -136,7 +146,7 @@ export class GameStateManager {
         cost: card.cost
       }));
 
-    player.deck = this.shuffleArray(deckCards);
+    player.deck = this.isTutorial ? deckCards : this.shuffleArray(deckCards);
   }
 
   public startGame(firstPlayerId: string): void {
@@ -364,8 +374,10 @@ export class GameStateManager {
       player.deck.push(card);
     }
 
-    // Shuffle the deck
-    player.deck = this.shuffleArray(player.deck);
+    // Shuffle the deck (skip in tutorial to maintain fixed order)
+    if (!this.isTutorial) {
+      player.deck = this.shuffleArray(player.deck);
+    }
 
     // Draw new starting hand
     this.drawCards(playerId, DEFAULT_GAME_CONFIG.startingHand);

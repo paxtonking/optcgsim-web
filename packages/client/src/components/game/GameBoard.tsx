@@ -22,6 +22,8 @@ import { getSocket } from '../../services/socket';
 import { EffectToastContainer } from './EffectToast';
 import { EffectAnimationLayer, EffectAnimationAPI } from './EffectAnimation';
 import { useEffectToast } from '../../hooks/useEffectToast';
+import { TutorialOverlay } from './tutorial/TutorialOverlay';
+import { useTutorialStore } from '../../stores/tutorialStore';
 import './GameBoard.css';
 import './RPSModal.css';
 import './EffectToast.css';
@@ -49,6 +51,7 @@ interface GameBoardProps {
   gameId: string;
   playerId: string;
   isAIGame: boolean;
+  isTutorial?: boolean;
   onLeave: () => void;
 }
 
@@ -56,6 +59,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   gameId,
   playerId,
   isAIGame,
+  isTutorial = false,
   onLeave
 }) => {
   const [gameOver, setGameOver] = useState<{ winner: string; reason: string } | null>(null);
@@ -1607,6 +1611,80 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     onError: handleError
   });
 
+  // Tutorial initialization
+  const tutorialStore = useTutorialStore();
+  const tutorialPrevTurnRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (isTutorial) {
+      tutorialStore.startTutorial();
+    }
+    return () => {
+      useTutorialStore.getState().reset();
+    };
+  }, [isTutorial]);
+
+  // Tutorial action gating - returns true if the action is allowed
+  const isTutorialActionAllowed = useCallback((actionType: string, cardId?: string): boolean => {
+    if (!isTutorial) return true;
+    const store = useTutorialStore.getState();
+    if (!store.isActive) return true;
+    const step = store.getCurrentStep();
+    if (!step) return true;
+    if (!step.requiredAction) return false; // Step has no required action, block all game actions
+    if (step.requiredAction.type !== actionType) return false;
+    if (step.requiredAction.cardId && cardId && step.requiredAction.cardId !== cardId) return false;
+    return true;
+  }, [isTutorial]);
+
+  // Advance tutorial after a successful action
+  const advanceTutorialForAction = useCallback((actionType: string, cardId?: string) => {
+    if (!isTutorial) return;
+    const store = useTutorialStore.getState();
+    if (!store.isActive) return;
+    const step = store.getCurrentStep();
+    if (!step?.requiredAction) return;
+    if (step.requiredAction.type === actionType) {
+      if (!step.requiredAction.cardId || step.requiredAction.cardId === cardId) {
+        store.advanceStep();
+      }
+    }
+  }, [isTutorial]);
+
+  // Tutorial phase tracking - detect turn changes and combat phases
+  useEffect(() => {
+    if (!isTutorial || !gameState) return;
+    const store = useTutorialStore.getState();
+    if (!store.isActive) return;
+
+    const myTurnCount = myPlayer?.turnCount || 0;
+
+    // Detect when player's turn starts (turn count increased and it's my turn)
+    if (isMyTurn && myTurnCount > tutorialPrevTurnRef.current) {
+      tutorialPrevTurnRef.current = myTurnCount;
+      if (myTurnCount === 2 && store.phase === 'TURN_1') {
+        store.jumpToPhase('TURN_2');
+      } else if (myTurnCount === 3 && store.phase === 'TURN_2') {
+        store.jumpToPhase('TURN_3');
+      }
+    }
+
+    // Detect when AI turn ends and it becomes our turn (for waitForState steps)
+    const currentStep = store.getCurrentStep();
+    if (currentStep?.waitForState) {
+      if (isMyTurn && phase === GamePhase.MAIN_PHASE) {
+        // It's our turn in main phase - advance past the "watch AI" step
+        store.advanceStep();
+      } else if (
+        !isMyTurn &&
+        (phase === GamePhase.BLOCKER_STEP || phase === GamePhase.COUNTER_STEP)
+      ) {
+        // AI is attacking us - advance to defense steps
+        store.advanceStep();
+      }
+    }
+  }, [isTutorial, gameState, isMyTurn, phase, myPlayer?.turnCount]);
+
   // Track selected DON for attaching
   const [selectedDon, setSelectedDon] = useState<GameCardType | null>(null);
 
@@ -1771,8 +1849,14 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   useEffect(() => {
     const socket = getSocket();
 
-    const handleLobbyStart = (data: { gameId: string; phase?: GamePhase; rpsState?: RPSState; isAIGame?: boolean; winnerId?: string }) => {
+    const handleLobbyStart = (data: { gameId: string; phase?: GamePhase; rpsState?: RPSState; isAIGame?: boolean; winnerId?: string; isTutorial?: boolean }) => {
       if (data.gameId !== gameId) return;
+
+      // Tutorial games skip RPS and first-choice entirely
+      if (data.isTutorial) {
+        console.log('[GameBoard] Tutorial game - skipping RPS/first-choice');
+        return;
+      }
 
       // Check if this is an RPS phase start
       if (data.phase === GamePhase.RPS_PHASE && data.rpsState) {
@@ -2547,6 +2631,42 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
   // Card click handler
   const handleCardClick = useCallback((card: GameCardType) => {
+    // Tutorial action gating: when tutorial is active, only allow specific interactions
+    if (isTutorial && useTutorialStore.getState().isActive) {
+      const step = useTutorialStore.getState().getCurrentStep();
+      if (step?.requiredAction) {
+        const { type, cardId } = step.requiredAction;
+
+        // SELECT_DON: allow clicking DON cards
+        if (type === 'SELECT_DON' && card.zone === CardZone.DON_FIELD && card.owner === playerId && card.state === 'ACTIVE') {
+          // Allow this click to proceed to the DON selection code below
+        }
+        // ATTACH_DON: allow attaching DON to leader/character
+        else if (type === 'ATTACH_DON' && selectedDon && (card.zone === CardZone.LEADER || card.zone === CardZone.FIELD) && card.owner === playerId) {
+          // Allow this click to proceed to the DON attach code below
+        }
+        // PLAY_CARD: allow clicking a playable card in hand (by cardId)
+        else if (type === 'PLAY_CARD' && card.zone === CardZone.HAND && card.cardId === cardId) {
+          // Allow this click to proceed to the play card code below
+        }
+        // DECLARE_ATTACK: allow selecting own leader/character for attack, or selecting target
+        else if (type === 'DECLARE_ATTACK') {
+          if (card.owner === playerId && (card.zone === CardZone.LEADER || card.zone === CardZone.FIELD)) {
+            // Allow selecting own card as attacker
+          } else if (selectedCard && targetableCards.has(card.id)) {
+            // Allow selecting attack target
+          } else {
+            return; // Block other clicks
+          }
+        }
+        else {
+          return; // Block all other clicks during tutorial
+        }
+      } else if (step && !step.hasNextButton && !step.waitForState && !step.autoAdvanceDelay) {
+        return; // No required action and no next button - block all clicks
+      }
+    }
+
     // Handle activation mode clicks first (highest priority)
     if (activationMode && phase === GamePhase.MAIN_PHASE) {
       console.log('[ActivationMode] Click detected:', {
@@ -2738,6 +2858,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           setSelectedDon(card);
           setSelectedCard(null); // Clear any selected character
           setPendingPlayCard(null); // Clear pending play
+          advanceTutorialForAction('SELECT_DON');
         }
         return;
       }
@@ -2747,6 +2868,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         if (card.zone === CardZone.FIELD || card.zone === CardZone.LEADER) {
           attachDon(selectedDon.id, card.id);
           setSelectedDon(null);
+          advanceTutorialForAction('ATTACH_DON');
           return;
         }
       }
@@ -2799,6 +2921,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         setIsAttackMode(false);
         setSelectedCard(null);
         setPinnedCard(null);
+        advanceTutorialForAction('DECLARE_ATTACK');
       }, 500);
 
       return;
@@ -2883,14 +3006,23 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     }
   }, [opponent]);
 
+  // Wrapped endTurn with tutorial support
+  const handleEndTurn = useCallback(() => {
+    if (!isTutorialActionAllowed('END_TURN')) return;
+    endTurn();
+    advanceTutorialForAction('END_TURN');
+  }, [endTurn, isTutorialActionAllowed, advanceTutorialForAction]);
+
   // Character zone click handler - plays the pending character card
   const handleCharacterZoneClick = useCallback(() => {
     if (pendingPlayCard && phase === GamePhase.MAIN_PHASE) {
+      const cardId = pendingPlayCard.cardId;
       playCard(pendingPlayCard.id, 'FIELD');
       playSound('play');
       setPendingPlayCard(null);
+      advanceTutorialForAction('PLAY_CARD', cardId);
     }
-  }, [pendingPlayCard, phase, playCard, playSound]);
+  }, [pendingPlayCard, phase, playCard, playSound, advanceTutorialForAction]);
 
   const handleCloseTrashModal = useCallback(() => {
     setTrashModalOpen(null);
@@ -3016,8 +3148,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     console.log('[GameBoard] Keep Hand clicked');
     setMulliganDecisionMade(true);
     keepHand();
+    advanceTutorialForAction('KEEP_HAND');
     // Life dealing animation will be triggered when we receive state update showing phase changed
-  }, [keepHand]);
+  }, [keepHand, advanceTutorialForAction]);
 
   const handleMulligan = useCallback(() => {
     console.log('[GameBoard] Mulligan clicked');
@@ -3439,7 +3572,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             phase={phase}
             isMyTurn={isMyTurn}
             isDefender={isDefender}
-            onEndTurn={endTurn}
+            onEndTurn={handleEndTurn}
             onPass={pass}
             onKeepHand={handleKeepHand}
             onMulligan={handleMulligan}
@@ -4022,6 +4155,19 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Tutorial Overlay */}
+      {isTutorial && (
+        <TutorialOverlay
+          onSkip={() => {
+            useTutorialStore.getState().skipTutorial();
+            if (phase === GamePhase.START_MULLIGAN && !mulliganDecisionMade) {
+              setMulliganDecisionMade(true);
+              keepHand();
+            }
+          }}
+        />
       )}
 
       {/* Game over overlay */}

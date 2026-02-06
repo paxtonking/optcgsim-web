@@ -64,7 +64,11 @@ interface LobbyStore {
 
   // AI Game actions
   startAIGame: (difficulty: AIDifficulty) => void;
+  startTutorialGame: () => void;
   handleAIGameStart: (gameId: string) => void;
+
+  // Tutorial state
+  tutorialGameId: string | null;
 
   // Internal
   handleLobbyUpdate: (lobby: Lobby) => void;
@@ -86,6 +90,7 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
   aiDifficulty: null,
   aiError: null,
   selectedDeckId: null,
+  tutorialGameId: null,
 
   setSelectedDeck: (deckId) => {
     set({ selectedDeckId: deckId });
@@ -254,6 +259,15 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
     });
   },
 
+  startTutorialGame: () => {
+    set({ aiGameStatus: 'starting', aiDifficulty: 'basic', aiError: null, tutorialGameId: null });
+    socketService.emit('ai:tutorial', {}, (response: { success: boolean; gameId?: string; error?: string }) => {
+      if (!response?.success) {
+        set({ aiError: response?.error || 'Failed to start tutorial', aiGameStatus: 'idle' });
+      }
+    });
+  },
+
   handleAIGameStart: (gameId: string) => {
     set({ aiGameStatus: 'playing', aiGameId: gameId });
   },
@@ -286,6 +300,7 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
       aiGameId: null,
       aiDifficulty: null,
       aiError: null,
+      tutorialGameId: null,
     });
   },
 }));
@@ -307,9 +322,12 @@ export function setupLobbySocketListeners() {
     store.handleLobbyUpdate(lobby);
   });
 
-  // Single consolidated listener for lobby:start that handles both AI and regular games
-  socketService.on<{ gameId: string; state?: unknown; isAIGame?: boolean }>('lobby:start', (data) => {
-    if (data.isAIGame) {
+  // Single consolidated listener for lobby:start that handles AI, tutorial, and regular games
+  socketService.on<{ gameId: string; state?: unknown; isAIGame?: boolean; isTutorial?: boolean }>('lobby:start', (data) => {
+    if (data.isTutorial) {
+      useLobbyStore.setState({ tutorialGameId: data.gameId });
+      store.handleAIGameStart(data.gameId);
+    } else if (data.isAIGame) {
       store.handleAIGameStart(data.gameId);
     } else {
       store.handleLobbyStart(data.gameId);

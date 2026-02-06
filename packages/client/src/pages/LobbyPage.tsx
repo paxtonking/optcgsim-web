@@ -215,6 +215,8 @@ function AIPanel() {
     aiError,
     selectedDeckId,
     startAIGame,
+    startTutorialGame,
+    tutorialGameId,
   } = useLobbyStore();
 
   // Compute disabled state before any narrowing
@@ -224,9 +226,13 @@ function AIPanel() {
   // Navigate to game when AI game starts
   useEffect(() => {
     if (aiGameStatus === 'playing' && aiGameId) {
-      navigate(`/game/${aiGameId}?ai=true`);
+      if (tutorialGameId === aiGameId) {
+        navigate(`/game/${aiGameId}?ai=true&tutorial=true`);
+      } else {
+        navigate(`/game/${aiGameId}?ai=true`);
+      }
     }
-  }, [aiGameStatus, aiGameId, navigate]);
+  }, [aiGameStatus, aiGameId, tutorialGameId, navigate]);
 
   const handleStartAI = (difficulty: AIDifficulty) => {
     startAIGame(difficulty);
@@ -267,6 +273,21 @@ function AIPanel() {
       {aiError && (
         <p className="text-red-400 text-sm mb-4">{aiError}</p>
       )}
+
+      {/* Tutorial Button */}
+      <div className="mb-4">
+        <button
+          onClick={() => startTutorialGame()}
+          disabled={isStarting}
+          className="w-full bg-blue-700 hover:bg-blue-600 text-white py-3 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          Play Tutorial
+        </button>
+        <p className="text-gray-500 text-xs mt-1 text-center">
+          Learn the basics in a guided 3-turn match (no deck required)
+        </p>
+      </div>
+
       <div className="flex gap-4">
         <button
           onClick={() => handleStartAI('basic')}

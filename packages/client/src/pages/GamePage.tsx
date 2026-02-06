@@ -13,6 +13,7 @@ export default function GamePage() {
   const { user } = useAuthStore();
 
   const isAIGame = searchParams.get('ai') === 'true';
+  const isTutorial = searchParams.get('tutorial') === 'true';
 
   // Prevent browser zoom during gameplay
   usePreventZoom();
@@ -50,6 +51,7 @@ export default function GamePage() {
             gameId={id}
             playerId={user.id}
             isAIGame={isAIGame}
+            isTutorial={isTutorial}
             onLeave={handleLeave}
           />
         </div>

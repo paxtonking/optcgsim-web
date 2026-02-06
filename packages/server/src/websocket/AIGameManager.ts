@@ -14,6 +14,7 @@ import {
   GameStateManager,
   GamePhase,
   ActionType,
+  CardState,
 } from '@optcgsim/shared';
 import { prisma } from '../services/prisma.js';
 import { cardLoaderService } from '../services/CardLoaderService.js';
@@ -89,6 +90,73 @@ const AI_DECKS: Record<string, string[]> = {
     ...Array(2).fill('ST02-015'), // Room x2
   ],
 };
+
+// Tutorial deck templates - fixed card order for scripted tutorial
+// Positions 0-4 = Hand, 5-9 = Life (pos 9 damaged first), 10+ = draw pile
+const TUTORIAL_PLAYER_DECK: string[] = [
+  'ST01-001', // Leader: Luffy
+  // Hand (positions 0-4)
+  'ST01-007', // Nami (cost 1) - play Turn 1
+  'ST01-006', // Chopper (cost 1, Blocker) - play Turn 3
+  'ST01-009', // Vivi (cost 2, counter 1000) - defense lesson
+  'ST01-011', // Brook (cost 2, counter 2000) - defense lesson
+  'ST01-014', // Guard Point (event, Counter +3000) - defense lesson
+  // Life (positions 5-9, pos 9 = damaged first)
+  'ST01-008', // Robin
+  'ST01-010', // Franky
+  'ST01-013', // Zoro
+  'ST01-004', // Sanji
+  'ST01-005', // Jinbe - damaged FIRST, has trigger
+  // Draw pile (position 10 = Turn 2 draw, 11 = Turn 3 draw)
+  'ST01-003', // Karoo (cost 1) - drawn Turn 2, play Turn 2
+  'ST01-012', // Luffy char (cost 5, Rush) - drawn Turn 3
+  // Fill remaining to reach 50 main deck cards
+  ...Array(3).fill('ST01-012'), // Luffy char x3 (1 above = 4 total)
+  ...Array(4).fill('ST01-013'), // Zoro x4 (already 1 in life but these are additional copies)
+  ...Array(3).fill('ST01-003'), // Karoo x3 (1 above = 4 total)
+  ...Array(3).fill('ST01-004'), // Sanji x3 (1 in life = 4 total)
+  ...Array(3).fill('ST01-005'), // Jinbe x3 (1 in life = 4 total)
+  ...Array(3).fill('ST01-006'), // Chopper x3 (1 in hand = 4 total)
+  ...Array(3).fill('ST01-007'), // Nami x3 (1 in hand = 4 total)
+  ...Array(3).fill('ST01-008'), // Robin x3 (1 in life = 4 total)
+  ...Array(2).fill('ST01-009'), // Vivi x2 (1 in hand, need total ≤4)
+  ...Array(3).fill('ST01-010'), // Franky x3 (1 in life = 4 total)
+  ...Array(3).fill('ST01-011'), // Brook x3 (1 in hand = 4 total)
+  ...Array(3).fill('ST01-014'), // Guard Point x3 (1 in hand = 4 total)
+  ...Array(2).fill('ST01-015'), // Gum-Gum Jet Pistol x2
+];
+
+const TUTORIAL_AI_DECK: string[] = [
+  'ST02-001', // Leader: Kid
+  // Hand (positions 0-4)
+  'ST02-012', // Bepo (cost 1) - AI plays Turn 1
+  'ST02-011', // Heat (cost 2) - AI plays Turn 2
+  'ST02-004', // Bege (cost 1, Blocker) - hand filler
+  'ST02-008', // Apoo (cost 2, counter 2000) - hand filler
+  'ST02-015', // Scalpel (event, Counter +2000) - hand filler
+  // Life (positions 5-9)
+  'ST02-002', // Vito
+  'ST02-006', // Koby
+  'ST02-003', // Urouge
+  'ST02-002', // Vito
+  'ST02-005', // Killer
+  // Draw pile
+  'ST02-011', // Heat - AI Turn 1 draw
+  'ST02-008', // Apoo - AI Turn 2 draw
+  // Fill remaining to 50
+  ...Array(3).fill('ST02-012'), // Bepo x3 (1 in hand = 4 total)
+  ...Array(3).fill('ST02-011'), // Heat x3 (1 in hand, 1 in draw = varies)
+  ...Array(2).fill('ST02-004'), // Bege x2 (1 in hand)
+  ...Array(3).fill('ST02-008'), // Apoo x3 (1 in hand, 1 in draw)
+  ...Array(3).fill('ST02-015'), // Scalpel x3 (1 in hand = 4 total)
+  ...Array(2).fill('ST02-002'), // Vito x2 (2 in life = 4 total)
+  ...Array(4).fill('ST02-003'), // Urouge x4 (already 1 in life)
+  ...Array(3).fill('ST02-005'), // Killer x3 (1 in life = 4 total)
+  ...Array(4).fill('ST02-006'), // Koby x4 (already 1 in life)
+  ...Array(4).fill('ST02-007'), // Bonney x4
+  ...Array(4).fill('ST02-009'), // Law x4
+  ...Array(2).fill('ST02-010'), // Hawkins x2
+];
 
 export class AIGameManager {
   private io: SocketServer;
@@ -238,6 +306,241 @@ export class AIGameManager {
       callback?.({ success: false, error: 'Failed to start game' });
       socket.emit('error', { message: 'Failed to start AI game' });
     }
+  }
+
+  /**
+   * Start a tutorial game - uses fixed decks, skips RPS/first-choice, player always goes first
+   */
+  async startTutorialGame(
+    socket: AuthenticatedSocket,
+    callback?: (response: { success: boolean; gameId?: string; error?: string }) => void
+  ) {
+    if (!socket.userId) {
+      callback?.({ success: false, error: 'Not authenticated' });
+      return;
+    }
+
+    if (this.playerToGame.has(socket.userId)) {
+      callback?.({ success: false, error: 'Already in a game' });
+      return;
+    }
+
+    try {
+      console.log('[AIGameManager] Starting tutorial game for user:', socket.userId);
+
+      await cardLoaderService.loadAllCards();
+
+      const gameId = uuidv4();
+      const aiPlayer = createAIPlayer('basic');
+
+      const stateManager = new GameStateManager(
+        gameId, socket.userId, aiPlayer.getPlayerId(),
+        { isTutorial: true }
+      );
+
+      const cardDefinitions = cardLoaderService.getAllCards();
+      stateManager.loadCardDefinitions(cardDefinitions);
+
+      // Build decks from tutorial templates (fixed order, no DB lookup)
+      const humanDeck = this.createDeckFromTemplate(TUTORIAL_PLAYER_DECK);
+      const aiDeck = this.createDeckFromTemplate(TUTORIAL_AI_DECK);
+
+      stateManager.setupPlayer(socket.userId, socket.username || 'Player', humanDeck);
+      stateManager.setupPlayer(aiPlayer.getPlayerId(), 'Tutorial AI', aiDeck);
+
+      // Player always goes first, skip RPS and first choice
+      stateManager.startGame(socket.userId);
+      console.log('[AIGameManager] Tutorial game started, phase:', stateManager.getState().phase);
+
+      const game: AIGameRoom = {
+        id: gameId,
+        humanPlayerId: socket.userId,
+        humanSocketId: socket.id,
+        humanDeckId: 'tutorial',
+        aiPlayer,
+        aiDeckId: 'tutorial',
+        stateManager,
+        actionLog: [],
+        startedAt: new Date(),
+        aiThinkDelay: 1500,
+        pendingTimeouts: [],
+      };
+
+      this.playerToGame.set(socket.userId, gameId);
+      this.games.set(gameId, game);
+      socket.join(`game:${gameId}`);
+
+      // Skip first-choice modal — emit lobby:start with tutorial flag
+      socket.emit(WS_EVENTS.LOBBY_START, {
+        gameId,
+        isAIGame: true,
+        isTutorial: true,
+      });
+
+      // Emit first:decided immediately (player goes first)
+      socket.emit(WS_EVENTS.FIRST_DECIDED, {
+        gameId,
+        firstPlayerId: socket.userId,
+        isAIGame: true,
+        isTutorial: true,
+      });
+
+      // Send initial game state
+      socket.emit('game:state', {
+        gameState: stateManager.sanitizeStateForPlayer(socket.userId),
+      });
+
+      callback?.({ success: true, gameId });
+
+      // Auto-confirm AI mulligan after a short delay
+      this.scheduleTrackedTimeout(gameId, () => {
+        this.processAIMulliganDecision(gameId);
+      }, 500);
+
+    } catch (error) {
+      console.error('[AIGameManager] Error starting tutorial game:', error);
+      this.playerToGame.delete(socket.userId);
+      callback?.({ success: false, error: 'Failed to start tutorial game' });
+    }
+  }
+
+  /**
+   * Create a deck from a template array of card IDs (reusable for tutorial decks)
+   */
+  private createDeckFromTemplate(template: string[]): any[] {
+    const cards: any[] = [];
+    template.forEach((cardId, index) => {
+      const cardDef = cardLoaderService.getCard(cardId);
+      if (cardDef) {
+        cards.push({
+          id: cardId,
+          name: cardDef.name,
+          type: cardDef.type,
+          colors: cardDef.colors,
+          cost: cardDef.cost,
+          power: cardDef.power,
+          counter: cardDef.counter,
+          traits: cardDef.traits,
+          instanceId: `tut-${cardId}-${index}`
+        });
+      }
+    });
+    return cards;
+  }
+
+  /**
+   * Process scripted AI turn for tutorial games
+   */
+  private processTutorialAITurn(gameId: string) {
+    const game = this.games.get(gameId);
+    if (!game) return;
+
+    const state = game.stateManager.getState();
+    const aiId = game.aiPlayer.getPlayerId();
+    const aiPlayer = state.players[aiId];
+
+    if (state.phase === GamePhase.GAME_OVER) return;
+    if (!aiPlayer) return;
+
+    const aiTurnCount = aiPlayer.turnCount || 0;
+    let decision: { action: ActionType; data: any } | null = null;
+
+    // Tutorial AI turns 1-2: play a character, then end turn (no attack)
+    // Turn 3+: attack player's leader, then use normal AI
+    if (aiTurnCount <= 2) {
+      if (state.phase === GamePhase.MAIN_PHASE) {
+        // Try to play a cheap character from hand
+        const playableChar = aiPlayer.hand.find(c => {
+          const def = this.getCardDef(c.cardId);
+          return def && def.type === 'CHARACTER' && def.cost !== null && def.cost <= aiTurnCount + 1;
+        });
+
+        if (playableChar && !this.hasAIPlayedThisTurn(game)) {
+          decision = { action: ActionType.PLAY_CARD, data: { cardId: playableChar.id } };
+        } else {
+          decision = { action: ActionType.END_TURN, data: {} };
+        }
+      } else {
+        // For other phases (REFRESH, DRAW, DON), end turn to advance
+        decision = { action: ActionType.END_TURN, data: {} };
+      }
+    } else {
+      // Turn 3+: attack with leader if possible, then fall through to normal AI
+      if (state.phase === GamePhase.MAIN_PHASE) {
+        const aiLeader = aiPlayer.leaderCard;
+        const humanLeader = state.players[game.humanPlayerId]?.leaderCard;
+
+        if (aiLeader && humanLeader && aiLeader.state === CardState.ACTIVE) {
+          decision = {
+            action: ActionType.DECLARE_ATTACK,
+            data: { attackerId: aiLeader.id, targetId: humanLeader.id, targetType: 'leader' }
+          };
+        } else {
+          // Fall through to normal AI for remaining actions
+          const aiDecision = game.aiPlayer.getNextAction(state);
+          decision = aiDecision ? { action: aiDecision.action, data: aiDecision.data } : null;
+        }
+      } else {
+        // Use normal AI logic for non-main phases after turn 3
+        const aiDecision = game.aiPlayer.getNextAction(state);
+        decision = aiDecision ? { action: aiDecision.action, data: aiDecision.data } : null;
+      }
+    }
+
+    if (decision) {
+      const aiAction: GameAction = {
+        id: `ai-tut-${Date.now()}`,
+        type: decision.action,
+        playerId: aiId,
+        timestamp: Date.now(),
+        data: decision.data,
+      };
+
+      const success = game.stateManager.processAction(aiAction);
+      if (success) game.actionLog.push(aiAction);
+
+      const updatedState = game.stateManager.getState();
+
+      const humanSocket = this.io.sockets.sockets.get(game.humanSocketId);
+      if (humanSocket) {
+        humanSocket.emit('game:state', {
+          gameState: game.stateManager.sanitizeStateForPlayer(game.humanPlayerId)
+        });
+      }
+
+      if (updatedState.phase === GamePhase.GAME_OVER && updatedState.winner) {
+        void this.endGame(gameId, updatedState.winner, 'normal').catch(error => {
+          console.error(`[AIGameManager] Failed to end tutorial game ${gameId}:`, error);
+        });
+        return;
+      }
+
+      // Continue if still AI's turn
+      if (updatedState.activePlayerId === aiId) {
+        this.scheduleTrackedTimeout(gameId, () => {
+          this.processTutorialAITurn(gameId);
+        }, game.aiThinkDelay);
+      }
+    }
+  }
+
+  /**
+   * Helper: check if AI already played a card this turn (to avoid playing multiple)
+   */
+  private hasAIPlayedThisTurn(game: AIGameRoom): boolean {
+    return game.actionLog.some(a =>
+      a.playerId === game.aiPlayer.getPlayerId() &&
+      a.type === ActionType.PLAY_CARD &&
+      // Approximate: check recent actions
+      game.stateManager.getState().players[game.aiPlayer.getPlayerId()]?.field.length > 0
+    );
+  }
+
+  /**
+   * Helper: get card definition by ID
+   */
+  private getCardDef(cardId: string) {
+    return cardLoaderService.getCard(cardId);
   }
 
   /**
@@ -836,6 +1139,12 @@ export class AIGameManager {
       return;
     }
 
+    // Use scripted AI for tutorial games
+    if (game.stateManager.getIsTutorial()) {
+      this.processTutorialAITurn(gameId);
+      return;
+    }
+
     const state = game.stateManager.getState();
     console.log('[AIGameManager] Current state - Phase:', state.phase, 'Turn:', state.turn, 'ActivePlayer:', state.activePlayerId);
 
@@ -926,22 +1235,24 @@ export class AIGameManager {
         });
       }
 
-      // Update player stats (skip match record - AI player ID isn't a real user)
-      if (winnerId === game.humanPlayerId) {
-        await prisma.user.update({
-          where: { id: game.humanPlayerId },
-          data: {
-            gamesPlayed: { increment: 1 },
-            gamesWon: { increment: 1 },
-          },
-        });
-      } else {
-        await prisma.user.update({
-          where: { id: game.humanPlayerId },
-          data: {
-            gamesPlayed: { increment: 1 },
-          },
-        });
+      // Update player stats (skip for tutorial games and AI player IDs)
+      if (game.humanDeckId !== 'tutorial') {
+        if (winnerId === game.humanPlayerId) {
+          await prisma.user.update({
+            where: { id: game.humanPlayerId },
+            data: {
+              gamesPlayed: { increment: 1 },
+              gamesWon: { increment: 1 },
+            },
+          });
+        } else {
+          await prisma.user.update({
+            where: { id: game.humanPlayerId },
+            data: {
+              gamesPlayed: { increment: 1 },
+            },
+          });
+        }
       }
     } catch (error) {
       console.error('[AIGameManager] Error updating player stats:', error);

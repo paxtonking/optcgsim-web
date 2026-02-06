@@ -1,0 +1,124 @@
+/* Tutorial Overlay */
+.tutorial-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.tutorial-overlay__mask {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Pulsing highlight ring around the target element */
+.tutorial-overlay__highlight-ring {
+  position: fixed;
+  border: 3px solid #fbbf24;
+  border-radius: 8px;
+  pointer-events: none;
+  box-shadow: 0 0 15px rgba(251, 191, 36, 0.5), inset 0 0 15px rgba(251, 191, 36, 0.1);
+  animation: tutorial-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes tutorial-pulse {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(251, 191, 36, 0.5), inset 0 0 15px rgba(251, 191, 36, 0.1);
+    border-color: #fbbf24;
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(251, 191, 36, 0.8), inset 0 0 20px rgba(251, 191, 36, 0.2);
+    border-color: #fde68a;
+  }
+}
+
+/* Speech bubble */
+.tutorial-bubble {
+  pointer-events: auto;
+  background: rgba(15, 23, 42, 0.95);
+  border: 2px solid #3b82f6;
+  border-radius: 12px;
+  padding: 20px 24px;
+  max-width: 420px;
+  min-width: 280px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(59, 130, 246, 0.3);
+  animation: tutorial-bubble-enter 0.25s ease-out;
+  z-index: 10001;
+}
+
+@keyframes tutorial-bubble-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tutorial-bubble--shake {
+  animation: tutorial-shake 0.4s ease-in-out;
+}
+
+@keyframes tutorial-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+.tutorial-bubble__text {
+  color: #e2e8f0;
+  font-size: 15px;
+  line-height: 1.6;
+  margin: 0 0 4px 0;
+}
+
+.tutorial-bubble__next-btn {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  padding: 10px 20px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.tutorial-bubble__next-btn:hover {
+  background: #2563eb;
+}
+
+.tutorial-bubble__next-btn:active {
+  background: #1d4ed8;
+}
+
+/* Skip button */
+.tutorial-overlay__skip-btn {
+  pointer-events: auto;
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 8px 16px;
+  background: rgba(30, 41, 59, 0.85);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+  z-index: 10002;
+}
+
+.tutorial-overlay__skip-btn:hover {
+  background: rgba(30, 41, 59, 1);
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.5);
+}
