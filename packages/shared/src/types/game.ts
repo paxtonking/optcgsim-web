@@ -154,6 +154,9 @@ export interface CombatInfo {
   blockers?: string[];
   isBlocked?: boolean;
   damage?: number;
+  remainingDamage?: number;           // Remaining damage after trigger pause (Double Attack)
+  remainingDamagePlayerId?: string;   // Who takes the remaining damage
+  remainingDamageHasBanish?: boolean; // Whether attacker has banish
 }
 
 // Rock-Paper-Scissors types

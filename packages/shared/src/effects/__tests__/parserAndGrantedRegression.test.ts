@@ -1164,7 +1164,8 @@ describe('Gameplay flow audit fixes', () => {
 
     manager.resolveCombat();
 
-    expect(state.currentCombat).toBeUndefined();
+    // currentCombat is preserved during TRIGGER_STEP to support remaining damage (Double Attack)
+    expect(state.currentCombat).toBeDefined();
     expect(state.phase).toBe(GamePhase.TRIGGER_STEP);
   });
 

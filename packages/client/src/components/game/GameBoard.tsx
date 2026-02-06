@@ -1029,6 +1029,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           newAnimations.push({
             id: `player-life-damage-${card.id}-${Date.now()}`,
             card,
+            cardImageUrl: resolveCardImageUrl(card),
             faceUp: false, // Stay face-down during flight
             startPos,
             endPos: { x: endPos.x + (i * 15), y: endPos.y }, // Slight offset for multiple cards
@@ -1072,6 +1073,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           newAnimations.push({
             id: `opponent-life-damage-${card.id}-${Date.now()}`,
             card,
+            cardImageUrl: resolveCardImageUrl(card),
             faceUp: false, // Face-down for opponent's cards
             startPos,
             endPos: { x: endPos.x + (i * 15), y: endPos.y },
@@ -1148,6 +1150,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             newAnimations.push({
               id: `player-draw-${card.id}-${Date.now()}`,
               card,
+              cardImageUrl: resolveCardImageUrl(card),
               faceUp: false,  // Start face-down
               startPos: getDeckPosition(false),
               endPos: getHandCardPosition(cardIndex, playerHandCount, false),
@@ -1171,6 +1174,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             newAnimations.push({
               id: `opponent-draw-${card.id}-${Date.now()}`,
               card,
+              cardImageUrl: resolveCardImageUrl(card),
               faceUp: false,  // Start face-down, stay face-down
               startPos: getDeckPosition(true),
               endPos: getHandCardPosition(cardIndex, opponentHandCount, true),
@@ -3100,6 +3104,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           startPos={animCard.startPos}
           endPos={animCard.endPos}
           delay={animCard.delay}
+          cardImageUrl={animCard.cardImageUrl}
           onComplete={() => handleLifeDamageAnimationComplete(animCard.id, animCard.isOpponent)}
         />
       ))}
@@ -3114,6 +3119,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           endPos={animCard.endPos}
           delay={animCard.delay}
           flipDuringFlight={animCard.flipDuringFlight}
+          cardImageUrl={animCard.cardImageUrl}
           onComplete={() => handleHandDrawAnimationComplete(animCard.id, animCard.isOpponent)}
         />
       ))}

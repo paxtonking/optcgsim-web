@@ -3044,7 +3044,19 @@ export class GameStateManager {
     if (!this.state.currentCombat) return;
 
     const { attackerId, targetId, targetType, attackPower, counterPower = 0, effectBuffPower = 0 } = this.state.currentCombat;
+
+    if (!targetId) {
+      console.warn('[resolveCombat] No targetId in combat info');
+      this.state.currentCombat = undefined;
+      return;
+    }
+
     const attacker = this.findCard(attackerId);
+    if (!attacker) {
+      console.warn('[resolveCombat] Attacker no longer exists:', attackerId);
+      this.state.currentCombat = undefined;
+      return;
+    }
 
     if (targetType === 'leader') {
       // Damage to leader
@@ -3126,6 +3138,12 @@ export class GameStateManager {
       }
     }
 
+    // If a life trigger was found, pause combat resolution — don't clean up yet.
+    // Combat state (including remainingDamage) must be preserved during TRIGGER_STEP.
+    if (this.state.phase === GamePhase.TRIGGER_STEP) {
+      return;
+    }
+
     // Trigger AFTER_BATTLE
     const afterBattleTrigger: TriggerEvent = {
       type: EffectTrigger.AFTER_BATTLE,
@@ -3149,11 +3167,7 @@ export class GameStateManager {
     this.clearBattleBuffs();
 
     this.state.currentCombat = undefined;
-    // Preserve TRIGGER_STEP after life damage reveals a trigger card.
-    if (
-      this.state.phase !== GamePhase.GAME_OVER &&
-      this.state.phase !== GamePhase.TRIGGER_STEP
-    ) {
+    if (this.state.phase !== GamePhase.GAME_OVER) {
       this.state.phase = GamePhase.MAIN_PHASE;
     }
   }
@@ -3214,6 +3228,15 @@ export class GameStateManager {
             };
             this.processTriggers(triggerEvent);
             this.state.phase = GamePhase.TRIGGER_STEP;
+
+            // Store remaining damage for after trigger resolves (Double Attack fix)
+            const remaining = damage - i - 1;
+            if (remaining > 0 && this.state.currentCombat) {
+              this.state.currentCombat.remainingDamage = remaining;
+              this.state.currentCombat.remainingDamagePlayerId = playerId;
+              this.state.currentCombat.remainingDamageHasBanish = !!hasBanish;
+            }
+            return; // Pause for trigger resolution
           }
 
           // Trigger LIFE_ADDED_TO_HAND (only when actually added to hand - Bug 1 fix)
@@ -3225,6 +3248,70 @@ export class GameStateManager {
           this.processTriggers(lifeEvent);
         }
       }
+    }
+  }
+
+  /**
+   * Continue dealing remaining damage after a life trigger resolves (Double Attack fix).
+   * Returns true if more damage was dealt (may enter another TRIGGER_STEP).
+   */
+  private continueRemainingDamage(): boolean {
+    if (!this.state.currentCombat?.remainingDamage) {
+      // No more remaining damage — finalize combat cleanup
+      this.finalizeCombatCleanup();
+      return false;
+    }
+
+    const { remainingDamage, remainingDamagePlayerId } = this.state.currentCombat;
+    // Clear before calling takeDamage to avoid infinite loops
+    this.state.currentCombat.remainingDamage = undefined;
+    this.state.currentCombat.remainingDamagePlayerId = undefined;
+    this.state.currentCombat.remainingDamageHasBanish = undefined;
+
+    if (remainingDamagePlayerId) {
+      this.takeDamage(remainingDamagePlayerId, remainingDamage, undefined, false);
+      // If another trigger was found, stay in TRIGGER_STEP
+      if (this.state.phase === GamePhase.TRIGGER_STEP) {
+        return true;
+      }
+      // No more triggers — finalize combat cleanup
+      this.finalizeCombatCleanup();
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Finalize combat cleanup after all damage and triggers are resolved.
+   */
+  private finalizeCombatCleanup(): void {
+    if (!this.state.currentCombat) return;
+
+    const { attackerId } = this.state.currentCombat;
+    const attacker = this.findCard(attackerId);
+
+    // Trigger AFTER_BATTLE
+    const afterBattleTrigger: TriggerEvent = {
+      type: EffectTrigger.AFTER_BATTLE,
+      cardId: attackerId,
+      playerId: attacker?.owner,
+    };
+    this.processTriggers(afterBattleTrigger);
+
+    // Clear temporary keywords
+    for (const player of Object.values(this.state.players)) {
+      for (const card of player.field) {
+        card.temporaryKeywords = [];
+      }
+      if (player.leaderCard) {
+        player.leaderCard.temporaryKeywords = [];
+      }
+    }
+
+    this.clearBattleBuffs();
+    this.state.currentCombat = undefined;
+    if (this.state.phase !== GamePhase.GAME_OVER) {
+      this.state.phase = GamePhase.MAIN_PHASE;
     }
   }
 
@@ -3386,16 +3473,28 @@ export class GameStateManager {
 
     // Untap leader and reset turn-based flags
     if (player.leaderCard) {
-      player.leaderCard.state = CardState.ACTIVE;
+      const isFrozen = player.leaderCard.keywords?.includes('Frozen') ?? false;
+      if (isFrozen) {
+        // Frozen: skip untap, remove Frozen (only prevents one untap)
+        player.leaderCard.keywords = player.leaderCard.keywords!.filter(k => k !== 'Frozen');
+      } else {
+        player.leaderCard.state = CardState.ACTIVE;
+      }
       player.leaderCard.hasAttacked = false;
       player.leaderCard.activatedThisTurn = false;
     }
 
     // Untap all field cards and reset turn-based flags
     player.field.forEach(card => {
+      const isFrozen = card.keywords?.includes('Frozen') ?? false;
       if (card.state === CardState.RESTED) {
-        card.state = CardState.ACTIVE;
-        card.hasAttacked = false;
+        if (isFrozen) {
+          // Frozen: skip untap, remove Frozen (only prevents one untap)
+          card.keywords = card.keywords!.filter(k => k !== 'Frozen');
+        } else {
+          card.state = CardState.ACTIVE;
+          card.hasAttacked = false;
+        }
       }
       card.activatedThisTurn = false;
     });
@@ -3717,10 +3816,16 @@ export class GameStateManager {
         // Handle trigger effect activation
         if (actionData.effectId) {
           const changes = this.resolveEffect(actionData.effectId, actionData.targets);
+          // Continue dealing remaining damage (Double Attack with multiple triggers)
+          this.continueRemainingDamage();
           return changes.length > 0;
         }
         // Pass on trigger - continue to next phase
         if (this.state.phase === GamePhase.TRIGGER_STEP) {
+          // Continue dealing remaining damage (Double Attack with multiple triggers)
+          if (this.continueRemainingDamage()) {
+            return true; // Still in trigger resolution
+          }
           this.state.phase = GamePhase.MAIN_PHASE;
         }
         return true;

@@ -943,6 +943,11 @@ export class EffectEngine {
               context.sourceCard.id,
               gameState
             );
+            // During combat, also track in effectBuffPower for combat resolution
+            if (gameState.currentCombat) {
+              gameState.currentCombat.effectBuffPower =
+                (gameState.currentCombat.effectBuffPower || 0) + (action.value || 0);
+            }
             changes.push({
               type: 'POWER_CHANGED',
               cardId: targetId,
@@ -2337,6 +2342,20 @@ export class EffectEngine {
                 playerId: oppPlayer.id,
               });
               console.log('[OPPONENT_TRASH_CARDS] Trashed from opponent field:', targetId);
+            } else if (oppPlayer.stage && oppPlayer.stage.id === targetId) {
+              // Also check stage slot
+              const card = oppPlayer.stage;
+              oppPlayer.stage = null;
+              card.zone = CardZone.TRASH;
+              oppPlayer.trash.push(card);
+              changes.push({
+                type: 'CARD_MOVED',
+                cardId: targetId,
+                from: 'STAGE',
+                to: CardZone.TRASH,
+                playerId: oppPlayer.id,
+              });
+              console.log('[OPPONENT_TRASH_CARDS] Trashed from opponent stage:', targetId);
             }
           });
         }
@@ -2945,6 +2964,11 @@ export class EffectEngine {
     const card = this.findCard(gameState, cardId);
     if (!card) return false;
 
+    // Leaders cannot be removed from field by any effect
+    if (card.zone === CardZone.LEADER) {
+      return true;
+    }
+
     const cardOwner = this.findCardOwner(gameState, cardId);
     const isOpponentEffect = effectOwnerId != null && cardOwner != null && effectOwnerId !== cardOwner.id;
 
@@ -3236,6 +3260,16 @@ export class EffectEngine {
       }
     }
 
+    // Check stage slot
+    if (changes.length === 0 && owner.stage && owner.stage.id === cardId) {
+      const card = owner.stage;
+      owner.stage = null;
+      card.zone = CardZone.HAND;
+      card.state = CardState.ACTIVE;
+      owner.hand.push(card);
+      changes.push({ type: 'CARD_MOVED', cardId, from: 'STAGE', to: 'HAND' });
+    }
+
     return changes;
   }
 
@@ -3265,6 +3299,15 @@ export class EffectEngine {
         from: sourceZone,
         to: 'DECK_BOTTOM',
       });
+    }
+
+    // Check stage slot
+    if (changes.length === 0 && owner.stage && owner.stage.id === cardId) {
+      const card = owner.stage;
+      owner.stage = null;
+      card.zone = CardZone.DECK;
+      owner.deck.push(card);
+      changes.push({ type: 'CARD_MOVED', cardId, from: 'STAGE', to: 'DECK_BOTTOM' });
     }
 
     return changes;
@@ -3298,6 +3341,15 @@ export class EffectEngine {
         console.log('[sendToDeckTop] Moved card', cardId, 'from', zone.name, 'to DECK_TOP');
         break;
       }
+    }
+
+    // Check stage slot
+    if (changes.length === 0 && owner.stage && owner.stage.id === cardId) {
+      const card = owner.stage;
+      owner.stage = null;
+      card.zone = CardZone.DECK;
+      owner.deck.unshift(card);
+      changes.push({ type: 'CARD_MOVED', cardId, from: 'STAGE', to: 'DECK_TOP' });
     }
 
     return changes;
@@ -3520,6 +3572,9 @@ export class EffectEngine {
     const restTypes = [EffectType.REST_CHARACTER, EffectType.FREEZE];
 
     if (removalTypes.includes(action.type)) {
+      // Leaders cannot be targeted by removal effects
+      targets = targets.filter(c => c.zone !== CardZone.LEADER);
+
       const removalKindMap: Record<string, 'KO' | 'BOUNCE' | 'TRASH' | 'DECK'> = {
         [EffectType.KO_CHARACTER]: 'KO',
         [EffectType.KO_COST_OR_LESS]: 'KO',
