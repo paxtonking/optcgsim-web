@@ -528,12 +528,10 @@ export class AIGameManager {
    * Helper: check if AI already played a card this turn (to avoid playing multiple)
    */
   private hasAIPlayedThisTurn(game: AIGameRoom): boolean {
-    return game.actionLog.some(a =>
-      a.playerId === game.aiPlayer.getPlayerId() &&
-      a.type === ActionType.PLAY_CARD &&
-      // Approximate: check recent actions
-      game.stateManager.getState().players[game.aiPlayer.getPlayerId()]?.field.length > 0
-    );
+    const state = game.stateManager.getState();
+    const aiPlayer = state.players[game.aiPlayer.getPlayerId()];
+    if (!aiPlayer) return false;
+    return aiPlayer.field.some(card => card.turnPlayed === state.turn);
   }
 
   /**
@@ -1087,8 +1085,10 @@ export class AIGameManager {
       return;
     }
 
-    // Get AI's mulligan decision
-    const decision = game.aiPlayer.getNextAction(state);
+    // Tutorial mulligan must be deterministic to preserve scripted deck order.
+    const decision = game.stateManager.getIsTutorial()
+      ? { action: ActionType.KEEP_HAND, data: {} }
+      : game.aiPlayer.getNextAction(state);
     console.log('[AIGameManager] AI mulligan decision:', decision);
 
     if (decision) {

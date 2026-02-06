@@ -1612,17 +1612,18 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   });
 
   // Tutorial initialization
-  const tutorialStore = useTutorialStore();
+  const startTutorial = useTutorialStore((state) => state.startTutorial);
   const tutorialPrevTurnRef = useRef<number>(0);
 
   useEffect(() => {
     if (isTutorial) {
-      tutorialStore.startTutorial();
+      tutorialPrevTurnRef.current = 0;
+      startTutorial();
     }
     return () => {
       useTutorialStore.getState().reset();
     };
-  }, [isTutorial]);
+  }, [isTutorial, startTutorial]);
 
   // Tutorial action gating - returns true if the action is allowed
   const isTutorialActionAllowed = useCallback((actionType: string, cardId?: string): boolean => {
@@ -1631,9 +1632,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     if (!store.isActive) return true;
     const step = store.getCurrentStep();
     if (!step) return true;
+    if (step.allowFreePlay) return true;
     if (!step.requiredAction) return false; // Step has no required action, block all game actions
     if (step.requiredAction.type !== actionType) return false;
-    if (step.requiredAction.cardId && cardId && step.requiredAction.cardId !== cardId) return false;
+    if (step.requiredAction.cardId && step.requiredAction.cardId !== cardId) return false;
     return true;
   }, [isTutorial]);
 
@@ -1669,17 +1671,22 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       }
     }
 
-    // Detect when AI turn ends and it becomes our turn (for waitForState steps)
+    // Detect state transitions for waitForState tutorial steps
     const currentStep = store.getCurrentStep();
     if (currentStep?.waitForState) {
-      if (isMyTurn && phase === GamePhase.MAIN_PHASE) {
-        // It's our turn in main phase - advance past the "watch AI" step
-        store.advanceStep();
-      } else if (
-        !isMyTurn &&
-        (phase === GamePhase.BLOCKER_STEP || phase === GamePhase.COUNTER_STEP)
-      ) {
-        // AI is attacking us - advance to defense steps
+      const shouldAdvance =
+        ((currentStep.id === 't1-ai-turn' || currentStep.id === 't2-ai-turn') &&
+          isMyTurn &&
+          phase === GamePhase.MAIN_PHASE) ||
+        (currentStep.id === 't3-ai-attacks' &&
+          !isMyTurn &&
+          (phase === GamePhase.BLOCKER_STEP || phase === GamePhase.COUNTER_STEP)) ||
+        (currentStep.id === 't3-let-resolve' &&
+          isMyTurn &&
+          phase === GamePhase.MAIN_PHASE &&
+          myTurnCount >= 4);
+
+      if (shouldAdvance) {
         store.advanceStep();
       }
     }
@@ -2634,7 +2641,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     // Tutorial action gating: when tutorial is active, only allow specific interactions
     if (isTutorial && useTutorialStore.getState().isActive) {
       const step = useTutorialStore.getState().getCurrentStep();
-      if (step?.requiredAction) {
+      if (step && !step.allowFreePlay && step.requiredAction) {
         const { type, cardId } = step.requiredAction;
 
         // SELECT_DON: allow clicking DON cards
@@ -2662,8 +2669,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         else {
           return; // Block all other clicks during tutorial
         }
-      } else if (step && !step.hasNextButton && !step.waitForState && !step.autoAdvanceDelay) {
-        return; // No required action and no next button - block all clicks
+      } else if (step && !step.allowFreePlay) {
+        return; // Step has no gameplay action; block all clicks until tutorial advances
       }
     }
 
@@ -3016,13 +3023,16 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   // Character zone click handler - plays the pending character card
   const handleCharacterZoneClick = useCallback(() => {
     if (pendingPlayCard && phase === GamePhase.MAIN_PHASE) {
+      if (!isTutorialActionAllowed('PLAY_CARD', pendingPlayCard.cardId)) {
+        return;
+      }
       const cardId = pendingPlayCard.cardId;
       playCard(pendingPlayCard.id, 'FIELD');
       playSound('play');
       setPendingPlayCard(null);
       advanceTutorialForAction('PLAY_CARD', cardId);
     }
-  }, [pendingPlayCard, phase, playCard, playSound, advanceTutorialForAction]);
+  }, [pendingPlayCard, phase, playCard, playSound, advanceTutorialForAction, isTutorialActionAllowed]);
 
   const handleCloseTrashModal = useCallback(() => {
     setTrashModalOpen(null);
@@ -3144,20 +3154,34 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   }, [currentAdditionalCost, skipAdditionalCost]);
 
   // Mulligan handlers
-  const handleKeepHand = useCallback(() => {
+  const executeKeepHand = useCallback((forceTutorialBypass = false) => {
+    if (!forceTutorialBypass && !isTutorialActionAllowed('KEEP_HAND')) {
+      return;
+    }
     console.log('[GameBoard] Keep Hand clicked');
     setMulliganDecisionMade(true);
     keepHand();
     advanceTutorialForAction('KEEP_HAND');
     // Life dealing animation will be triggered when we receive state update showing phase changed
-  }, [keepHand, advanceTutorialForAction]);
+  }, [keepHand, advanceTutorialForAction, isTutorialActionAllowed]);
+
+  const handleKeepHand = useCallback(() => {
+    executeKeepHand(false);
+  }, [executeKeepHand]);
+
+  const handleForceKeepHand = useCallback(() => {
+    executeKeepHand(true);
+  }, [executeKeepHand]);
 
   const handleMulligan = useCallback(() => {
+    if (!isTutorialActionAllowed('MULLIGAN')) {
+      return;
+    }
     console.log('[GameBoard] Mulligan clicked');
     setMulliganDecisionMade(true);
     mulligan();
     // Life dealing animation will be triggered when we receive state update showing phase changed
-  }, [mulligan]);
+  }, [mulligan, isTutorialActionAllowed]);
 
   // Mulligan timer - 20 seconds to make decision, auto-keep if timer expires
   useEffect(() => {
@@ -3179,7 +3203,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         if (prev <= 1) {
           // Timer expired, auto-keep hand
           console.log('[GameBoard] Mulligan timer expired, auto-keeping hand');
-          handleKeepHand();
+          handleForceKeepHand();
           return 20;
         }
         return prev - 1;
@@ -3187,7 +3211,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [phase, mulliganDecisionMade, myPlayer, dealingPhase, handleKeepHand]);
+  }, [phase, mulliganDecisionMade, myPlayer, dealingPhase, handleForceKeepHand]);
 
   // Trigger life dealing when game transitions from START_MULLIGAN to next phase
   useEffect(() => {
@@ -3251,6 +3275,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     !mulliganDecisionMade &&
     myPlayer &&
     dealingPhase === 'waiting-mulligan';
+
+  const canKeepHand = isTutorialActionAllowed('KEEP_HAND');
+  const canMulligan = isTutorialActionAllowed('MULLIGAN');
 
   // Hide life zone during hand dealing
   const hideLifeZone = dealingPhase === 'dealing-hand' || dealingPhase === 'waiting-mulligan';
@@ -3680,12 +3707,14 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               <button
                 className="action-btn action-btn--keep"
                 onClick={handleKeepHand}
+                disabled={!canKeepHand}
               >
                 Keep Hand
               </button>
               <button
                 className="action-btn action-btn--mulligan"
                 onClick={handleMulligan}
+                disabled={!canMulligan}
               >
                 Mulligan
               </button>
@@ -4163,8 +4192,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           onSkip={() => {
             useTutorialStore.getState().skipTutorial();
             if (phase === GamePhase.START_MULLIGAN && !mulliganDecisionMade) {
-              setMulliganDecisionMade(true);
-              keepHand();
+              handleForceKeepHand();
             }
           }}
         />

@@ -21,6 +21,8 @@ export interface TutorialStep {
   autoAdvanceDelay?: number;
   /** If true, advance is triggered by detecting a game state change, not a click */
   waitForState?: boolean;
+  /** If true, allow normal gameplay interactions during this step */
+  allowFreePlay?: boolean;
 }
 
 export const TUTORIAL_STEPS: TutorialStep[] = [
@@ -263,6 +265,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     requiredAction: null,
     bubblePosition: 'center',
     waitForState: true,
+    allowFreePlay: true,
   },
 
   // ========== TUTORIAL COMPLETE ==========

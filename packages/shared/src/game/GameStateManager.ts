@@ -359,6 +359,11 @@ export class GameStateManager {
       return false;
     }
 
+    // Tutorial mode keeps a fixed deck order for scripted steps.
+    if (this.isTutorial) {
+      return false;
+    }
+
     // Check if player already used their mulligan
     if (this.mulliganUsed.has(playerId)) {
       return false;
