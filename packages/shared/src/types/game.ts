@@ -157,6 +157,8 @@ export interface CombatInfo {
   remainingDamage?: number;           // Remaining damage after trigger pause (Double Attack)
   remainingDamagePlayerId?: string;   // Who takes the remaining damage
   remainingDamageHasBanish?: boolean; // Whether attacker has banish
+  remainingDamageIsDoubleAttack?: boolean; // Whether paused damage came from Double Attack
+  remainingDamageOriginalLife?: number; // Defender life count before paused damage sequence
 }
 
 // Rock-Paper-Scissors types

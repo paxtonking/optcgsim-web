@@ -3172,7 +3172,13 @@ export class GameStateManager {
     }
   }
 
-  private takeDamage(playerId: string, damage: number, attacker?: GameCard, isDoubleAttack?: boolean): void {
+  private takeDamage(
+    playerId: string,
+    damage: number,
+    attacker?: GameCard,
+    isDoubleAttack?: boolean,
+    hasBanishOverride?: boolean
+  ): void {
     const player = this.state.players[playerId];
     if (!player) return;
 
@@ -3180,7 +3186,9 @@ export class GameStateManager {
     const lifeBeforeDamage = player.lifeCards.length;
 
     // Check if attacker has Banish - cards go to trash instead of hand
-    const hasBanish = attacker && this.effectEngine.hasBanish(attacker, this.state);
+    const hasBanish =
+      hasBanishOverride ??
+      (attacker ? this.effectEngine.hasBanish(attacker, this.state) : false);
 
     for (let i = 0; i < damage; i++) {
       // Win condition: If player has no life cards and takes damage, they lose
@@ -3235,6 +3243,8 @@ export class GameStateManager {
               this.state.currentCombat.remainingDamage = remaining;
               this.state.currentCombat.remainingDamagePlayerId = playerId;
               this.state.currentCombat.remainingDamageHasBanish = !!hasBanish;
+              this.state.currentCombat.remainingDamageIsDoubleAttack = !!isDoubleAttack;
+              this.state.currentCombat.remainingDamageOriginalLife = lifeBeforeDamage;
             }
             return; // Pause for trigger resolution
           }
@@ -3262,14 +3272,36 @@ export class GameStateManager {
       return false;
     }
 
-    const { remainingDamage, remainingDamagePlayerId } = this.state.currentCombat;
+    const {
+      attackerId,
+      remainingDamage,
+      remainingDamagePlayerId,
+      remainingDamageHasBanish,
+      remainingDamageIsDoubleAttack,
+      remainingDamageOriginalLife,
+    } = this.state.currentCombat;
     // Clear before calling takeDamage to avoid infinite loops
     this.state.currentCombat.remainingDamage = undefined;
     this.state.currentCombat.remainingDamagePlayerId = undefined;
     this.state.currentCombat.remainingDamageHasBanish = undefined;
+    this.state.currentCombat.remainingDamageIsDoubleAttack = undefined;
+    this.state.currentCombat.remainingDamageOriginalLife = undefined;
 
     if (remainingDamagePlayerId) {
-      this.takeDamage(remainingDamagePlayerId, remainingDamage, undefined, false);
+      // Preserve One Piece rule: Double Attack cannot deal lethal from exactly 1 life.
+      if (remainingDamageIsDoubleAttack && remainingDamageOriginalLife === 1) {
+        this.finalizeCombatCleanup();
+        return true;
+      }
+
+      const attacker = this.findCard(attackerId);
+      this.takeDamage(
+        remainingDamagePlayerId,
+        remainingDamage,
+        attacker,
+        remainingDamageIsDoubleAttack,
+        remainingDamageHasBanish
+      );
       // If another trigger was found, stay in TRIGGER_STEP
       if (this.state.phase === GamePhase.TRIGGER_STEP) {
         return true;
@@ -3493,9 +3525,9 @@ export class GameStateManager {
           card.keywords = card.keywords!.filter(k => k !== 'Frozen');
         } else {
           card.state = CardState.ACTIVE;
-          card.hasAttacked = false;
         }
       }
+      card.hasAttacked = false;
       card.activatedThisTurn = false;
     });
 
@@ -3797,8 +3829,7 @@ export class GameStateManager {
         if (
           !this.state.currentCombat ||
           (this.state.phase !== GamePhase.COUNTER_STEP &&
-            this.state.phase !== GamePhase.BLOCKER_STEP &&
-            this.state.phase !== GamePhase.TRIGGER_STEP)
+            this.state.phase !== GamePhase.BLOCKER_STEP)
         ) {
           return false;
         }

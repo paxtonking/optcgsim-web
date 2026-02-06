@@ -1169,6 +1169,160 @@ describe('Gameplay flow audit fixes', () => {
     expect(state.phase).toBe(GamePhase.TRIGGER_STEP);
   });
 
+  it('does not apply remaining Double Attack damage after trigger from exactly 1 life', () => {
+    const manager = new GameStateManager('game-double-attack-one-life', 'player1', 'player2');
+    manager.loadCardDefinitions([
+      createMockCardDefinition({
+        id: 'DOUBLE-ATTACKER',
+        keywords: ['Double Attack'],
+        effects: [],
+      }),
+      createMockCardDefinition({
+        id: 'LIFE-TRIGGER',
+        type: 'EVENT',
+        effects: [{
+          id: 'life-trigger-effect',
+          trigger: EffectTrigger.TRIGGER,
+          description: 'Trigger: Draw 1 card.',
+          effects: [{ type: EffectType.DRAW_CARDS, value: 1 }],
+        }],
+      }),
+    ]);
+
+    const state = manager.getState();
+    state.phase = GamePhase.COUNTER_STEP;
+    state.turn = 2;
+    state.activePlayerId = 'player1';
+
+    const attacker = createMockCard({
+      id: 'double-attacker',
+      cardId: 'DOUBLE-ATTACKER',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+      power: 7000,
+    });
+    const p1Leader = createMockCard({
+      id: 'p1-leader-da',
+      cardId: 'L1',
+      owner: 'player1',
+      zone: CardZone.LEADER,
+      state: CardState.ACTIVE,
+      power: 5000,
+    });
+    const p2Leader = createMockCard({
+      id: 'p2-leader-da',
+      cardId: 'L2',
+      owner: 'player2',
+      zone: CardZone.LEADER,
+      state: CardState.ACTIVE,
+      power: 5000,
+    });
+    const lifeTrigger = createMockCard({
+      id: 'life-trigger-da',
+      cardId: 'LIFE-TRIGGER',
+      owner: 'player2',
+      zone: CardZone.LIFE,
+      state: CardState.ACTIVE,
+      faceUp: false,
+    });
+
+    state.players.player1.leaderCard = p1Leader;
+    state.players.player2.leaderCard = p2Leader;
+    state.players.player1.field = [attacker];
+    state.players.player2.lifeCards = [lifeTrigger];
+    state.players.player2.life = 1;
+    state.currentCombat = {
+      attackerId: attacker.id,
+      targetId: p2Leader.id,
+      targetType: 'leader',
+      attackPower: 7000,
+      counterPower: 0,
+      effectBuffPower: 0,
+      isBlocked: false,
+    };
+
+    manager.resolveCombat();
+
+    expect(state.phase).toBe(GamePhase.TRIGGER_STEP);
+    expect(state.currentCombat?.remainingDamage).toBe(1);
+    expect(state.winner).toBeUndefined();
+
+    const passTriggerSuccess = manager.processAction({
+      id: 'pass-trigger-da',
+      type: ActionType.TRIGGER_LIFE,
+      playerId: 'player2',
+      timestamp: Date.now(),
+      data: { activate: false },
+    });
+
+    expect(passTriggerSuccess).toBe(true);
+    expect(state.phase).toBe(GamePhase.MAIN_PHASE);
+    expect(state.currentCombat).toBeUndefined();
+    expect(state.winner).toBeUndefined();
+    expect(state.players.player2.lifeCards).toHaveLength(0);
+  });
+
+  it('rejects RESOLVE_COMBAT while in TRIGGER_STEP', () => {
+    const manager = new GameStateManager('game-resolve-combat-trigger-step', 'player1', 'player2');
+    const state = createMockGameState({
+      phase: GamePhase.TRIGGER_STEP,
+      activePlayerId: 'player1',
+      currentCombat: {
+        attackerId: 'attacker',
+        targetId: 'defender',
+        targetType: 'leader',
+        attackPower: 5000,
+      },
+    });
+    manager.setState(state);
+
+    const success = manager.processAction({
+      id: 'resolve-in-trigger-step',
+      type: ActionType.RESOLVE_COMBAT,
+      playerId: 'player1',
+      timestamp: Date.now(),
+      data: {},
+    });
+
+    expect(success).toBe(false);
+    expect(state.currentCombat).toBeDefined();
+    expect(state.phase).toBe(GamePhase.TRIGGER_STEP);
+  });
+
+  it('clears hasAttacked when Frozen is consumed at start of turn', () => {
+    const manager = new GameStateManager('game-frozen-has-attacked', 'player1', 'player2');
+    const state = manager.getState();
+
+    const frozenCharacter = createMockCard({
+      id: 'frozen-character',
+      cardId: 'FROZEN-CHARACTER',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.RESTED,
+      keywords: ['Frozen'],
+      hasAttacked: true,
+    });
+
+    const drawCard = createMockCard({
+      id: 'filler-draw',
+      cardId: 'FILL',
+      owner: 'player1',
+      zone: CardZone.DECK,
+      state: CardState.ACTIVE,
+    });
+
+    state.turn = 1;
+    state.players.player1.field = [frozenCharacter];
+    state.players.player1.deck = [drawCard];
+
+    manager.startTurn('player1');
+
+    expect(frozenCharacter.keywords || []).not.toContain('Frozen');
+    expect(frozenCharacter.state).toBe(CardState.RESTED);
+    expect(frozenCharacter.hasAttacked).toBe(false);
+  });
+
   it('resolves non-power event counter effects immediately after use', () => {
     const manager = new GameStateManager('game-counter-immediate', 'player1', 'player2');
     manager.loadCardDefinitions([
