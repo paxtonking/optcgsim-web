@@ -20,7 +20,9 @@
   --main-row-card-gap: clamp(4px, 0.45vw, 7px);
   --main-row-side-pad: clamp(14px, 1.8vw, 24px);
   --main-row-gap: clamp(8px, 1vw, 12px);
-  --main-row-w: min(100%, calc(var(--main-row-card-span) + (var(--main-row-side-pad) * 2) + clamp(32px, 4vw, 64px)));
+  --main-row-min-w: calc(var(--main-row-card-span) + (var(--main-row-side-pad) * 2) + clamp(32px, 4vw, 64px));
+  --main-row-grow: max(0px, calc((100vw - 1500px) * 0.35));
+  --main-row-w: min(100%, calc(var(--main-row-min-w) + var(--main-row-grow)));
   --zone-character-w: var(--main-row-w);
   --zone-cost-min-h: calc(var(--card-h) * 0.82);
   --zone-label-inside-size: clamp(24px, calc(var(--card-w) * 0.58), 56px);
@@ -2460,7 +2462,9 @@
     --sidebar-w: clamp(220px, 24vw, 280px);
     --card-w: clamp(58px, 5.8vw, 96px);
     --main-row-side-pad: clamp(12px, 1.6vw, 18px);
-    --main-row-w: min(100%, calc(var(--main-row-card-span) + (var(--main-row-side-pad) * 2) + clamp(22px, 2.8vw, 44px)));
+    --main-row-min-w: calc(var(--main-row-card-span) + (var(--main-row-side-pad) * 2) + clamp(22px, 2.8vw, 44px));
+    --main-row-grow: 0px;
+    --main-row-w: min(100%, var(--main-row-min-w));
     --zone-char-min-h: calc(var(--card-h) + clamp(28px, 3.6vh, 38px));
     --zone-cost-min-h: calc(var(--card-h) * 0.76);
     --zone-label-inside-size: clamp(20px, calc(var(--card-w) * 0.5), 44px);
@@ -2474,7 +2478,9 @@
     grid-template-columns: 1fr;
     --sidebar-w: 0px;
     --main-row-side-pad: clamp(8px, 1.5vw, 14px);
-    --main-row-w: min(100%, calc(var(--main-row-card-span) + (var(--main-row-side-pad) * 2) + clamp(12px, 2vw, 24px)));
+    --main-row-min-w: calc(var(--main-row-card-span) + (var(--main-row-side-pad) * 2) + clamp(12px, 2vw, 24px));
+    --main-row-grow: 0px;
+    --main-row-w: min(100%, var(--main-row-min-w));
     --zone-char-min-h: calc(var(--card-h) + clamp(20px, 3vh, 28px));
     --zone-cost-min-h: calc(var(--card-h) * 0.7);
     --zone-label-inside-size: clamp(16px, calc(var(--card-w) * 0.42), 32px);
@@ -2496,7 +2502,9 @@
   .game-board {
     --card-w: clamp(48px, 6vw, 76px);
     --main-row-side-pad: clamp(6px, 1.2vw, 10px);
-    --main-row-w: min(100%, calc(var(--main-row-card-span) + (var(--main-row-side-pad) * 2) + clamp(8px, 1.5vw, 16px)));
+    --main-row-min-w: calc(var(--main-row-card-span) + (var(--main-row-side-pad) * 2) + clamp(8px, 1.5vw, 16px));
+    --main-row-grow: 0px;
+    --main-row-w: min(100%, var(--main-row-min-w));
     --zone-char-min-h: calc(var(--card-h) + clamp(16px, 2.2vh, 22px));
     --zone-col-w: clamp(74px, 10vw, 100px);
     --zone-cost-min-h: calc(var(--card-h) * 0.6);
