@@ -409,6 +409,7 @@ export class AIGameManager {
    */
   private createDeckFromTemplate(template: string[]): any[] {
     const cards: any[] = [];
+    const missingCardIds: string[] = [];
     template.forEach((cardId, index) => {
       const cardDef = cardLoaderService.getCard(cardId);
       if (cardDef) {
@@ -423,8 +424,18 @@ export class AIGameManager {
           traits: cardDef.traits,
           instanceId: `tut-${cardId}-${index}`
         });
+      } else {
+        missingCardIds.push(`${cardId}@${index}`);
       }
     });
+
+    if (missingCardIds.length > 0 || cards.length !== template.length) {
+      const missingSummary = missingCardIds.slice(0, 10).join(', ');
+      throw new Error(
+        `[AIGameManager] Tutorial deck template invalid: built ${cards.length}/${template.length} cards. Missing: ${missingSummary}`
+      );
+    }
+
     return cards;
   }
 
@@ -949,15 +960,41 @@ export class AIGameManager {
     if (!game) return;
 
     const state = game.stateManager.getState();
+    const aiId = game.aiPlayer.getPlayerId();
+    const humanPlayer = state.players[game.humanPlayerId];
 
-    // Get AI's defensive decision
-    const decision = game.aiPlayer.getNextAction(state);
+    // During early guided tutorial turns, force deterministic defensive passes so
+    // scripted attack outcomes (life loss + step progression) are guaranteed.
+    const shouldForceTutorialPass =
+      game.stateManager.getIsTutorial() &&
+      (humanPlayer?.turnCount ?? 0) <= 2;
+
+    let decision: { action: ActionType; data: any } | null = null;
+    if (shouldForceTutorialPass) {
+      if (state.phase === GamePhase.COUNTER_STEP) {
+        decision = { action: ActionType.PASS_COUNTER, data: {} };
+      } else if (state.phase === GamePhase.BLOCKER_STEP) {
+        decision = { action: ActionType.PASS_PRIORITY, data: {} };
+      } else if (state.phase === GamePhase.TRIGGER_STEP) {
+        decision = { action: ActionType.TRIGGER_LIFE, data: { activate: false } };
+      } else if (state.phase === GamePhase.COUNTER_EFFECT_STEP) {
+        const pendingCounter = state.pendingCounterEffects?.find(effect => effect.playerId === aiId);
+        decision = pendingCounter
+          ? { action: ActionType.SKIP_COUNTER_EFFECT, data: { effectId: pendingCounter.id } }
+          : { action: ActionType.PASS_COUNTER, data: {} };
+      } else {
+        decision = game.aiPlayer.getNextAction(state);
+      }
+    } else {
+      // Get AI's defensive decision
+      decision = game.aiPlayer.getNextAction(state);
+    }
 
     if (decision) {
       const aiAction: GameAction = {
         id: `ai-def-${Date.now()}`,
         type: decision.action,
-        playerId: game.aiPlayer.getPlayerId(),
+        playerId: aiId,
         timestamp: Date.now(),
         data: decision.data,
       };

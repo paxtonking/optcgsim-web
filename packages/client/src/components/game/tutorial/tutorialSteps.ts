@@ -12,6 +12,7 @@ export interface TutorialStep {
     type: string;
     cardId?: string;
     targetId?: string;
+    targetType?: 'leader' | 'character';
   } | null;
   /** Where to position the speech bubble relative to the highlight */
   bubblePosition: 'top' | 'bottom' | 'left' | 'right' | 'center';
@@ -156,7 +157,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     phase: 'TURN_2',
     highlightTarget: '[data-zone="leader"]',
     message: "Click on your Leader to attack with him! Then select the opponent's Leader as the target.",
-    requiredAction: { type: 'DECLARE_ATTACK' },
+    requiredAction: { type: 'DECLARE_ATTACK', targetType: 'leader' },
     bubblePosition: 'top',
   },
   {

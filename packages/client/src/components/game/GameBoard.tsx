@@ -1614,10 +1614,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   // Tutorial initialization
   const startTutorial = useTutorialStore((state) => state.startTutorial);
   const tutorialPrevTurnRef = useRef<number>(0);
+  const tutorialPrevOpponentLifeRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (isTutorial) {
       tutorialPrevTurnRef.current = 0;
+      tutorialPrevOpponentLifeRef.current = null;
       startTutorial();
     }
     return () => {
@@ -1660,6 +1662,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     if (!store.isActive) return;
 
     const myTurnCount = myPlayer?.turnCount || 0;
+    const opponentLife = opponent?.life;
+    const previousOpponentLife = tutorialPrevOpponentLifeRef.current;
 
     // Detect when player's turn starts (turn count increased and it's my turn)
     if (isMyTurn && myTurnCount > tutorialPrevTurnRef.current) {
@@ -1671,10 +1675,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       }
     }
 
-    // Detect state transitions for waitForState tutorial steps
+    // Detect tutorial progression that depends on live game state.
     const currentStep = store.getCurrentStep();
+    let shouldAdvance = false;
+
     if (currentStep?.waitForState) {
-      const shouldAdvance =
+      shouldAdvance =
         ((currentStep.id === 't1-ai-turn' || currentStep.id === 't2-ai-turn') &&
           isMyTurn &&
           phase === GamePhase.MAIN_PHASE) ||
@@ -1685,12 +1691,31 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           isMyTurn &&
           phase === GamePhase.MAIN_PHASE &&
           myTurnCount >= 4);
-
-      if (shouldAdvance) {
-        store.advanceStep();
-      }
     }
-  }, [isTutorial, gameState, isMyTurn, phase, myPlayer?.turnCount]);
+
+    if (!shouldAdvance && currentStep?.id === 't2-declare-attack') {
+      shouldAdvance =
+        typeof opponentLife === 'number' &&
+        typeof previousOpponentLife === 'number' &&
+        opponentLife < previousOpponentLife;
+    }
+
+    if (!shouldAdvance && (
+      currentStep?.id === 't1-end-turn' ||
+      currentStep?.id === 't2-end-turn' ||
+      currentStep?.id === 't3-end-turn'
+    )) {
+      shouldAdvance = !isMyTurn;
+    }
+
+    if (shouldAdvance) {
+      store.advanceStep();
+    }
+
+    if (typeof opponentLife === 'number') {
+      tutorialPrevOpponentLifeRef.current = opponentLife;
+    }
+  }, [isTutorial, gameState, isMyTurn, phase, myPlayer?.turnCount, opponent?.life]);
 
   // Track selected DON for attaching
   const [selectedDon, setSelectedDon] = useState<GameCardType | null>(null);
@@ -2661,7 +2686,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           if (card.owner === playerId && (card.zone === CardZone.LEADER || card.zone === CardZone.FIELD)) {
             // Allow selecting own card as attacker
           } else if (selectedCard && targetableCards.has(card.id)) {
-            // Allow selecting attack target
+            if (step.requiredAction.targetType === 'leader' && card.id !== opponent?.leaderCard?.id) {
+              return; // This tutorial step specifically requires targeting the opponent leader
+            }
+            // Allow selecting valid attack target
           } else {
             return; // Block other clicks
           }
@@ -2928,7 +2956,6 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         setIsAttackMode(false);
         setSelectedCard(null);
         setPinnedCard(null);
-        advanceTutorialForAction('DECLARE_ATTACK');
       }, 500);
 
       return;
@@ -3017,8 +3044,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   const handleEndTurn = useCallback(() => {
     if (!isTutorialActionAllowed('END_TURN')) return;
     endTurn();
-    advanceTutorialForAction('END_TURN');
-  }, [endTurn, isTutorialActionAllowed, advanceTutorialForAction]);
+  }, [endTurn, isTutorialActionAllowed]);
 
   // Character zone click handler - plays the pending character card
   const handleCharacterZoneClick = useCallback(() => {
