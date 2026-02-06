@@ -3191,7 +3191,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       myPlayer &&
       dealingPhase === 'waiting-mulligan';
 
-    if (!showingMulligan) {
+    const shouldRunTimer = showingMulligan && !isTutorial;
+
+    if (!shouldRunTimer) {
       // Reset timer when not in mulligan phase
       setMulliganTimer(20);
       return;
@@ -3211,7 +3213,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [phase, mulliganDecisionMade, myPlayer, dealingPhase, handleForceKeepHand]);
+  }, [phase, mulliganDecisionMade, myPlayer, dealingPhase, handleForceKeepHand, isTutorial]);
 
   // Trigger life dealing when game transitions from START_MULLIGAN to next phase
   useEffect(() => {
@@ -3680,14 +3682,15 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             <p className="mulligan-panel__subtitle">
               Review your starting hand. You may mulligan once for a new hand.
             </p>
-            {/* Timer bar */}
-            <div className="mulligan-panel__timer">
-              <span className="mulligan-panel__timer-text">{mulliganTimer}s</span>
-              <div
-                className={`mulligan-panel__timer-bar ${mulliganTimer <= 5 ? 'mulligan-panel__timer-bar--urgent' : ''}`}
-                style={{ width: `${(mulliganTimer / 20) * 100}%` }}
-              />
-            </div>
+            {!isTutorial && (
+              <div className="mulligan-panel__timer">
+                <span className="mulligan-panel__timer-text">{mulliganTimer}s</span>
+                <div
+                  className={`mulligan-panel__timer-bar ${mulliganTimer <= 5 ? 'mulligan-panel__timer-bar--urgent' : ''}`}
+                  style={{ width: `${(mulliganTimer / 20) * 100}%` }}
+                />
+              </div>
+            )}
             <div className="mulligan-panel__cards">
               {myPlayer.hand.map(card => (
                 <div key={card.id} className="mulligan-panel__card">
