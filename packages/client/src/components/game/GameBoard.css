@@ -33,6 +33,8 @@
   --life-stack-height: calc(var(--card-w) + clamp(105px, 11vh, 130px));
   --life-stack-first-top: calc(var(--card-h) * -0.04);
   --life-stack-step: calc(var(--card-h) * 0.14);
+  --pile-layer-step: clamp(2px, calc(var(--card-w) * 0.03), 4px);
+  --pile-count-offset: clamp(4px, calc(var(--card-w) * 0.08), 8px);
   --playmat-bleed: clamp(40px, 8vh, 85px);
   --layout-gap: clamp(8px, 1vw, 16px);
   --field-hand-gap: clamp(10px, 1.7vh, 16px);
@@ -498,7 +500,7 @@
   position: relative;
   width: var(--card-w);
   height: var(--card-h);
-  margin-left: -4px; /* Compensate for stacked layer offsets */
+  margin-left: calc(var(--pile-layer-step) * -1); /* Compensate for stacked layer offsets */
 }
 
 .don-deck-layer {
@@ -511,13 +513,13 @@
 }
 
 .don-deck-layer--2 {
-  top: -3px;
-  left: 3px;
+  top: calc(var(--pile-layer-step) * -1);
+  left: var(--pile-layer-step);
 }
 
 .don-deck-layer--3 {
-  top: -6px;
-  left: 6px;
+  top: calc(var(--pile-layer-step) * -2);
+  left: calc(var(--pile-layer-step) * 2);
 }
 
 .don-deck-top {
@@ -527,17 +529,17 @@
 
 .don-deck-count {
   position: absolute;
-  bottom: -8px;
-  right: -8px;
+  bottom: calc(var(--pile-count-offset) * -1);
+  right: calc(var(--pile-count-offset) * -1);
   background: #f1c40f;
   color: #000;
-  min-width: 20px;
-  height: 20px;
-  border-radius: 10px;
+  min-width: clamp(16px, calc(var(--card-w) * 0.2), 22px);
+  height: clamp(16px, calc(var(--card-w) * 0.2), 22px);
+  border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: clamp(9px, calc(var(--card-w) * 0.11), 12px);
   font-weight: bold;
   z-index: 10;
   opacity: 0;
@@ -1197,8 +1199,8 @@
 
 .card-pile__stack {
   position: relative;
-  width: 100px;
-  height: 140px;
+  width: var(--card-w);
+  height: var(--card-h);
 }
 
 .card-pile__layer {
@@ -1212,14 +1214,14 @@
 }
 
 .card-pile__layer--2 {
-  top: -2px;
-  left: 2px;
+  top: calc(var(--pile-layer-step) * -1);
+  left: var(--pile-layer-step);
   z-index: 1;
 }
 
 .card-pile__layer--3 {
-  top: -4px;
-  left: 4px;
+  top: calc(var(--pile-layer-step) * -2);
+  left: calc(var(--pile-layer-step) * 2);
   z-index: 0;
 }
 
@@ -1243,17 +1245,17 @@
 
 .card-pile__count {
   position: absolute;
-  bottom: -4px;
-  right: -4px;
+  bottom: calc(var(--pile-layer-step) * -1);
+  right: calc(var(--pile-layer-step) * -1);
   background: #e74c3c;
   color: #fff;
-  min-width: 18px;
-  height: 18px;
-  border-radius: 9px;
+  min-width: clamp(16px, calc(var(--card-w) * 0.2), 22px);
+  height: clamp(16px, calc(var(--card-w) * 0.2), 22px);
+  border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: clamp(9px, calc(var(--card-w) * 0.11), 12px);
   font-weight: bold;
   z-index: 10;
   opacity: 0;
