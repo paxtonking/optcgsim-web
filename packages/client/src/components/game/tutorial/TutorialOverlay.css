@@ -6,12 +6,6 @@
   pointer-events: none;
 }
 
-.tutorial-overlay__mask {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-}
-
 /* Pulsing highlight ring around the target element */
 .tutorial-overlay__highlight-ring {
   position: fixed;

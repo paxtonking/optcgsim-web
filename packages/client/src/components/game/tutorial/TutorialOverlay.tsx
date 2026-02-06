@@ -125,31 +125,6 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onSkip }) => {
 
   return (
     <div className="tutorial-overlay">
-      {/* Dark overlay with spotlight cutout */}
-      <svg className="tutorial-overlay__mask" width="100%" height="100%">
-        <defs>
-          <mask id="tutorial-spotlight">
-            <rect width="100%" height="100%" fill="white" />
-            {hasHighlight && (
-              <rect
-                x={highlightRect!.x - padding}
-                y={highlightRect!.y - padding}
-                width={highlightRect!.width + padding * 2}
-                height={highlightRect!.height + padding * 2}
-                rx="8"
-                fill="black"
-              />
-            )}
-          </mask>
-        </defs>
-        <rect
-          width="100%"
-          height="100%"
-          fill="rgba(0,0,0,0.55)"
-          mask="url(#tutorial-spotlight)"
-        />
-      </svg>
-
       {/* Highlight border ring */}
       {hasHighlight && (
         <div
