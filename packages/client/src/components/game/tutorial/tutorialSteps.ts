@@ -157,7 +157,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     phase: 'TURN_2',
     highlightTarget: '[data-zone="leader"]',
     message: "Click on your Leader to attack with him! Then select the opponent's Leader as the target.",
-    requiredAction: { type: 'DECLARE_ATTACK', targetType: 'leader' },
+    requiredAction: { type: 'DECLARE_ATTACK', cardId: 'ST01-001', targetType: 'leader' },
     bubblePosition: 'top',
   },
   {

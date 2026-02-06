@@ -1694,10 +1694,17 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     }
 
     if (!shouldAdvance && currentStep?.id === 't2-declare-attack') {
-      shouldAdvance =
+      const lifeReduced =
         typeof opponentLife === 'number' &&
         typeof previousOpponentLife === 'number' &&
         opponentLife < previousOpponentLife;
+
+      const leaderAttackDeclared =
+        gameState.currentCombat?.targetType === 'leader' &&
+        gameState.currentCombat.attackerId === myPlayer?.leaderCard?.id &&
+        gameState.currentCombat.targetId === opponent?.leaderCard?.id;
+
+      shouldAdvance = lifeReduced || leaderAttackDeclared;
     }
 
     if (!shouldAdvance && (
@@ -1715,7 +1722,16 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     if (typeof opponentLife === 'number') {
       tutorialPrevOpponentLifeRef.current = opponentLife;
     }
-  }, [isTutorial, gameState, isMyTurn, phase, myPlayer?.turnCount, opponent?.life]);
+  }, [
+    isTutorial,
+    gameState,
+    isMyTurn,
+    phase,
+    myPlayer?.turnCount,
+    myPlayer?.leaderCard?.id,
+    opponent?.life,
+    opponent?.leaderCard?.id,
+  ]);
 
   // Track selected DON for attaching
   const [selectedDon, setSelectedDon] = useState<GameCardType | null>(null);
@@ -2683,9 +2699,18 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         }
         // DECLARE_ATTACK: allow selecting own leader/character for attack, or selecting target
         else if (type === 'DECLARE_ATTACK') {
+          const requiresLeaderAttacker =
+            step.requiredAction.cardId === 'ST01-001' || step.id === 't2-declare-attack';
+
           if (card.owner === playerId && (card.zone === CardZone.LEADER || card.zone === CardZone.FIELD)) {
+            if (requiresLeaderAttacker && card.zone !== CardZone.LEADER) {
+              return; // This tutorial step specifically requires attacking with your leader
+            }
             // Allow selecting own card as attacker
           } else if (selectedCard && targetableCards.has(card.id)) {
+            if (requiresLeaderAttacker && selectedCard.zone !== CardZone.LEADER) {
+              return; // Only leader attacks are valid for this step
+            }
             if (step.requiredAction.targetType === 'leader' && card.id !== opponent?.leaderCard?.id) {
               return; // This tutorial step specifically requires targeting the opponent leader
             }
