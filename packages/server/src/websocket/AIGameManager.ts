@@ -945,10 +945,13 @@ export class AIGameManager {
     if (postSkipState.activePlayerId === game.aiPlayer.getPlayerId()) {
       // In tutorial Turn 3+, pause after combat resolves so player can read results.
       // The client will emit ai:tutorial-resume when the player clicks "Next".
+      // Only pause after defensive actions (counter/blocker), NOT after END_TURN
+      // which starts the AI's turn fresh.
       const aiTurnCount = postSkipState.players[game.aiPlayer.getPlayerId()]?.turnCount ?? 0;
       if (game.stateManager.getIsTutorial() &&
           postSkipState.phase === GamePhase.MAIN_PHASE &&
-          aiTurnCount >= 3) {
+          aiTurnCount >= 3 &&
+          processedAction.type !== ActionType.END_TURN) {
         game.tutorialAwaitingResume = true;
       } else {
         // Delay AI response for better UX (tracked for cleanup on disconnect)
