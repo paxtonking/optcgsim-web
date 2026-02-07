@@ -94,6 +94,18 @@
   background: #1d4ed8;
 }
 
+.tutorial-bubble__next-btn--end {
+  background: #16a34a;
+}
+
+.tutorial-bubble__next-btn--end:hover {
+  background: #15803d;
+}
+
+.tutorial-bubble__next-btn--end:active {
+  background: #166534;
+}
+
 /* Skip button */
 .tutorial-overlay__skip-btn {
   pointer-events: auto;

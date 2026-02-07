@@ -26,6 +26,8 @@ export interface TutorialStep {
   allowFreePlay?: boolean;
   /** If true, emit ai:tutorial-resume when the player advances past this step */
   resumeAI?: boolean;
+  /** If true, show "End Tutorial" button that ends the game */
+  endTutorial?: boolean;
 }
 
 export const TUTORIAL_STEPS: TutorialStep[] = [
@@ -302,9 +304,9 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     id: 'tutorial-complete',
     phase: 'TURN_3',
     highlightTarget: null,
-    message: "Excellent! You've learned the basics of the One Piece Card Game: playing characters with DON, attaching DON for power boosts, attacking, and defending with counters and blockers. The game will now continue as a normal match. Good luck!",
+    message: "Excellent! You've learned the basics of the One Piece Card Game: playing characters with DON, attaching DON for power boosts, attacking, and defending with counters and blockers.",
     requiredAction: null,
     bubblePosition: 'center',
-    hasNextButton: true,
+    endTutorial: true,
   },
 ];

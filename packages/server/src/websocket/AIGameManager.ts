@@ -194,6 +194,17 @@ export class AIGameManager {
     game.pendingTimeouts.push(timeout);
   }
 
+  /**
+   * Cancel all pending AI timeouts for a game (used when pausing for tutorial).
+   */
+  private clearPendingTimeouts(game: AIGameRoom): void {
+    if (game.pendingTimeouts.length > 0) {
+      console.log(`[AIGameManager] Clearing ${game.pendingTimeouts.length} pending timeouts for tutorial pause`);
+      game.pendingTimeouts.forEach(t => clearTimeout(t));
+      game.pendingTimeouts = [];
+    }
+  }
+
   private clearDisconnectTimeout(gameId: string): void {
     const timeout = this.disconnectTimeouts.get(gameId);
     if (!timeout) return;
@@ -967,6 +978,7 @@ export class AIGameManager {
           aiTurnCount === 3 &&
           processedAction.type !== ActionType.END_TURN) {
         game.tutorialAwaitingResume = true;
+        this.clearPendingTimeouts(game);
       } else if (inCombatPhase && game.stateManager.getIsTutorial()) {
         // Don't schedule — human needs to respond to combat first.
         // handleAction will schedule the AI when combat resolves.
@@ -1151,6 +1163,7 @@ export class AIGameManager {
             updatedState.phase === GamePhase.MAIN_PHASE &&
             aiTurnCount === 3) {
           game.tutorialAwaitingResume = true;
+          this.clearPendingTimeouts(game);
         } else {
           this.scheduleTrackedTimeout(gameId, () => {
             this.processAITurn(gameId);
@@ -1376,8 +1389,8 @@ export class AIGameManager {
     const game = this.games.get(gameId);
     if (!game) return;
 
-    // AI wins by default
-    void this.endGame(gameId, game.aiPlayer.getPlayerId(), 'surrender').catch(error => {
+    const reason = game.stateManager.getIsTutorial() ? 'tutorial' : 'surrender';
+    void this.endGame(gameId, game.aiPlayer.getPlayerId(), reason).catch(error => {
       console.error(`[AIGameManager] Failed to end surrendered AI game ${gameId}:`, error);
     });
   }

@@ -5,6 +5,7 @@ import './TutorialOverlay.css';
 
 interface TutorialOverlayProps {
   onSkip: () => void;
+  onEndTutorial: () => void;
 }
 
 interface Rect {
@@ -24,7 +25,7 @@ function rectsEqual(a: Rect | null, b: Rect | null): boolean {
   return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
 }
 
-export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onSkip }) => {
+export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onSkip, onEndTutorial }) => {
   const { isActive, getCurrentStep, advanceStep } = useTutorialStore();
   const rectRef = useRef<Rect | null>(null);
   const [, forceRender] = useReducer(x => x + 1, 0);
@@ -211,11 +212,15 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onSkip }) => {
         style={getBubbleStyle()}
       >
         <p className="tutorial-bubble__text">{step.message}</p>
-        {step.hasNextButton && (
+        {step.endTutorial ? (
+          <button className="tutorial-bubble__next-btn tutorial-bubble__next-btn--end" onClick={onEndTutorial}>
+            End Tutorial
+          </button>
+        ) : step.hasNextButton ? (
           <button className="tutorial-bubble__next-btn" onClick={handleNext}>
             Next
           </button>
-        )}
+        ) : null}
       </div>
 
       {/* Skip button */}

@@ -419,6 +419,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         win: "Your opponent surrendered.",
         lose: "You surrendered."
       },
+      'tutorial': {
+        win: "Tutorial Complete!",
+        lose: "Tutorial Complete!"
+      },
       'disconnect': {
         win: "Your opponent disconnected.",
         lose: "You disconnected."
@@ -4349,6 +4353,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               handleForceKeepHand();
             }
           }}
+          onEndTutorial={() => {
+            useTutorialStore.getState().skipTutorial();
+            getSocket().emit('ai:surrender');
+          }}
         />
       )}
 
@@ -4356,24 +4364,33 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       {gameOver && (
         <div className="game-over-overlay">
           <div className="game-over__content">
-            <h1 className={`game-over__title ${gameOver.winner === playerId ? 'game-over__title--victory' : 'game-over__title--defeat'}`}>
-              {gameOver.winner === playerId ? 'Victory!' : 'Defeat'}
-            </h1>
+            {gameOver.reason === 'tutorial' ? (
+              <>
+                <h1 className="game-over__title game-over__title--victory">Tutorial Complete!</h1>
+                <p className="game-over__reason">{getReasonMessage(true, gameOver.reason)}</p>
+              </>
+            ) : (
+              <>
+                <h1 className={`game-over__title ${gameOver.winner === playerId ? 'game-over__title--victory' : 'game-over__title--defeat'}`}>
+                  {gameOver.winner === playerId ? 'Victory!' : 'Defeat'}
+                </h1>
 
-            {/* Player Results */}
-            <div className="game-over__players">
-              <div className={`game-over__player ${gameOver.winner === playerId ? 'game-over__player--winner' : 'game-over__player--loser'}`}>
-                <span className="game-over__player-icon">{gameOver.winner === playerId ? '👑' : '💀'}</span>
-                <span className="game-over__player-name">{myPlayer?.username || 'You'}</span>
-              </div>
-              <span className="game-over__vs">vs</span>
-              <div className={`game-over__player ${gameOver.winner !== playerId ? 'game-over__player--winner' : 'game-over__player--loser'}`}>
-                <span className="game-over__player-icon">{gameOver.winner !== playerId ? '👑' : '💀'}</span>
-                <span className="game-over__player-name">{opponent?.username || 'Opponent'}</span>
-              </div>
-            </div>
+                {/* Player Results */}
+                <div className="game-over__players">
+                  <div className={`game-over__player ${gameOver.winner === playerId ? 'game-over__player--winner' : 'game-over__player--loser'}`}>
+                    <span className="game-over__player-icon">{gameOver.winner === playerId ? '👑' : '💀'}</span>
+                    <span className="game-over__player-name">{myPlayer?.username || 'You'}</span>
+                  </div>
+                  <span className="game-over__vs">vs</span>
+                  <div className={`game-over__player ${gameOver.winner !== playerId ? 'game-over__player--winner' : 'game-over__player--loser'}`}>
+                    <span className="game-over__player-icon">{gameOver.winner !== playerId ? '👑' : '💀'}</span>
+                    <span className="game-over__player-name">{opponent?.username || 'Opponent'}</span>
+                  </div>
+                </div>
 
-            <p className="game-over__reason">{getReasonMessage(gameOver.winner === playerId, gameOver.reason)}</p>
+                <p className="game-over__reason">{getReasonMessage(gameOver.winner === playerId, gameOver.reason)}</p>
+              </>
+            )}
 
             <button
               className="action-btn action-btn--end"
