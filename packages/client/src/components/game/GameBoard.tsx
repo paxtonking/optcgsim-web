@@ -1721,13 +1721,13 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     }
   }, [
     isTutorial,
-    gameState,
     isMyTurn,
     phase,
     myPlayer?.turnCount,
     myPlayer?.leaderCard?.id,
     opponent?.life,
     opponent?.leaderCard?.id,
+    gameState?.currentCombat?.attackerId,
   ]);
 
   // Track selected DON for attaching
@@ -2446,7 +2446,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
     // Cards with abilities require attack mode to be active (Attack button clicked)
     // Cards without abilities can attack immediately (current behavior)
-    if (selectedCardHasAbilities && !isAttackMode) return targets;
+    // Tutorial bypasses this — player is guided directly to attack without clicking Attack button
+    const tutorialAttackStep = isTutorial && useTutorialStore.getState().isActive &&
+      useTutorialStore.getState().getCurrentStep()?.requiredAction?.type === 'DECLARE_ATTACK';
+    if (selectedCardHasAbilities && !isAttackMode && !tutorialAttackStep) return targets;
 
     // Leader is always targetable
     if (opponent.leaderCard) {
@@ -2461,7 +2464,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     });
 
     return targets;
-  }, [opponent, selectedCardCanAttack, selectedCardHasAbilities, isAttackMode]);
+  }, [opponent, selectedCardCanAttack, selectedCardHasAbilities, isAttackMode, isTutorial]);
 
   // Calculate valid blockers during BLOCKER_STEP
   const validBlockers = useMemo(() => {
