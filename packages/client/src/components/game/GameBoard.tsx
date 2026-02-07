@@ -1619,6 +1619,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   // Ref holding a callback to fire once all card animations finish
   const tutorialAnimCallbackRef = useRef<(() => void) | null>(null);
   const tutorialAnimFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Minimum time before the animation-complete callback can fire (grace period for anims to start)
+  const tutorialAnimMinTimeRef = useRef<number>(0);
 
   useEffect(() => {
     if (isTutorial) {
@@ -1642,6 +1644,23 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
   useEffect(() => {
     if (!isTutorial || !allAnimationsEmpty || !tutorialAnimCallbackRef.current) return;
+    // Don't fire during the grace period — animations may not have started yet
+    const remaining = tutorialAnimMinTimeRef.current - Date.now();
+    if (remaining > 0) {
+      // Re-check after the grace period expires
+      const timer = setTimeout(() => {
+        if (tutorialAnimCallbackRef.current) {
+          const cb = tutorialAnimCallbackRef.current;
+          tutorialAnimCallbackRef.current = null;
+          if (tutorialAnimFallbackRef.current) {
+            clearTimeout(tutorialAnimFallbackRef.current);
+            tutorialAnimFallbackRef.current = null;
+          }
+          cb();
+        }
+      }, remaining);
+      return () => clearTimeout(timer);
+    }
     const cb = tutorialAnimCallbackRef.current;
     tutorialAnimCallbackRef.current = null;
     if (tutorialAnimFallbackRef.current) {
@@ -1651,34 +1670,24 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     cb();
   }, [isTutorial, allAnimationsEmpty]);
 
-  // Helper: run callback after all card animations finish (or after a safety fallback)
+  // Helper: run callback after all card animations finish (or after a safety fallback).
+  // Uses only refs — no closure dependency on animation arrays — to avoid stale reads.
   const afterAnimations = useCallback((callback: () => void) => {
-    // Small delay so animations have time to start (zone diff + setState)
-    setTimeout(() => {
-      // If animations already done, fire immediately
-      if (
-        animatingDon.length === 0 &&
-        animatingHandDraw.length === 0 &&
-        animatingMill.length === 0 &&
-        animatingLifeDamage.length === 0 &&
-        animatingDonRefresh.length === 0 &&
-        animatingDiscard.length === 0
-      ) {
-        callback();
-        return;
+    tutorialAnimCallbackRef.current = callback;
+    // Grace period so animation state has time to populate (zone diff → setState → re-render)
+    tutorialAnimMinTimeRef.current = Date.now() + 300;
+    // Safety fallback so we never get permanently stuck
+    if (tutorialAnimFallbackRef.current) {
+      clearTimeout(tutorialAnimFallbackRef.current);
+    }
+    tutorialAnimFallbackRef.current = setTimeout(() => {
+      if (tutorialAnimCallbackRef.current) {
+        const cb = tutorialAnimCallbackRef.current;
+        tutorialAnimCallbackRef.current = null;
+        cb();
       }
-      // Otherwise, wait for the useEffect above to fire when they empty out
-      tutorialAnimCallbackRef.current = callback;
-      // Safety fallback so we never get stuck
-      tutorialAnimFallbackRef.current = setTimeout(() => {
-        if (tutorialAnimCallbackRef.current) {
-          const cb = tutorialAnimCallbackRef.current;
-          tutorialAnimCallbackRef.current = null;
-          cb();
-        }
-      }, 2500);
-    }, 150);
-  }, [animatingDon, animatingHandDraw, animatingMill, animatingLifeDamage, animatingDonRefresh, animatingDiscard]);
+    }, 2500);
+  }, []);
 
   // Tutorial action gating - returns true if the action is allowed
   const isTutorialActionAllowed = useCallback((actionType: string, cardId?: string): boolean => {

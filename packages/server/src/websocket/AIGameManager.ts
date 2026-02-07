@@ -950,14 +950,13 @@ export class AIGameManager {
 
     // Check if it's now AI's turn OR if AI needs to respond defensively
     if (postSkipState.activePlayerId === game.aiPlayer.getPlayerId()) {
-      // In tutorial Turn 3+, pause after combat resolves so player can read results.
+      // In tutorial Turn 3, pause after combat resolves so player can read results.
       // The client will emit ai:tutorial-resume when the player clicks "Next".
-      // Only pause after defensive actions (counter/blocker), NOT after END_TURN
-      // which starts the AI's turn fresh.
+      // Only pause during AI turn 3 (the scripted combat teaching turn), not after.
       const aiTurnCount = postSkipState.players[game.aiPlayer.getPlayerId()]?.turnCount ?? 0;
       if (game.stateManager.getIsTutorial() &&
           postSkipState.phase === GamePhase.MAIN_PHASE &&
-          aiTurnCount >= 3 &&
+          aiTurnCount === 3 &&
           processedAction.type !== ActionType.END_TURN) {
         game.tutorialAwaitingResume = true;
       } else {
@@ -1139,7 +1138,7 @@ export class AIGameManager {
         const aiTurnCount = updatedState.players[aiId]?.turnCount ?? 0;
         if (game.stateManager.getIsTutorial() &&
             updatedState.phase === GamePhase.MAIN_PHASE &&
-            aiTurnCount >= 3) {
+            aiTurnCount === 3) {
           game.tutorialAwaitingResume = true;
         } else {
           this.scheduleTrackedTimeout(gameId, () => {
