@@ -1666,13 +1666,18 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     const opponentLife = opponent?.life;
     const previousOpponentLife = tutorialPrevOpponentLifeRef.current;
 
-    // Detect when player's turn starts (turn count increased and it's my turn)
+    // Detect when player's turn starts (turn count increased and it's my turn).
+    // Delay the phase jump so card animations (hand draw, DON) finish first.
     if (isMyTurn && myTurnCount > tutorialPrevTurnRef.current) {
       tutorialPrevTurnRef.current = myTurnCount;
-      if (myTurnCount === 2 && store.phase === 'TURN_1') {
-        store.jumpToPhase('TURN_2');
-      } else if (myTurnCount === 3 && store.phase === 'TURN_2') {
-        store.jumpToPhase('TURN_3');
+      const targetPhase = myTurnCount === 2 && store.phase === 'TURN_1' ? 'TURN_2' as const
+                        : myTurnCount === 3 && store.phase === 'TURN_2' ? 'TURN_3' as const
+                        : null;
+      if (targetPhase) {
+        setTimeout(() => {
+          const s = useTutorialStore.getState();
+          if (s.isActive) s.jumpToPhase(targetPhase);
+        }, 800);
       }
     }
 
@@ -1706,7 +1711,18 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       // Re-read store to prevent double-advance if another path already advanced
       const freshStep = useTutorialStore.getState().getCurrentStep();
       if (freshStep?.id === currentStep?.id) {
-        store.advanceStep();
+        // Delay AI-turn-end steps so card animations finish before the next popup
+        const isAITurnEnd = currentStep?.id === 't1-ai-turn' || currentStep?.id === 't2-ai-turn';
+        if (isAITurnEnd) {
+          setTimeout(() => {
+            const check = useTutorialStore.getState().getCurrentStep();
+            if (check?.id === currentStep?.id) {
+              store.advanceStep();
+            }
+          }, 800);
+        } else {
+          store.advanceStep();
+        }
       }
     }
 

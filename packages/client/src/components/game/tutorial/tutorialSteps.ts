@@ -273,7 +273,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 't3-use-blocker',
     phase: 'TURN_3',
-    highlightTarget: '[data-card-code="ST01-006"]',
+    highlightTarget: '.hand-zone [data-card-code="ST01-006"]',
     message: "Use your Blocker! Click Chopper on your field, then click Block to redirect the attack.",
     requiredAction: { type: 'SELECT_BLOCKER' },
     bubblePosition: 'top',

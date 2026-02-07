@@ -1001,6 +1001,17 @@ export class AIGameManager {
         game.stateManager.skipPlayEffect(state.pendingPlayEffects[0].id);
         skipped = true;
         state = game.stateManager.getState();
+      } else if (state.phase === GamePhase.TRIGGER_STEP) {
+        console.log('[AIGameManager] Tutorial: auto-skipping TRIGGER_STEP');
+        game.stateManager.processAction({
+          id: `ai-tut-trigger-${Date.now()}`,
+          type: ActionType.TRIGGER_LIFE,
+          playerId: state.activePlayerId || game.humanPlayerId,
+          timestamp: Date.now(),
+          data: { activate: false },
+        });
+        skipped = true;
+        state = game.stateManager.getState();
       } else {
         break;
       }
@@ -1116,6 +1127,18 @@ export class AIGameManager {
         this.scheduleTrackedTimeout(gameId, () => {
           this.processAIDefensiveAction(gameId);
         }, game.aiThinkDelay);
+      } else if (updatedState.activePlayerId === aiId) {
+        // Combat resolved and it's still AI's turn — continue or pause for tutorial
+        const aiTurnCount = updatedState.players[aiId]?.turnCount ?? 0;
+        if (game.stateManager.getIsTutorial() &&
+            updatedState.phase === GamePhase.MAIN_PHASE &&
+            aiTurnCount >= 3) {
+          game.tutorialAwaitingResume = true;
+        } else {
+          this.scheduleTrackedTimeout(gameId, () => {
+            this.processAITurn(gameId);
+          }, game.aiThinkDelay);
+        }
       }
     }
   }
