@@ -1613,6 +1613,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
   // Tutorial initialization
   const startTutorial = useTutorialStore((state) => state.startTutorial);
+  const tutorialStepIndex = useTutorialStore((state) => state.currentStepIndex);
   const tutorialPrevTurnRef = useRef<number>(0);
   const tutorialPrevOpponentLifeRef = useRef<number | null>(null);
 
@@ -1721,6 +1722,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     opponent?.life,
     opponent?.leaderCard?.id,
     gameState?.currentCombat?.attackerId,
+    tutorialStepIndex,
   ]);
 
   // Track selected DON for attaching
