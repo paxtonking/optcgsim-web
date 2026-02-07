@@ -296,7 +296,6 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     requiredAction: null,
     bubblePosition: 'center',
     hasNextButton: true,
-    resumeAI: true,
   },
 
   // ========== TUTORIAL COMPLETE ==========
