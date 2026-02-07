@@ -41,6 +41,7 @@ interface AIGameRoom {
   startedAt: Date;
   aiThinkDelay: number; // Delay in ms to simulate AI thinking
   pendingTimeouts: NodeJS.Timeout[]; // Track scheduled timeouts for cleanup
+  tutorialAwaitingResume?: boolean; // Pause AI between tutorial attacks until client signals
 }
 
 interface PendingAIGame {
@@ -559,6 +560,21 @@ export class AIGameManager {
   }
 
   /**
+   * Resume the tutorial AI after the client signals the player has read the result step.
+   */
+  resumeTutorial(socket: AuthenticatedSocket) {
+    const gameId = this.playerToGame.get(socket.userId!);
+    if (!gameId) return;
+    const game = this.games.get(gameId);
+    if (!game || !game.tutorialAwaitingResume) return;
+
+    game.tutorialAwaitingResume = false;
+    this.scheduleTrackedTimeout(gameId, () => {
+      this.processTutorialAITurn(gameId);
+    }, game.aiThinkDelay);
+  }
+
+  /**
    * Helper: get card definition by ID
    */
   private getCardDef(cardId: string) {
@@ -927,10 +943,19 @@ export class AIGameManager {
 
     // Check if it's now AI's turn OR if AI needs to respond defensively
     if (postSkipState.activePlayerId === game.aiPlayer.getPlayerId()) {
-      // Delay AI response for better UX (tracked for cleanup on disconnect)
-      this.scheduleTrackedTimeout(gameId, () => {
-        this.processAITurn(gameId);
-      }, game.aiThinkDelay);
+      // In tutorial Turn 3+, pause after combat resolves so player can read results.
+      // The client will emit ai:tutorial-resume when the player clicks "Next".
+      const aiTurnCount = postSkipState.players[game.aiPlayer.getPlayerId()]?.turnCount ?? 0;
+      if (game.stateManager.getIsTutorial() &&
+          postSkipState.phase === GamePhase.MAIN_PHASE &&
+          aiTurnCount >= 3) {
+        game.tutorialAwaitingResume = true;
+      } else {
+        // Delay AI response for better UX (tracked for cleanup on disconnect)
+        this.scheduleTrackedTimeout(gameId, () => {
+          this.processAITurn(gameId);
+        }, game.aiThinkDelay);
+      }
     } else if (this.needsAIDefensiveAction(postSkipState, game)) {
       // AI needs to respond to counter step or blocker step
       this.scheduleTrackedTimeout(gameId, () => {

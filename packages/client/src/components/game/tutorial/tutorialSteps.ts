@@ -24,6 +24,8 @@ export interface TutorialStep {
   waitForState?: boolean;
   /** If true, allow normal gameplay interactions during this step */
   allowFreePlay?: boolean;
+  /** If true, emit ai:tutorial-resume when the player advances past this step */
+  resumeAI?: boolean;
 }
 
 export const TUTORIAL_STEPS: TutorialStep[] = [
@@ -256,6 +258,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     requiredAction: null,
     bubblePosition: 'center',
     hasNextButton: true,
+    resumeAI: true,
   },
   // --- Attack 2: Teach Blocker ---
   {
@@ -291,6 +294,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     requiredAction: null,
     bubblePosition: 'center',
     hasNextButton: true,
+    resumeAI: true,
   },
 
   // ========== TUTORIAL COMPLETE ==========

@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useReducer } from 'react';
+import React, { useEffect, useRef, useReducer, useCallback } from 'react';
 import { useTutorialStore } from '../../../stores/tutorialStore';
+import { getSocket } from '../../../services/socket';
 import './TutorialOverlay.css';
 
 interface TutorialOverlayProps {
@@ -125,6 +126,13 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onSkip }) => {
     };
   }, []);
 
+  const handleNext = useCallback(() => {
+    if (step?.resumeAI) {
+      getSocket().emit('ai:tutorial-resume');
+    }
+    advanceStep();
+  }, [step, advanceStep]);
+
   if (!isActive || !step) return null;
 
   const highlightRect = rectRef.current;
@@ -204,7 +212,7 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ onSkip }) => {
       >
         <p className="tutorial-bubble__text">{step.message}</p>
         {step.hasNextButton && (
-          <button className="tutorial-bubble__next-btn" onClick={() => advanceStep()}>
+          <button className="tutorial-bubble__next-btn" onClick={handleNext}>
             Next
           </button>
         )}

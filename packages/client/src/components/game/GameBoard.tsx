@@ -4275,6 +4275,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         <TutorialOverlay
           onSkip={() => {
             useTutorialStore.getState().skipTutorial();
+            // Unblock the server in case the AI is paused between attacks
+            getSocket().emit('ai:tutorial-resume');
             if (phase === GamePhase.START_MULLIGAN && !mulliganDecisionMade) {
               handleForceKeepHand();
             }
