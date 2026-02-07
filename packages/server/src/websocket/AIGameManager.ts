@@ -510,14 +510,17 @@ export class AIGameManager {
       const success = game.stateManager.processAction(aiAction);
       if (success) game.actionLog.push(aiAction);
 
-      const updatedState = game.stateManager.getState();
-
       const humanSocket = this.io.sockets.sockets.get(game.humanSocketId);
       if (humanSocket) {
         humanSocket.emit('game:state', {
           gameState: game.stateManager.sanitizeStateForPlayer(game.humanPlayerId)
         });
+
+        // Auto-skip effect phases that AI actions might trigger
+        this.autoSkipTutorialEffects(game, humanSocket);
       }
+
+      const updatedState = game.stateManager.getState();
 
       if (updatedState.phase === GamePhase.GAME_OVER && updatedState.winner) {
         void this.endGame(gameId, updatedState.winner, 'normal').catch(error => {
@@ -899,18 +902,31 @@ export class AIGameManager {
     socket.emit('game:state', { gameState: game.stateManager.sanitizeStateForPlayer(game.humanPlayerId) });
     callback?.({ success: true });
 
+    // Auto-skip effect phases during guided tutorial turns
+    this.autoSkipTutorialEffects(game, socket);
+    // Re-read state after potential auto-skips
+    const postSkipState = game.stateManager.getState();
+
+    // Check for game end after effect skips
+    if (postSkipState.phase === GamePhase.GAME_OVER && postSkipState.winner) {
+      void this.endGame(gameId, postSkipState.winner, 'normal').catch(error => {
+        console.error(`[AIGameManager] Failed to end game ${gameId}:`, error);
+      });
+      return;
+    }
+
     // Check if it's now AI's turn OR if AI needs to respond defensively
-    if (updatedState.activePlayerId === game.aiPlayer.getPlayerId()) {
+    if (postSkipState.activePlayerId === game.aiPlayer.getPlayerId()) {
       // Delay AI response for better UX (tracked for cleanup on disconnect)
       this.scheduleTrackedTimeout(gameId, () => {
         this.processAITurn(gameId);
       }, game.aiThinkDelay);
-    } else if (this.needsAIDefensiveAction(updatedState, game)) {
+    } else if (this.needsAIDefensiveAction(postSkipState, game)) {
       // AI needs to respond to counter step or blocker step
       this.scheduleTrackedTimeout(gameId, () => {
         this.processAIDefensiveAction(gameId);
       }, game.aiThinkDelay);
-    } else if (updatedState.phase === GamePhase.START_MULLIGAN) {
+    } else if (postSkipState.phase === GamePhase.START_MULLIGAN) {
       // Still in mulligan phase - AI may need to make its mulligan decision
       // This handles the case where human goes first and makes their decision
       // before AI's initial timer fires
@@ -922,6 +938,42 @@ export class AIGameManager {
         }, game.aiThinkDelay);
       }
     }
+  }
+
+  /**
+   * Auto-skip ATTACK_EFFECT_STEP and PLAY_EFFECT_STEP during guided tutorial turns.
+   * Returns true if any effects were skipped (state was re-emitted to client).
+   */
+  private autoSkipTutorialEffects(game: AIGameRoom, socket: Socket): boolean {
+    if (!game.stateManager.getIsTutorial()) return false;
+    const humanPlayer = game.stateManager.getState().players[game.humanPlayerId];
+    if ((humanPlayer?.turnCount ?? 0) > 3) return false;
+
+    let skipped = false;
+    let state = game.stateManager.getState();
+
+    while (true) {
+      if (state.phase === GamePhase.ATTACK_EFFECT_STEP && state.pendingAttackEffects?.length) {
+        console.log('[AIGameManager] Tutorial: auto-skipping ATTACK_EFFECT_STEP');
+        game.stateManager.skipAttackEffect(state.pendingAttackEffects[0].id);
+        skipped = true;
+        state = game.stateManager.getState();
+      } else if (state.phase === GamePhase.PLAY_EFFECT_STEP && state.pendingPlayEffects?.length) {
+        console.log('[AIGameManager] Tutorial: auto-skipping PLAY_EFFECT_STEP');
+        game.stateManager.skipPlayEffect(state.pendingPlayEffects[0].id);
+        skipped = true;
+        state = game.stateManager.getState();
+      } else {
+        break;
+      }
+    }
+
+    if (skipped) {
+      socket.emit('game:state', {
+        gameState: game.stateManager.sanitizeStateForPlayer(game.humanPlayerId)
+      });
+    }
+    return skipped;
   }
 
   /**

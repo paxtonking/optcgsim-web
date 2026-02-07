@@ -8,6 +8,7 @@ interface TutorialStore {
   currentStepIndex: number;
   phase: TutorialPhase;
   steps: TutorialStep[];
+  lastAdvanceTime: number;
 
   startTutorial: () => void;
   advanceStep: () => void;
@@ -22,20 +23,24 @@ export const useTutorialStore = create<TutorialStore>((set, get) => ({
   currentStepIndex: 0,
   phase: 'INACTIVE',
   steps: TUTORIAL_STEPS,
+  lastAdvanceTime: 0,
 
   startTutorial: () => set({
     isActive: true,
     currentStepIndex: 0,
     phase: 'MULLIGAN',
+    lastAdvanceTime: 0,
   }),
 
   advanceStep: () => {
-    const { currentStepIndex, steps } = get();
+    const now = Date.now();
+    const { currentStepIndex, steps, lastAdvanceTime } = get();
+    if (now - lastAdvanceTime < 100) return; // Debounce duplicate calls
     const nextIndex = currentStepIndex + 1;
     if (nextIndex >= steps.length) {
-      set({ phase: 'FREE_PLAY', isActive: false });
+      set({ phase: 'FREE_PLAY', isActive: false, lastAdvanceTime: now });
     } else {
-      set({ currentStepIndex: nextIndex, phase: steps[nextIndex].phase });
+      set({ currentStepIndex: nextIndex, phase: steps[nextIndex].phase, lastAdvanceTime: now });
     }
   },
 
@@ -62,5 +67,6 @@ export const useTutorialStore = create<TutorialStore>((set, get) => ({
     isActive: false,
     currentStepIndex: 0,
     phase: 'INACTIVE',
+    lastAdvanceTime: 0,
   }),
 }));

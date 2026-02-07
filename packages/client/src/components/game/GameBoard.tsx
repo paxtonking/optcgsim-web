@@ -1704,16 +1704,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       shouldAdvance = lifeReduced;
     }
 
-    if (!shouldAdvance && (
-      currentStep?.id === 't1-end-turn' ||
-      currentStep?.id === 't2-end-turn' ||
-      currentStep?.id === 't3-end-turn'
-    )) {
-      shouldAdvance = !isMyTurn;
-    }
-
     if (shouldAdvance) {
-      store.advanceStep();
+      // Re-read store to prevent double-advance if another path already advanced
+      const freshStep = useTutorialStore.getState().getCurrentStep();
+      if (freshStep?.id === currentStep?.id) {
+        store.advanceStep();
+      }
     }
 
     if (typeof opponentLife === 'number') {
