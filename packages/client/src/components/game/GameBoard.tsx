@@ -1616,6 +1616,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   const tutorialStepIndex = useTutorialStore((state) => state.currentStepIndex);
   const tutorialPrevTurnRef = useRef<number>(0);
   const tutorialPrevOpponentLifeRef = useRef<number | null>(null);
+  // Ref holding a callback to fire once all card animations finish
+  const tutorialAnimCallbackRef = useRef<(() => void) | null>(null);
+  const tutorialAnimFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (isTutorial) {
@@ -1627,6 +1630,55 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       useTutorialStore.getState().reset();
     };
   }, [isTutorial, startTutorial]);
+
+  // Watch all animation arrays — fire pending tutorial callback once they all empty out
+  const allAnimationsEmpty =
+    animatingDon.length === 0 &&
+    animatingHandDraw.length === 0 &&
+    animatingMill.length === 0 &&
+    animatingLifeDamage.length === 0 &&
+    animatingDonRefresh.length === 0 &&
+    animatingDiscard.length === 0;
+
+  useEffect(() => {
+    if (!isTutorial || !allAnimationsEmpty || !tutorialAnimCallbackRef.current) return;
+    const cb = tutorialAnimCallbackRef.current;
+    tutorialAnimCallbackRef.current = null;
+    if (tutorialAnimFallbackRef.current) {
+      clearTimeout(tutorialAnimFallbackRef.current);
+      tutorialAnimFallbackRef.current = null;
+    }
+    cb();
+  }, [isTutorial, allAnimationsEmpty]);
+
+  // Helper: run callback after all card animations finish (or after a safety fallback)
+  const afterAnimations = useCallback((callback: () => void) => {
+    // Small delay so animations have time to start (zone diff + setState)
+    setTimeout(() => {
+      // If animations already done, fire immediately
+      if (
+        animatingDon.length === 0 &&
+        animatingHandDraw.length === 0 &&
+        animatingMill.length === 0 &&
+        animatingLifeDamage.length === 0 &&
+        animatingDonRefresh.length === 0 &&
+        animatingDiscard.length === 0
+      ) {
+        callback();
+        return;
+      }
+      // Otherwise, wait for the useEffect above to fire when they empty out
+      tutorialAnimCallbackRef.current = callback;
+      // Safety fallback so we never get stuck
+      tutorialAnimFallbackRef.current = setTimeout(() => {
+        if (tutorialAnimCallbackRef.current) {
+          const cb = tutorialAnimCallbackRef.current;
+          tutorialAnimCallbackRef.current = null;
+          cb();
+        }
+      }, 2500);
+    }, 150);
+  }, [animatingDon, animatingHandDraw, animatingMill, animatingLifeDamage, animatingDonRefresh, animatingDiscard]);
 
   // Tutorial action gating - returns true if the action is allowed
   const isTutorialActionAllowed = useCallback((actionType: string, cardId?: string): boolean => {
@@ -1674,10 +1726,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                         : myTurnCount === 3 && store.phase === 'TURN_2' ? 'TURN_3' as const
                         : null;
       if (targetPhase) {
-        setTimeout(() => {
+        afterAnimations(() => {
           const s = useTutorialStore.getState();
           if (s.isActive) s.jumpToPhase(targetPhase);
-        }, 800);
+        });
       }
     }
 
@@ -1714,12 +1766,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         // Delay AI-turn-end steps so card animations finish before the next popup
         const isAITurnEnd = currentStep?.id === 't1-ai-turn' || currentStep?.id === 't2-ai-turn';
         if (isAITurnEnd) {
-          setTimeout(() => {
+          afterAnimations(() => {
             const check = useTutorialStore.getState().getCurrentStep();
             if (check?.id === currentStep?.id) {
               store.advanceStep();
             }
-          }, 800);
+          });
         } else {
           store.advanceStep();
         }
@@ -1739,6 +1791,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     opponent?.leaderCard?.id,
     gameState?.currentCombat?.attackerId,
     tutorialStepIndex,
+    afterAnimations,
   ]);
 
   // Track selected DON for attaching

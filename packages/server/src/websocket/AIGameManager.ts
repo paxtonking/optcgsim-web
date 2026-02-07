@@ -446,6 +446,8 @@ export class AIGameManager {
   private processTutorialAITurn(gameId: string) {
     const game = this.games.get(gameId);
     if (!game) return;
+    // Prevent stale scheduled timeouts from bypassing the tutorial pause
+    if (game.tutorialAwaitingResume) return;
 
     const state = game.stateManager.getState();
     const aiId = game.aiPlayer.getPlayerId();
@@ -540,8 +542,13 @@ export class AIGameManager {
         return;
       }
 
-      // Continue if still AI's turn
-      if (updatedState.activePlayerId === aiId) {
+      // Continue if still AI's turn and not waiting for the human to respond
+      const waitingForHuman =
+        updatedState.phase === GamePhase.BLOCKER_STEP ||
+        updatedState.phase === GamePhase.COUNTER_STEP ||
+        updatedState.phase === GamePhase.COUNTER_EFFECT_STEP ||
+        updatedState.phase === GamePhase.TRIGGER_STEP;
+      if (updatedState.activePlayerId === aiId && !waitingForHuman) {
         this.scheduleTrackedTimeout(gameId, () => {
           this.processTutorialAITurn(gameId);
         }, game.aiThinkDelay);
