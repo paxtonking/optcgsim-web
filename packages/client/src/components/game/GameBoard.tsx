@@ -1747,10 +1747,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     let shouldAdvance = false;
 
     if (currentStep?.waitForState) {
+      // AI turn-end steps (t1-ai-turn, t2-ai-turn) are handled by the jumpToPhase
+      // logic above, which correctly checks myTurnCount increased. Do NOT check
+      // isMyTurn here — it's still true from the old state before the server
+      // processes END_TURN, causing immediate false advancement.
       shouldAdvance =
-        ((currentStep.id === 't1-ai-turn' || currentStep.id === 't2-ai-turn') &&
-          isMyTurn &&
-          phase === GamePhase.MAIN_PHASE) ||
         ((currentStep.id === 't3-ai-attacks' || currentStep.id === 't3-watch-attack-2') &&
           !isMyTurn &&
           (phase === GamePhase.BLOCKER_STEP || phase === GamePhase.COUNTER_STEP));
@@ -1772,18 +1773,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       // Re-read store to prevent double-advance if another path already advanced
       const freshStep = useTutorialStore.getState().getCurrentStep();
       if (freshStep?.id === currentStep?.id) {
-        // Delay AI-turn-end steps so card animations finish before the next popup
-        const isAITurnEnd = currentStep?.id === 't1-ai-turn' || currentStep?.id === 't2-ai-turn';
-        if (isAITurnEnd) {
-          afterAnimations(() => {
-            const check = useTutorialStore.getState().getCurrentStep();
-            if (check?.id === currentStep?.id) {
-              store.advanceStep();
-            }
-          });
-        } else {
-          store.advanceStep();
-        }
+        store.advanceStep();
       }
     }
 

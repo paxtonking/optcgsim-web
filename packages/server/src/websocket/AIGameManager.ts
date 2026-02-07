@@ -954,11 +954,22 @@ export class AIGameManager {
       // The client will emit ai:tutorial-resume when the player clicks "Next".
       // Only pause during AI turn 3 (the scripted combat teaching turn), not after.
       const aiTurnCount = postSkipState.players[game.aiPlayer.getPlayerId()]?.turnCount ?? 0;
+      // During tutorial combat, don't schedule AI turns when waiting for human
+      // response (BLOCKER/COUNTER steps). activePlayerId stays as AI throughout
+      // combat, so without this check we'd schedule stale processAITurn timeouts.
+      const inCombatPhase =
+        postSkipState.phase === GamePhase.BLOCKER_STEP ||
+        postSkipState.phase === GamePhase.COUNTER_STEP ||
+        postSkipState.phase === GamePhase.COUNTER_EFFECT_STEP ||
+        postSkipState.phase === GamePhase.TRIGGER_STEP;
       if (game.stateManager.getIsTutorial() &&
           postSkipState.phase === GamePhase.MAIN_PHASE &&
           aiTurnCount === 3 &&
           processedAction.type !== ActionType.END_TURN) {
         game.tutorialAwaitingResume = true;
+      } else if (inCombatPhase && game.stateManager.getIsTutorial()) {
+        // Don't schedule — human needs to respond to combat first.
+        // handleAction will schedule the AI when combat resolves.
       } else {
         // Delay AI response for better UX (tracked for cleanup on disconnect)
         this.scheduleTrackedTimeout(gameId, () => {
