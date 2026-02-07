@@ -476,20 +476,30 @@ export class AIGameManager {
         decision = { action: ActionType.END_TURN, data: {} };
       }
     } else {
-      // Turn 3+: attack with leader if possible, then fall through to normal AI
+      // Turn 3+: attack with leader first, then character, then end turn
       if (state.phase === GamePhase.MAIN_PHASE) {
         const aiLeader = aiPlayer.leaderCard;
         const humanLeader = state.players[game.humanPlayerId]?.leaderCard;
 
         if (aiLeader && humanLeader && aiLeader.state === CardState.ACTIVE) {
+          // Leader attacks first
           decision = {
             action: ActionType.DECLARE_ATTACK,
             data: { attackerId: aiLeader.id, targetId: humanLeader.id, targetType: 'leader' }
           };
+        } else if (humanLeader) {
+          // Leader rested — try character attack
+          const activeChar = aiPlayer.field.find(c => c.state === CardState.ACTIVE);
+          if (activeChar) {
+            decision = {
+              action: ActionType.DECLARE_ATTACK,
+              data: { attackerId: activeChar.id, targetId: humanLeader.id, targetType: 'leader' }
+            };
+          } else {
+            decision = { action: ActionType.END_TURN, data: {} };
+          }
         } else {
-          // Fall through to normal AI for remaining actions
-          const aiDecision = game.aiPlayer.getNextAction(state);
-          decision = aiDecision ? { action: aiDecision.action, data: aiDecision.data } : null;
+          decision = { action: ActionType.END_TURN, data: {} };
         }
       } else {
         // Use normal AI logic for non-main phases after turn 3

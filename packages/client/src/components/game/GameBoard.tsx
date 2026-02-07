@@ -1684,12 +1684,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         ((currentStep.id === 't1-ai-turn' || currentStep.id === 't2-ai-turn') &&
           isMyTurn &&
           phase === GamePhase.MAIN_PHASE) ||
-        (currentStep.id === 't3-ai-attacks' &&
+        ((currentStep.id === 't3-ai-attacks' || currentStep.id === 't3-watch-attack-2') &&
           !isMyTurn &&
-          (phase === GamePhase.BLOCKER_STEP || phase === GamePhase.COUNTER_STEP)) ||
-        (currentStep.id === 't3-let-resolve' &&
-          isMyTurn &&
-          phase === GamePhase.MAIN_PHASE);
+          (phase === GamePhase.BLOCKER_STEP || phase === GamePhase.COUNTER_STEP));
     }
 
     if (!shouldAdvance && currentStep?.id === 't2-declare-attack') {
@@ -2715,6 +2712,14 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             return; // Block other clicks
           }
         }
+        // USE_COUNTER: allow clicking hand cards to pin for counter selection
+        else if (type === 'USE_COUNTER' && card.zone === CardZone.HAND && phase === GamePhase.COUNTER_STEP) {
+          // Allow pin for counter selection
+        }
+        // SELECT_BLOCKER: allow clicking own field characters to pin for blocker selection
+        else if (type === 'SELECT_BLOCKER' && card.zone === CardZone.FIELD && card.owner === playerId && phase === GamePhase.BLOCKER_STEP) {
+          // Allow pin for blocker selection
+        }
         else {
           return; // Block all other clicks during tutorial
         }
@@ -3067,6 +3072,32 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     endTurn();
     advanceTutorialForAction('END_TURN');
   }, [endTurn, isTutorialActionAllowed, advanceTutorialForAction]);
+
+  // Tutorial-gated combat modal handlers
+  const handleTutorialSelectBlocker = useCallback((blockerId: string) => {
+    if (!isTutorialActionAllowed('SELECT_BLOCKER')) return;
+    selectBlocker(blockerId);
+    advanceTutorialForAction('SELECT_BLOCKER');
+  }, [selectBlocker, isTutorialActionAllowed, advanceTutorialForAction]);
+
+  const handleTutorialPassBlocker = useCallback(() => {
+    if (!isTutorialActionAllowed('PASS_BLOCKER')) return;
+    passBlocker();
+    advanceTutorialForAction('PASS_BLOCKER');
+  }, [passBlocker, isTutorialActionAllowed, advanceTutorialForAction]);
+
+  const handleTutorialUseCounter = useCallback((cardIds: string[]) => {
+    if (!isTutorialActionAllowed('USE_COUNTER')) return;
+    useCounter(cardIds);
+    playSound('counter');
+    advanceTutorialForAction('USE_COUNTER');
+  }, [useCounter, playSound, isTutorialActionAllowed, advanceTutorialForAction]);
+
+  const handleTutorialPassCounter = useCallback(() => {
+    if (!isTutorialActionAllowed('PASS_COUNTER')) return;
+    passCounter();
+    advanceTutorialForAction('PASS_COUNTER');
+  }, [passCounter, isTutorialActionAllowed, advanceTutorialForAction]);
 
   // Character zone click handler - plays the pending character card
   const handleCharacterZoneClick = useCallback(() => {
@@ -3653,10 +3684,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             onPass={pass}
             onKeepHand={handleKeepHand}
             onMulligan={handleMulligan}
-            onUseCounter={() => handleUseCounter([])}
-            onPassCounter={passCounter}
-            onSelectBlocker={() => {/* TODO: Open blocker selection UI */}}
-            onPassBlocker={passBlocker}
+            onUseCounter={isTutorial ? () => handleTutorialUseCounter([]) : () => handleUseCounter([])}
+            onPassCounter={isTutorial ? handleTutorialPassCounter : passCounter}
+            onSelectBlocker={isTutorial ? () => handleTutorialSelectBlocker('') : () => {/* TODO: Open blocker selection UI */}}
+            onPassBlocker={isTutorial ? handleTutorialPassBlocker : passBlocker}
             onActivateTrigger={() => activateTrigger('')}
             onPassTrigger={passTrigger}
             showAttackButton={selectedCardHasAbilities}
@@ -4174,10 +4205,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           isDefender={isDefender}
           pinnedCard={pinnedCard}
           isAttackerUnblockable={isAttackerUnblockable}
-          onUseCounter={handleUseCounter}
-          onPassCounter={passCounter}
-          onSelectBlocker={selectBlocker}
-          onPassBlocker={passBlocker}
+          onUseCounter={isTutorial ? handleTutorialUseCounter : handleUseCounter}
+          onPassCounter={isTutorial ? handleTutorialPassCounter : passCounter}
+          onSelectBlocker={isTutorial ? handleTutorialSelectBlocker : selectBlocker}
+          onPassBlocker={isTutorial ? handleTutorialPassBlocker : passBlocker}
           onCardHover={handleCardHover}
         />
       )}
