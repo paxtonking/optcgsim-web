@@ -1689,22 +1689,19 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           (phase === GamePhase.BLOCKER_STEP || phase === GamePhase.COUNTER_STEP)) ||
         (currentStep.id === 't3-let-resolve' &&
           isMyTurn &&
-          phase === GamePhase.MAIN_PHASE &&
-          myTurnCount >= 4);
+          phase === GamePhase.MAIN_PHASE);
     }
 
     if (!shouldAdvance && currentStep?.id === 't2-declare-attack') {
+      // Only advance once combat fully resolves and opponent actually lost life.
+      // Do NOT advance on leaderAttackDeclared — combat phases (blocker/counter)
+      // are still active and blocking the step would freeze the game.
       const lifeReduced =
         typeof opponentLife === 'number' &&
         typeof previousOpponentLife === 'number' &&
         opponentLife < previousOpponentLife;
 
-      const leaderAttackDeclared =
-        gameState.currentCombat?.targetType === 'leader' &&
-        gameState.currentCombat.attackerId === myPlayer?.leaderCard?.id &&
-        gameState.currentCombat.targetId === opponent?.leaderCard?.id;
-
-      shouldAdvance = lifeReduced || leaderAttackDeclared;
+      shouldAdvance = lifeReduced;
     }
 
     if (!shouldAdvance && (
@@ -3069,7 +3066,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   const handleEndTurn = useCallback(() => {
     if (!isTutorialActionAllowed('END_TURN')) return;
     endTurn();
-  }, [endTurn, isTutorialActionAllowed]);
+    advanceTutorialForAction('END_TURN');
+  }, [endTurn, isTutorialActionAllowed, advanceTutorialForAction]);
 
   // Character zone click handler - plays the pending character card
   const handleCharacterZoneClick = useCallback(() => {

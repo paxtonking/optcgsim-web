@@ -139,7 +139,7 @@ const TUTORIAL_AI_DECK: string[] = [
   'ST02-006', // Koby
   'ST02-003', // Urouge
   'ST02-002', // Vito
-  'ST02-005', // Killer
+  'ST02-006', // Koby (no trigger - safe for tutorial Turn 2 attack)
   // Draw pile
   'ST02-011', // Heat - AI Turn 1 draw
   'ST02-008', // Apoo - AI Turn 2 draw
@@ -151,11 +151,11 @@ const TUTORIAL_AI_DECK: string[] = [
   ...Array(3).fill('ST02-015'), // Scalpel x3 (1 in hand = 4 total)
   ...Array(2).fill('ST02-002'), // Vito x2 (2 in life = 4 total)
   ...Array(4).fill('ST02-003'), // Urouge x4 (already 1 in life)
-  ...Array(3).fill('ST02-005'), // Killer x3 (1 in life = 4 total)
-  ...Array(4).fill('ST02-006'), // Koby x4 (already 1 in life)
+  ...Array(4).fill('ST02-005'), // Killer x4 (0 in life now)
+  ...Array(3).fill('ST02-006'), // Koby x3 (2 in life = 4+1 total needs adjustment)
   ...Array(4).fill('ST02-007'), // Bonney x4
   ...Array(4).fill('ST02-009'), // Law x4
-  ...Array(2).fill('ST02-010'), // Hawkins x2
+  ...Array(3).fill('ST02-010'), // Hawkins x3
 ];
 
 export class AIGameManager {
