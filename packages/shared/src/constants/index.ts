@@ -64,6 +64,7 @@ export const CARD_SETS = [
   { code: 'OP07', name: '500 Years in the Future', releaseDate: '2024-02-24' },
   { code: 'OP08', name: 'Two Legends', releaseDate: '2024-05-25' },
   { code: 'OP09', name: 'The Four Emperors', releaseDate: '2024-08-31' },
+  { code: 'EB03', name: 'One Piece Heroines Edition', releaseDate: '2025-05-24' },
   // Add more sets as needed
 ] as const;
 
