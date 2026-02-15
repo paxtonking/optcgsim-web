@@ -3178,6 +3178,9 @@ export class GameStateManager {
       if (player.leaderCard) {
         player.leaderCard.temporaryKeywords = [];
       }
+      if (player.stage) {
+        player.stage.temporaryKeywords = [];
+      }
     }
 
     // Clear THIS_BATTLE power buffs from all cards
@@ -3354,6 +3357,9 @@ export class GameStateManager {
       }
       if (player.leaderCard) {
         player.leaderCard.temporaryKeywords = [];
+      }
+      if (player.stage) {
+        player.stage.temporaryKeywords = [];
       }
     }
 
@@ -3598,6 +3604,19 @@ export class GameStateManager {
           );
         }
       }
+      // Clear from stage card
+      if (player.stage) {
+        if (player.stage.powerBuffs) {
+          player.stage.powerBuffs = player.stage.powerBuffs.filter(
+            buff => buff.duration !== 'THIS_TURN'
+          );
+        }
+        if (player.stage.grantedEffects) {
+          player.stage.grantedEffects = player.stage.grantedEffects.filter(
+            effect => keepGrantedEffect(effect)
+          );
+        }
+      }
     }
   }
 
@@ -3628,6 +3647,19 @@ export class GameStateManager {
         // Clear granted effects
         if (card.grantedEffects) {
           card.grantedEffects = card.grantedEffects.filter(
+            effect => effect.duration !== 'THIS_BATTLE'
+          );
+        }
+      }
+      // Clear from stage card
+      if (player.stage) {
+        if (player.stage.powerBuffs) {
+          player.stage.powerBuffs = player.stage.powerBuffs.filter(
+            buff => buff.duration !== 'THIS_BATTLE'
+          );
+        }
+        if (player.stage.grantedEffects) {
+          player.stage.grantedEffects = player.stage.grantedEffects.filter(
             effect => effect.duration !== 'THIS_BATTLE'
           );
         }

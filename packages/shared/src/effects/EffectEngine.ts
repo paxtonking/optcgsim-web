@@ -236,6 +236,12 @@ export class EffectEngine {
         triggered.push(...cardEffects);
       });
 
+      // Check stage card
+      if (player.stage) {
+        const stageEffects = this.getTriggeredEffects(player.stage, player, event, gameState);
+        triggered.push(...stageEffects);
+      }
+
       // Check hand for counter effects
       if (event.type === EffectTrigger.COUNTER) {
         player.hand.forEach(card => {
