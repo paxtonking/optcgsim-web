@@ -3700,7 +3700,8 @@ export class GameStateManager {
         ...player.deck,
         ...player.lifeCards,
         ...player.donField,
-        player.leaderCard
+        player.leaderCard,
+        player.stage
       ].filter(Boolean) as GameCard[];
 
       const card = allCards.find(c => c.id === cardId);
@@ -3718,7 +3719,8 @@ export class GameStateManager {
         ...player.deck,
         ...player.lifeCards,
         ...player.donField,
-        player.leaderCard
+        player.leaderCard,
+        player.stage
       ].filter(Boolean) as GameCard[];
 
       if (allCards.some(c => c.id === cardId)) {
