@@ -543,6 +543,13 @@ export class GameStateManager {
     const cardDef = this.effectEngine.getCardDefinition(card.cardId);
     const cardCost = card.modifiedCost ?? cardDef?.cost ?? 0;
 
+    // Check field character limit (max 5 characters on field)
+    if (targetZone === CardZone.FIELD && cardDef?.type === 'CHARACTER') {
+      if (player.field.length >= DEFAULT_GAME_CONFIG.maxFieldCharacters) {
+        return false; // Field is full
+      }
+    }
+
     // Check if player has enough ACTIVE DON to pay the cost
     const activeDon = player.donField.filter(don => don.state === CardState.ACTIVE);
     if (activeDon.length < cardCost) {
@@ -3102,7 +3109,7 @@ export class GameStateManager {
   public resolveCombat(): void {
     if (!this.state.currentCombat) return;
 
-    const { attackerId, targetId, targetType, attackPower, counterPower = 0, effectBuffPower = 0 } = this.state.currentCombat;
+    const { attackerId, targetId, targetType, attackPower, counterPower = 0 } = this.state.currentCombat;
 
     if (!targetId) {
       console.warn('[resolveCombat] No targetId in combat info');
@@ -3128,11 +3135,11 @@ export class GameStateManager {
           damageMultiplier = 2;
         }
 
-        // Check if attack succeeds (include base power, buffs, and attached DON for defender)
+        // Check if attack succeeds (getEffectivePower includes base, buffs, DON, and THIS_BATTLE buffs)
         const leaderPower = targetPlayer.leaderCard
           ? this.getEffectivePower(targetPlayer.leaderCard)
           : 0;
-        if (attackPower >= leaderPower + counterPower + effectBuffPower) {
+        if (attackPower >= leaderPower + counterPower) {
           // Deal damage
           this.takeDamage(targetPlayer.id, damageMultiplier, attacker, hasDoubleAttack);
 
@@ -3150,8 +3157,8 @@ export class GameStateManager {
       // Battle with character
       const target = this.findCard(targetId!);
       if (target) {
-        // Include base power, buffs, and attached DON for defender
-        const targetPower = this.getEffectivePower(target) + (counterPower || 0) + (effectBuffPower || 0);
+        // getEffectivePower includes base, buffs, DON, and THIS_BATTLE buffs from counter events
+        const targetPower = this.getEffectivePower(target) + (counterPower || 0);
         if (attackPower >= targetPower) {
           // Trigger PRE_KO before the KO happens (allows prevention effects)
           const preKoTrigger: TriggerEvent = {
@@ -3596,6 +3603,14 @@ export class GameStateManager {
       card.activatedThisTurn = false;
     });
 
+    // Untap stage card so REST_SELF abilities can be reused each turn
+    if (player.stage && player.stage.state === CardState.RESTED) {
+      player.stage.state = CardState.ACTIVE;
+    }
+    if (player.stage) {
+      player.stage.activatedThisTurn = false;
+    }
+
     // Untap DON! (all DON should be in cost area now after refresh phase)
     player.donField.forEach(don => {
       if (don.state === CardState.RESTED) {
@@ -3734,10 +3749,9 @@ export class GameStateManager {
       })
       .reduce((sum, buff) => sum + buff.value, 0);
 
-    // DON bonus (+1000 per attached DON) - only applies on the card owner's turn
+    // DON bonus (+1000 per attached DON) - applies at all times while attached
     const attachedDon = this.getAttachedDon(card.id);
-    const isOwnersTurn = card.owner === this.state.activePlayerId;
-    const donBonus = isOwnersTurn ? (attachedDon.length * 1000) : 0;
+    const donBonus = attachedDon.length * 1000;
 
     return base + buffTotal + donBonus;
   }
@@ -5031,6 +5045,13 @@ export class GameStateManager {
             console.log('[resolveDeckReveal] Added to hand:', card.cardId);
             break;
           case 'PLAY_TO_FIELD':
+            // Check field character limit
+            if (player.field.length >= DEFAULT_GAME_CONFIG.maxFieldCharacters) {
+              // Field full - put card back in deck
+              player.deck.splice(cardIndex, 0, card);
+              console.warn('[resolveDeckReveal] Field full, cannot play character');
+              break;
+            }
             card.zone = CardZone.FIELD;
             card.state = CardState.ACTIVE;
             card.turnPlayed = this.state.turn;

@@ -457,13 +457,15 @@ export interface GameConfig {
   startingHand: number;
   maxDon: number;
   donPerTurn: number;
+  maxFieldCharacters: number;
 }
 
 export const DEFAULT_GAME_CONFIG: GameConfig = {
   maxLife: 5,
   startingHand: 5,
   maxDon: 10,
-  donPerTurn: 2
+  donPerTurn: 2,
+  maxFieldCharacters: 5
 };
 
 // Socket event types for multiplayer

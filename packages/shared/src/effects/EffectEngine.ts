@@ -25,6 +25,7 @@ import {
   GamePhase,
   PowerBuff,
   BuffDuration,
+  DEFAULT_GAME_CONFIG,
 } from '../types/game';
 
 // Card definition with effects (from database)
@@ -1583,6 +1584,13 @@ export class EffectEngine {
 
           // Play to appropriate zone based on card type
           if (cardDef?.type === 'CHARACTER') {
+            // Check field character limit
+            if (sourcePlayer.field.length >= DEFAULT_GAME_CONFIG.maxFieldCharacters) {
+              // Field full - return card to hand
+              sourcePlayer.hand.splice(handIndex, 0, cardToPlay);
+              console.warn('[PLAY_FROM_HAND] Field full, cannot play character');
+              return;
+            }
             cardToPlay.zone = CardZone.FIELD;
             cardToPlay.state = CardState.ACTIVE;
             cardToPlay.turnPlayed = gameState.turn;
@@ -1656,6 +1664,12 @@ export class EffectEngine {
 
           // Play to appropriate zone based on card type
           if (cardDef?.type === 'CHARACTER') {
+            // Check field character limit
+            if (sourcePlayer.field.length >= DEFAULT_GAME_CONFIG.maxFieldCharacters) {
+              sourcePlayer.trash.splice(trashIndex, 0, cardToPlay);
+              console.warn('[PLAY_FROM_TRASH] Field full, cannot play character');
+              return;
+            }
             cardToPlay.zone = CardZone.FIELD;
             // Check if should be rested (some effects play rested)
             cardToPlay.state = action.playRested ? CardState.RESTED : CardState.ACTIVE;
@@ -1705,6 +1719,12 @@ export class EffectEngine {
 
           // Play to appropriate zone based on card type
           if (cardDef?.type === 'CHARACTER') {
+            // Check field character limit
+            if (sourcePlayer.field.length >= DEFAULT_GAME_CONFIG.maxFieldCharacters) {
+              sourcePlayer.deck.splice(deckIndex, 0, cardToPlay);
+              console.warn('[PLAY_FROM_DECK] Field full, cannot play character');
+              return;
+            }
             cardToPlay.zone = CardZone.FIELD;
             // Check if should be rested (some effects play rested)
             cardToPlay.state = action.playRested ? CardState.RESTED : CardState.ACTIVE;
