@@ -1002,6 +1002,44 @@ export class GameStateManager {
   }
 
   /**
+   * Fire ON_PLAY (and related) triggers for any cards that were played to
+   * the field/stage as part of an effect resolution.  Inspects the
+   * StateChange array returned by EffectEngine.resolveEffect().
+   */
+  private firePlayTriggersFromChanges(changes: StateChange[], playerId: string): void {
+    for (const change of changes) {
+      if (change.type !== 'CARD_MOVED') continue;
+      if (change.to !== CardZone.FIELD && change.to !== CardZone.STAGE) continue;
+
+      const cardId = change.cardId;
+      if (!cardId) continue;
+
+      // ON_PLAY — the played card's own [On Play] effects
+      this.processTriggers({
+        type: EffectTrigger.ON_PLAY,
+        cardId,
+        playerId,
+      });
+
+      // DEPLOYED_FROM_HAND — only when card actually came from hand
+      if (change.from === CardZone.HAND) {
+        this.processTriggers({
+          type: EffectTrigger.DEPLOYED_FROM_HAND,
+          cardId,
+          playerId,
+        });
+      }
+
+      // OPPONENT_DEPLOYS — notify opponent's cards
+      this.processTriggers({
+        type: EffectTrigger.OPPONENT_DEPLOYS,
+        cardId,
+        playerId,
+      });
+    }
+  }
+
+  /**
    * Check if effect conditions are met (e.g., "If your Leader is [Imu]")
    */
   private checkEffectConditions(effect: CardEffectDefinition, playerId: string, sourceCard?: GameCard): boolean {
@@ -1129,6 +1167,7 @@ export class GameStateManager {
       : effect;
 
     const result = this.effectEngine.resolveEffect(effectToResolve, context);
+    this.firePlayTriggersFromChanges(result.changes, sourcePlayer.id);
     if (result.childEffects?.length) {
       this.processChildEffects(result.childEffects, sourcePlayer.id, sourceCard.id);
     }
@@ -2714,6 +2753,9 @@ export class GameStateManager {
     // Resolve the effect
     const result = this.effectEngine.resolveEffect(this.stripPrepaidCosts(activateEffect), context);
     console.log('[resolveActivateEffect] Effect result:', result);
+
+    // Fire ON_PLAY triggers for any cards played to field by this effect
+    this.firePlayTriggersFromChanges(result.changes, pendingEffect.playerId);
 
     // Process childEffects if any
     if (result.childEffects && result.childEffects.length > 0) {
@@ -4371,6 +4413,9 @@ export class GameStateManager {
     const result = this.effectEngine.resolveEffect(this.stripPrepaidCosts(activateEffect), context);
     console.log('[ActivateAbility] Effect result:', result);
 
+    // Fire ON_PLAY triggers for any cards played to field by this effect
+    this.firePlayTriggersFromChanges(result.changes, playerId);
+
     // Process childEffects if any
     if (result.childEffects && result.childEffects.length > 0) {
       console.log('[ActivateAbility] Processing', result.childEffects.length, 'childEffects');
@@ -4990,6 +5035,9 @@ export class GameStateManager {
             card.state = CardState.ACTIVE;
             card.turnPlayed = this.state.turn;
             player.field.push(card);
+            // Fire play triggers for card played from deck
+            this.processTriggers({ type: EffectTrigger.ON_PLAY, cardId: card.id, playerId: pending.playerId });
+            this.processTriggers({ type: EffectTrigger.OPPONENT_DEPLOYS, cardId: card.id, playerId: pending.playerId });
             break;
           case 'ADD_TO_LIFE':
             card.zone = CardZone.LIFE;
