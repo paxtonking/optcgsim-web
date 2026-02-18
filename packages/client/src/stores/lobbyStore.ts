@@ -48,8 +48,12 @@ interface LobbyStore {
   // Selected deck
   selectedDeckId: string | null;
 
+  // Selected AI opponent deck (null = Random)
+  selectedAIDeckId: string | null;
+
   // Actions
   setSelectedDeck: (deckId: string | null) => void;
+  setSelectedAIDeck: (deckId: string | null) => void;
 
   // Lobby actions
   createLobby: (isRanked?: boolean) => void;
@@ -90,10 +94,15 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
   aiDifficulty: null,
   aiError: null,
   selectedDeckId: null,
+  selectedAIDeckId: null,
   tutorialGameId: null,
 
   setSelectedDeck: (deckId) => {
     set({ selectedDeckId: deckId });
+  },
+
+  setSelectedAIDeck: (deckId) => {
+    set({ selectedAIDeckId: deckId });
   },
 
   createLobby: async (isRanked = false) => {
@@ -233,7 +242,7 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
   },
 
   startAIGame: async (difficulty: AIDifficulty) => {
-    const { selectedDeckId } = get();
+    const { selectedDeckId, selectedAIDeckId } = get();
     if (!selectedDeckId) {
       set({ aiError: 'Please select a deck first' });
       return;
@@ -251,11 +260,26 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
       }
     }
 
+    // Sync AI deck if a specific one is selected
+    let aiServerDeckId: string | undefined;
+    if (selectedAIDeckId) {
+      aiServerDeckId = useDeckStore.getState().getServerDeckId(selectedAIDeckId) ?? undefined;
+      if (!aiServerDeckId) {
+        set({ aiGameStatus: 'starting', aiDifficulty: difficulty, aiError: null });
+        aiServerDeckId = (await useDeckStore.getState().saveDeckToServer(selectedAIDeckId)) ?? undefined;
+        if (!aiServerDeckId) {
+          set({ aiError: 'Failed to sync AI deck to server. Please check deck validity.', aiGameStatus: 'idle' });
+          return;
+        }
+      }
+    }
+
     set({ aiGameStatus: 'starting', aiDifficulty: difficulty, aiError: null });
 
     socketService.emit('ai:start', {
       deckId: serverDeckId,
       difficulty,
+      ...(aiServerDeckId ? { aiDeckId: aiServerDeckId } : {}),
     });
   },
 
@@ -300,6 +324,7 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
       aiGameId: null,
       aiDifficulty: null,
       aiError: null,
+      selectedAIDeckId: null,
       tutorialGameId: null,
     });
   },

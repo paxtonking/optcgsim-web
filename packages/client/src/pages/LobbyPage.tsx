@@ -214,10 +214,18 @@ function AIPanel() {
     aiDifficulty,
     aiError,
     selectedDeckId,
+    selectedAIDeckId,
+    setSelectedAIDeck,
     startAIGame,
     startTutorialGame,
     tutorialGameId,
   } = useLobbyStore();
+  const { decks } = useDeckStore();
+
+  const validDecks = decks.filter(deck => {
+    const cardCount = deck.cards.reduce((s, c) => s + c.count, 0);
+    return deck.leader && cardCount === 50;
+  });
 
   // Compute disabled state before any narrowing
   const isStarting = aiGameStatus === 'starting';
@@ -273,6 +281,61 @@ function AIPanel() {
       {aiError && (
         <p className="text-red-400 text-sm mb-4">{aiError}</p>
       )}
+
+      {/* Opponent's Deck Selector */}
+      <div className="mb-4">
+        <h3 className="text-sm font-medium text-gray-300 mb-2">Opponent's Deck</h3>
+        <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+          {/* Random option */}
+          <div
+            onClick={() => setSelectedAIDeck(null)}
+            className={`
+              flex items-center gap-3 p-2.5 rounded-lg transition-all cursor-pointer
+              ${selectedAIDeckId === null
+                ? 'bg-red-600/30 border-2 border-red-500'
+                : 'bg-gray-700 hover:bg-gray-600 border-2 border-transparent'}
+            `}
+          >
+            <div className="w-8 h-8 rounded bg-gray-600 flex items-center justify-center text-lg flex-shrink-0">
+              ?
+            </div>
+            <div className="flex-1 text-left min-w-0">
+              <p className="font-medium text-white text-sm">Random</p>
+              <p className="text-xs text-gray-400">Starter deck (Red or Green)</p>
+            </div>
+            {selectedAIDeckId === null && (
+              <span className="text-green-400">&#10003;</span>
+            )}
+          </div>
+
+          {/* Player's decks */}
+          {validDecks.map(deck => (
+            <div
+              key={deck.id}
+              onClick={() => setSelectedAIDeck(deck.id)}
+              className={`
+                flex items-center gap-3 p-2.5 rounded-lg transition-all cursor-pointer
+                ${selectedAIDeckId === deck.id
+                  ? 'bg-red-600/30 border-2 border-red-500'
+                  : 'bg-gray-700 hover:bg-gray-600 border-2 border-transparent'}
+              `}
+            >
+              {deck.leader && (
+                <CardDisplay card={deck.leader} size="sm" />
+              )}
+              <div className="flex-1 text-left min-w-0">
+                <p className="font-medium text-white text-sm truncate">{deck.name}</p>
+                <p className="text-xs text-gray-400 truncate">
+                  {deck.leader?.name || 'No leader'}
+                </p>
+              </div>
+              {selectedAIDeckId === deck.id && (
+                <span className="text-green-400">&#10003;</span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Tutorial Button */}
       <div className="mb-4">

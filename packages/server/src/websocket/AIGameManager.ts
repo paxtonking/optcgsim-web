@@ -36,6 +36,7 @@ interface AIGameRoom {
   humanDeckId: string;
   aiPlayer: AIService;
   aiDeckId: string;
+  aiDeckFromPlayer: boolean; // true = load from DB using human's userId, false = hardcoded template
   stateManager: GameStateManager;
   actionLog: GameAction[];
   startedAt: Date;
@@ -52,6 +53,7 @@ interface PendingAIGame {
   humanUsername: string;
   aiPlayer: AIService;
   aiDeckId: string;
+  aiDeckFromPlayer: boolean; // true = load from DB using human's userId, false = hardcoded template
   difficulty: 'basic' | 'medium' | 'hard';
   firstChoiceTimeoutId?: NodeJS.Timeout;
 }
@@ -242,7 +244,8 @@ export class AIGameManager {
     socket: AuthenticatedSocket,
     deckId: string,
     difficulty: 'basic' | 'medium' | 'hard' = 'basic',
-    callback?: (response: { success: boolean; gameId?: string; error?: string }) => void
+    callback?: (response: { success: boolean; gameId?: string; error?: string }) => void,
+    aiDeckId?: string,
   ) {
     if (!socket.userId) {
       callback?.({ success: false, error: 'Not authenticated' });
@@ -268,9 +271,17 @@ export class AIGameManager {
       console.log('[AIGameManager] Created gameId:', createdGameId);
       const aiPlayer = createAIPlayer(difficulty);
 
-      // Select random AI deck
-      const aiDeckKeys = Object.keys(AI_DECKS);
-      const aiDeckId = aiDeckKeys[Math.floor(Math.random() * aiDeckKeys.length)];
+      // Use player-selected AI deck, or fall back to random hardcoded deck
+      let resolvedAIDeckId: string;
+      let aiDeckFromPlayer: boolean;
+      if (aiDeckId) {
+        resolvedAIDeckId = aiDeckId;
+        aiDeckFromPlayer = true;
+      } else {
+        const aiDeckKeys = Object.keys(AI_DECKS);
+        resolvedAIDeckId = aiDeckKeys[Math.floor(Math.random() * aiDeckKeys.length)];
+        aiDeckFromPlayer = false;
+      }
 
       // Create pending game for first choice
       const pending: PendingAIGame = {
@@ -280,7 +291,8 @@ export class AIGameManager {
         humanDeckId: deckId,
         humanUsername: socket.username || 'Player',
         aiPlayer,
-        aiDeckId,
+        aiDeckId: resolvedAIDeckId,
+        aiDeckFromPlayer,
         difficulty,
       };
 
@@ -371,6 +383,7 @@ export class AIGameManager {
         humanDeckId: 'tutorial',
         aiPlayer,
         aiDeckId: 'tutorial',
+        aiDeckFromPlayer: false,
         stateManager,
         actionLog: [],
         startedAt: new Date(),
@@ -675,9 +688,15 @@ export class AIGameManager {
       const humanDeck = await this.loadPlayerDeck(pending.humanPlayerId, pending.humanDeckId);
       console.log(`[AIGameManager] Human deck loaded with ${humanDeck.length} cards`);
 
-      // Create AI deck from template
-      const aiDeck = this.createAIDeck(pending.aiDeckId);
-      console.log(`[AIGameManager] AI deck created with ${aiDeck.length} cards`);
+      // Load AI deck: from player's saved deck or from hardcoded template
+      let aiDeck;
+      if (pending.aiDeckFromPlayer) {
+        aiDeck = await this.loadPlayerDeck(pending.humanPlayerId, pending.aiDeckId);
+        console.log(`[AIGameManager] AI deck loaded from player's saved deck with ${aiDeck.length} cards`);
+      } else {
+        aiDeck = this.createAIDeck(pending.aiDeckId);
+        console.log(`[AIGameManager] AI deck created from template with ${aiDeck.length} cards`);
+      }
 
       // Setup players
       console.log(`[AIGameManager] Setting up players...`);
@@ -696,6 +715,7 @@ export class AIGameManager {
       humanDeckId: pending.humanDeckId,
       aiPlayer: pending.aiPlayer,
       aiDeckId: pending.aiDeckId,
+      aiDeckFromPlayer: pending.aiDeckFromPlayer,
       stateManager,
       actionLog: [],
       startedAt: new Date(),

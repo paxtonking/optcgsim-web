@@ -383,14 +383,15 @@ export function setupWebSocket(io: SocketServer) {
       }
       const parsed = z.object({
         deckId: z.string().min(1),
+        aiDeckId: z.string().min(1).optional(),
         difficulty: z.enum(['basic', 'medium', 'hard']).optional(),
       }).safeParse(data);
       if (!parsed.success) {
         callback?.({ success: false, error: 'Invalid AI start payload' });
         return;
       }
-      const { deckId, difficulty = 'basic' } = parsed.data;
-      aiGameManager.startAIGame(socket, deckId, difficulty, callback);
+      const { deckId, aiDeckId, difficulty = 'basic' } = parsed.data;
+      aiGameManager.startAIGame(socket, deckId, difficulty, callback, aiDeckId);
     });
 
     socket.on('ai:tutorial', (_data: any, callback: any) => {
