@@ -77,24 +77,25 @@ export class ThreatAssessor {
       threatLevel += 1;
     }
 
-    // Keyword threats
-    if (cardDef?.keywords) {
-      if (cardDef.keywords.includes('Rush')) {
+    // Keyword threats - use runtime keywords first, fall back to static
+    const keywords = card.keywords?.length ? card.keywords : cardDef?.keywords;
+    if (keywords) {
+      if (keywords.includes('Rush')) {
         threatLevel += 2;
         reasons.push(ThreatReason.RUSH_KEYWORD);
       }
 
-      if (cardDef.keywords.includes('Double Attack')) {
+      if (keywords.includes('Double Attack')) {
         threatLevel += 4;
         reasons.push(ThreatReason.DOUBLE_ATTACK);
       }
 
-      if (cardDef.keywords.includes('Blocker')) {
+      if (keywords.includes('Blocker')) {
         threatLevel += 1;
         reasons.push(ThreatReason.BLOCKER);
       }
 
-      if (cardDef.keywords.includes('Banish')) {
+      if (keywords.includes('Banish')) {
         threatLevel += 2;
         reasons.push(ThreatReason.DANGEROUS_EFFECT);
       }
@@ -152,9 +153,13 @@ export class ThreatAssessor {
    * Check if a card poses immediate danger (can attack this turn)
    */
   isImmediateThreat(card: GameCard, turnPlayed: number, currentTurn: number): boolean {
-    const cardDef = cardLoaderService.getCard(card.cardId);
+    // Check runtime keywords first (includes granted Rush from effects)
+    if (card.keywords?.includes('Rush')) {
+      return true;
+    }
 
-    // Rush can attack immediately
+    // Fall back to static definition
+    const cardDef = cardLoaderService.getCard(card.cardId);
     if (cardDef?.keywords?.includes('Rush')) {
       return true;
     }

@@ -91,8 +91,14 @@ export class HardStrategy extends BaseStrategy {
    * Select card to play - threat response + tempo awareness
    */
   selectCardToPlay(player: PlayerState, availableDon: number, gameState: GameState): GameCard | null {
-    const playableCards = this.getPlayableCards(player, availableDon);
+    let playableCards = this.getPlayableCards(player, availableDon);
     if (playableCards.length === 0) return null;
+
+    // Filter out STAGE if player already has one in play
+    if (player.stage) {
+      playableCards = playableCards.filter(c => c.def.type !== 'STAGE');
+      if (playableCards.length === 0) return null;
+    }
 
     const situation = this.assessSituation(gameState);
     const opponent = this.getOpponent(gameState);
@@ -105,29 +111,54 @@ export class HardStrategy extends BaseStrategy {
       return null;
     }
 
+    // Helper to check keywords using runtime first, then static
+    const getKeywords = (card: GameCard, def: any): string[] => {
+      return card.keywords?.length ? card.keywords : (def.keywords || []);
+    };
+
     // Score each playable card
     const scoredCards = playableCards.map(({ card, def }) => {
       let score = def.cost || 0; // Base score is cost (higher = generally better)
+      const keywords = getKeywords(card, def);
 
-      // Adjust for situation
+      // Type-specific scoring
+      if (def.type === 'EVENT') {
+        score += 2; // Events provide tempo (immediate effect, no field slot)
+        // Removal events are especially valuable when threats exist
+        if (threats.length > 0) {
+          const hasRemoval = def.effects?.some((e: { effects?: Array<{ type: string }> }) =>
+            e.effects?.some((a: { type: string }) => a.type === 'KO_CHARACTER' || a.type === 'TRASH_CHARACTER')
+          );
+          if (hasRemoval) score += 4;
+        }
+        // Draw events are valuable in early game
+        if (situation.phase === 'early') {
+          const hasDraw = def.effects?.some((e: { effects?: Array<{ type: string }> }) =>
+            e.effects?.some((a: { type: string }) => a.type === 'DRAW_CARDS')
+          );
+          if (hasDraw) score += 2;
+        }
+      } else if (def.type === 'STAGE') {
+        // Stages provide ongoing value but lower priority than immediate plays
+        score += 1;
+      }
+
+      // Adjust for situation (keyword-based, using runtime keywords)
       if (situation.tempo === 'behind') {
-        // Prioritize defensive cards when behind
-        if (def.keywords?.includes('Blocker')) score += 3;
-        if (def.keywords?.includes('Rush')) score -= 1; // Rush less valuable when behind
+        if (keywords.includes('Blocker')) score += 3;
+        if (keywords.includes('Rush')) score -= 1;
       } else if (situation.tempo === 'ahead') {
-        // Prioritize aggressive cards when ahead
-        if (def.keywords?.includes('Rush')) score += 2;
-        if (def.keywords?.includes('Double Attack')) score += 3;
+        if (keywords.includes('Rush')) score += 2;
+        if (keywords.includes('Double Attack')) score += 3;
       }
 
       // Critical life - need blockers
-      if (situation.lifeState === 'critical' && def.keywords?.includes('Blocker')) {
+      if (situation.lifeState === 'critical' && keywords.includes('Blocker')) {
         score += 5;
       }
 
-      // Consider if this card can remove a threat
-      // Cards with KO effects are valuable when threats exist
-      if (threats.length > 0) {
+      // Consider if this character card can remove a threat
+      if (threats.length > 0 && def.type === 'CHARACTER') {
         const hasRemoval = def.effects?.some((e: { effects?: Array<{ type: string }> }) =>
           e.effects?.some((a: { type: string }) => a.type === 'KO_CHARACTER' || a.type === 'TRASH_CHARACTER')
         );
@@ -136,7 +167,7 @@ export class HardStrategy extends BaseStrategy {
 
       // Penalize holding back in late game
       if (situation.phase === 'late') {
-        score += 1; // Prefer playing cards in late game
+        score += 1;
       }
 
       return { card, def, score };
@@ -148,6 +179,7 @@ export class HardStrategy extends BaseStrategy {
     this.log('Card play decision', {
       chosen: scoredCards[0].def.name,
       score: scoredCards[0].score,
+      type: scoredCards[0].def.type,
       situation: situation.tempo,
     });
 

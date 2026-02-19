@@ -11,6 +11,7 @@ import {
   PlayerState,
   CardState,
   ActionType,
+  CardZone,
 } from '@optcgsim/shared';
 import { AIDecision, DifficultyLevel } from './types.js';
 import { AI_CONFIG } from './config.js';
@@ -18,6 +19,7 @@ import { BaseStrategy } from './strategies/BaseStrategy.js';
 import { EasyStrategy } from './strategies/EasyStrategy.js';
 import { MediumStrategy } from './strategies/MediumStrategy.js';
 import { HardStrategy } from './strategies/HardStrategy.js';
+import { cardLoaderService } from '../CardLoaderService.js';
 
 export class AIService {
   private playerId: string;
@@ -182,10 +184,10 @@ export class AIService {
   private getActivateEffectAction(_gameState: GameState, _player: PlayerState, pendingEffect: any): AIDecision {
     console.log('[AI] Handling pending ACTIVATE effect:', pendingEffect.id);
 
-    // If effect has valid targets, select the first one
-    if (pendingEffect.validTargets && pendingEffect.validTargets.length > 0) {
+    // If effect has valid hand card IDs, select from them
+    if (pendingEffect.validHandCardIds && pendingEffect.validHandCardIds.length > 0) {
       const selectedTargets = this.strategy.selectEffectTargets(
-        pendingEffect.validTargets,
+        pendingEffect.validHandCardIds,
         _gameState,
         pendingEffect.description || 'activate'
       );
@@ -359,13 +361,20 @@ export class AIService {
   /**
    * Handle choice effect resolution (cost alternatives / choose one)
    */
-  private getChoiceAction(_gameState: GameState, _player: PlayerState, pendingEffect: any): AIDecision | null {
+  private getChoiceAction(_gameState: GameState, _player: PlayerState, pendingEffect: any): AIDecision {
     console.log('[AI] Handling pending CHOICE effect');
 
     const options: Array<{ id: string; enabled: boolean }> = pendingEffect.options || [];
     const enabledOptions = options.filter(option => option.enabled);
+
     if (enabledOptions.length === 0) {
-      return null;
+      // No enabled options - pick the first option anyway (or skip if available)
+      const skipOption = options.find(option => option.id === 'cost-skip');
+      const fallback = skipOption || options[0];
+      return {
+        action: ActionType.RESOLVE_CHOICE,
+        data: { optionId: fallback?.id || 'cost-skip' },
+      };
     }
 
     // Prefer paying a real option over skipping when possible.
@@ -379,14 +388,35 @@ export class AIService {
   /**
    * Handle additional cost decision
    */
-  private getAdditionalCostAction(_gameState: GameState, _player: PlayerState, _pendingCost: any): AIDecision {
-    console.log('[AI] Handling pending ADDITIONAL_COST');
+  private getAdditionalCostAction(_gameState: GameState, player: PlayerState, pendingCost: any): AIDecision {
+    console.log('[AI] Handling pending ADDITIONAL_COST:', pendingCost.costType);
 
-    // Simple heuristic: skip optional costs (conservative play)
-    // A smarter AI could evaluate whether the cost is worth it
+    const costId = pendingCost.id;
+
+    // Evaluate whether paying the cost is worthwhile
+    if (pendingCost.costType === 'REST_DON') {
+      // Pay REST_DON if we have spare active DON
+      const activeDon = player.donField.filter(d => d.state === CardState.ACTIVE && !d.attachedTo);
+      if (activeDon.length > (pendingCost.amount || 1)) {
+        return {
+          action: ActionType.PAY_ADDITIONAL_COST,
+          data: { costId },
+        };
+      }
+    } else if (pendingCost.costType === 'TRASH_CARD') {
+      // Pay TRASH_CARD if we have enough hand cards to spare
+      if (player.hand.length > 2) {
+        return {
+          action: ActionType.PAY_ADDITIONAL_COST,
+          data: { costId },
+        };
+      }
+    }
+
+    // Default: skip optional costs (conservative play)
     return {
       action: ActionType.SKIP_ADDITIONAL_COST,
-      data: {},
+      data: { costId },
     };
   }
 
@@ -421,9 +451,17 @@ export class AIService {
     // 1. Try to play cards
     const cardToPlay = this.strategy.selectCardToPlay(player, activeDon, gameState);
     if (cardToPlay) {
+      // Determine correct zone based on card type
+      const cardDef = cardLoaderService.getCard(cardToPlay.cardId);
+      let zone: CardZone = CardZone.FIELD;
+      if (cardDef?.type === 'EVENT') {
+        zone = CardZone.EVENT;
+      } else if (cardDef?.type === 'STAGE') {
+        zone = CardZone.STAGE;
+      }
       return {
         action: ActionType.PLAY_CARD,
-        data: { cardId: cardToPlay.id },
+        data: { cardId: cardToPlay.id, zone },
       };
     }
 

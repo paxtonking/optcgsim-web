@@ -186,8 +186,9 @@ export class LethalCalculator {
       if (card.state !== CardState.ACTIVE) return false;
       if (card.hasAttacked) return false;
 
-      // Check Rush for same-turn attacks
+      // Check Rush for same-turn attacks - use runtime keywords first
       if (card.turnPlayed === currentTurn) {
+        if (card.keywords?.includes('Rush')) return true;
         const cardDef = cardLoaderService.getCard(card.cardId);
         if (!cardDef?.keywords?.includes('Rush')) return false;
       }
@@ -202,8 +203,12 @@ export class LethalCalculator {
   private getAvailableBlockers(opponent: PlayerState): GameCard[] {
     return opponent.field.filter(card => {
       if (card.state !== CardState.ACTIVE) return false;
+      // Check runtime keywords first (includes granted Blocker from effects)
+      if (card.keywords?.length) {
+        return card.keywords.includes('Blocker');
+      }
       const cardDef = cardLoaderService.getCard(card.cardId);
-      return cardDef?.keywords?.includes('Blocker');
+      return cardDef?.keywords?.includes('Blocker') || false;
     });
   }
 

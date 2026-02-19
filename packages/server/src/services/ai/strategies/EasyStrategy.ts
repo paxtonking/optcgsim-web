@@ -46,8 +46,14 @@ export class EasyStrategy extends BaseStrategy {
    * Select card to play - simple highest cost, no keyword awareness
    */
   selectCardToPlay(player: PlayerState, availableDon: number, _gameState: GameState): GameCard | null {
-    const playableCards = this.getPlayableCards(player, availableDon);
+    let playableCards = this.getPlayableCards(player, availableDon);
     if (playableCards.length === 0) return null;
+
+    // Filter out STAGE if player already has one in play
+    if (player.stage) {
+      playableCards = playableCards.filter(c => c.def.type !== 'STAGE');
+      if (playableCards.length === 0) return null;
+    }
 
     // Sort by cost (highest first)
     playableCards.sort((a, b) => (b.def.cost || 0) - (a.def.cost || 0));

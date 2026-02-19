@@ -49,35 +49,70 @@ export class MediumStrategy extends BaseStrategy {
    * Select card to play - consider board state and keywords
    */
   selectCardToPlay(player: PlayerState, availableDon: number, gameState: GameState): GameCard | null {
-    const playableCards = this.getPlayableCards(player, availableDon);
+    let playableCards = this.getPlayableCards(player, availableDon);
     if (playableCards.length === 0) return null;
+
+    // Filter out STAGE if player already has one in play
+    if (player.stage) {
+      playableCards = playableCards.filter(c => c.def.type !== 'STAGE');
+      if (playableCards.length === 0) return null;
+    }
 
     const situation = this.assessSituation(gameState);
 
-    // Sort by cost (highest first)
-    playableCards.sort((a, b) => (b.def.cost || 0) - (a.def.cost || 0));
+    // Separate by type for priority ordering
+    const events = playableCards.filter(c => c.def.type === 'EVENT');
+    const characters = playableCards.filter(c => c.def.type === 'CHARACTER');
+    const stages = playableCards.filter(c => c.def.type === 'STAGE');
 
-    // If behind, prioritize Blockers
-    if (situation.tempo === 'behind' || situation.lifeState === 'critical') {
-      const blockers = playableCards.filter(c => c.def.keywords?.includes('Blocker'));
-      if (blockers.length > 0) {
-        this.log('Playing Blocker due to defensive situation');
-        return blockers[0].card;
-      }
+    // Use runtime keywords for keyword checks
+    const hasKeyword = (c: { card: GameCard; def: any }, kw: string) => {
+      if (c.card.keywords?.length) return c.card.keywords.includes(kw);
+      return c.def.keywords?.includes(kw) || false;
+    };
+
+    // Priority 1: Events first (they resolve immediately and don't take field space)
+    if (events.length > 0) {
+      // Sort events by cost (highest first for maximum impact)
+      events.sort((a, b) => (b.def.cost || 0) - (a.def.cost || 0));
+      this.log('Playing event card', { cost: events[0].def.cost });
+      return events[0].card;
     }
 
-    // If ahead or early game, prioritize Rush for pressure
-    if ((situation.tempo === 'ahead' || situation.phase === 'early') && player.field.length < 4) {
-      const rushCards = playableCards.filter(c => c.def.keywords?.includes('Rush'));
-      if (rushCards.length > 0) {
-        this.log('Playing Rush card for pressure');
-        return rushCards[0].card;
+    // Priority 2: Characters with situation-aware logic
+    if (characters.length > 0) {
+      characters.sort((a, b) => (b.def.cost || 0) - (a.def.cost || 0));
+
+      // If behind, prioritize Blockers
+      if (situation.tempo === 'behind' || situation.lifeState === 'critical') {
+        const blockers = characters.filter(c => hasKeyword(c, 'Blocker'));
+        if (blockers.length > 0) {
+          this.log('Playing Blocker due to defensive situation');
+          return blockers[0].card;
+        }
       }
+
+      // If ahead or early game, prioritize Rush for pressure
+      if ((situation.tempo === 'ahead' || situation.phase === 'early') && player.field.length < 4) {
+        const rushCards = characters.filter(c => hasKeyword(c, 'Rush'));
+        if (rushCards.length > 0) {
+          this.log('Playing Rush card for pressure');
+          return rushCards[0].card;
+        }
+      }
+
+      // Default: play highest cost character
+      this.log('Playing highest cost character', { cost: characters[0].def.cost });
+      return characters[0].card;
     }
 
-    // Default: play highest cost card
-    this.log('Playing highest cost card', { cost: playableCards[0].def.cost });
-    return playableCards[0].card;
+    // Priority 3: Stages (if no better play)
+    if (stages.length > 0) {
+      this.log('Playing stage card', { cost: stages[0].def.cost });
+      return stages[0].card;
+    }
+
+    return null;
   }
 
   /**
@@ -318,10 +353,11 @@ export class MediumStrategy extends BaseStrategy {
     else if (power >= 6000) threat += 2;
     else if (power >= 4000) threat += 1;
 
-    // Keyword threats
-    if (cardDef?.keywords?.includes('Rush')) threat += 2;
-    if (cardDef?.keywords?.includes('Double Attack')) threat += 3;
-    if (cardDef?.keywords?.includes('Blocker')) threat += 1;
+    // Keyword threats - use runtime keywords first, fall back to static
+    const keywords = card.keywords?.length ? card.keywords : cardDef?.keywords;
+    if (keywords?.includes('Rush')) threat += 2;
+    if (keywords?.includes('Double Attack')) threat += 3;
+    if (keywords?.includes('Blocker')) threat += 1;
 
     // Effect threats (simplified - check for common dangerous effects)
     if (cardDef?.effects?.some(e => e.trigger === 'ON_ATTACK')) threat += 2;

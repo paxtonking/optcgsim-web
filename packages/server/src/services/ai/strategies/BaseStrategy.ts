@@ -87,8 +87,12 @@ export abstract class BaseStrategy {
   protected getAvailableBlockers(player: PlayerState): GameCard[] {
     return player.field.filter(card => {
       if (card.state !== CardState.ACTIVE) return false;
+      // Check runtime keywords first (includes granted Blocker from effects)
+      if (card.keywords?.length) {
+        return card.keywords.includes('Blocker');
+      }
       const cardDef = cardLoaderService.getCard(card.cardId);
-      return cardDef?.keywords?.includes('Blocker');
+      return cardDef?.keywords?.includes('Blocker') || false;
     });
   }
 
@@ -124,7 +128,14 @@ export abstract class BaseStrategy {
       .filter(card => {
         const cardDef = cardLoaderService.getCard(card.cardId);
         if (!cardDef || cardDef.cost === null) return false;
-        return cardDef.cost <= availableDon && cardDef.type === 'CHARACTER';
+        // Exclude LEADER cards (not playable from hand)
+        if (cardDef.type === 'LEADER') return false;
+        // Use runtime modified cost if available, otherwise static cost
+        const effectiveCost = card.modifiedCost ?? cardDef.cost;
+        if (effectiveCost > availableDon) return false;
+        // Characters need field space (max 5)
+        if (cardDef.type === 'CHARACTER' && player.field.length >= 5) return false;
+        return true;
       })
       .map(card => ({
         card,
@@ -150,6 +161,11 @@ export abstract class BaseStrategy {
    * Check if card has a specific keyword
    */
   protected hasKeyword(card: GameCard, keyword: string): boolean {
+    // Check runtime keywords first (includes granted keywords from effects)
+    if (card.keywords?.length) {
+      return card.keywords.includes(keyword);
+    }
+    // Fall back to static card definition keywords
     const cardDef = cardLoaderService.getCard(card.cardId);
     return cardDef?.keywords?.includes(keyword) || false;
   }
