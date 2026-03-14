@@ -953,6 +953,18 @@ export class GameStateManager {
       if (pendingEffects.length > 0 && this.advancePlayEffectStep()) {
         return true;
       }
+
+      // Also show non-choice effects even when there are no choice effects
+      if (effectsRequiringChoice.length === 0 && pendingEffects.length > 0) {
+        const currentPending = this.effectEngine.getPendingEffects();
+        const pendingIds = new Set(currentPending.map(pe => pe.id));
+        const nonChoiceEffects = pendingEffects.filter(e => pendingIds.has(e.id));
+        if (nonChoiceEffects.length > 0) {
+          const pendingPlayEffects = this.buildPendingPlayEffects(nonChoiceEffects);
+          this.state.phase = GamePhase.PLAY_EFFECT_STEP;
+          this.state.pendingPlayEffects = pendingPlayEffects;
+        }
+      }
     } else if (targetZone === CardZone.STAGE) {
       // Stage card handling - only 1 stage per player
       // If player already has a stage, send it to trash
