@@ -7,7 +7,8 @@
     "cardNumber": "001",
     "rarity": "L",
     "colors": [
-      "GREEN RED"
+      "GREEN",
+      "RED"
     ],
     "type": "LEADER",
     "cost": null,
@@ -463,7 +464,8 @@
     "cardNumber": "021",
     "rarity": "L",
     "colors": [
-      "BLUE PURPLE"
+      "BLUE",
+      "PURPLE"
     ],
     "type": "LEADER",
     "cost": null,
@@ -891,7 +893,8 @@
     "cardNumber": "040",
     "rarity": "L",
     "colors": [
-      "BLACK YELLOW"
+      "BLACK",
+      "YELLOW"
     ],
     "type": "LEADER",
     "cost": null,
@@ -1581,7 +1584,8 @@
     "cardNumber": "010",
     "rarity": "L",
     "colors": [
-      "GREEN PURPLE"
+      "GREEN",
+      "PURPLE"
     ],
     "type": "LEADER",
     "cost": null,
@@ -3478,7 +3482,8 @@
     "cardNumber": "002",
     "rarity": "L",
     "colors": [
-      "GREEN RED"
+      "GREEN",
+      "RED"
     ],
     "type": "LEADER",
     "cost": null,
@@ -3502,7 +3507,8 @@
     "cardNumber": "003",
     "rarity": "L",
     "colors": [
-      "GREEN RED"
+      "GREEN",
+      "RED"
     ],
     "type": "LEADER",
     "cost": null,
@@ -4820,7 +4826,8 @@
     "cardNumber": "061",
     "rarity": "L",
     "colors": [
-      "BLUE PURPLE"
+      "BLUE",
+      "PURPLE"
     ],
     "type": "LEADER",
     "cost": null,
@@ -4844,7 +4851,8 @@
     "cardNumber": "062",
     "rarity": "L",
     "colors": [
-      "BLUE PURPLE"
+      "BLUE",
+      "PURPLE"
     ],
     "type": "LEADER",
     "cost": null,
@@ -6227,7 +6235,8 @@
     "cardNumber": "002",
     "rarity": "L",
     "colors": [
-      "RED BLACK"
+      "RED",
+      "BLACK"
     ],
     "type": "LEADER",
     "cost": null,
@@ -6762,7 +6771,8 @@
     "cardNumber": "026",
     "rarity": "L",
     "colors": [
-      "BLUE GREEN"
+      "BLUE",
+      "GREEN"
     ],
     "type": "LEADER",
     "cost": null,
@@ -7820,7 +7830,8 @@
     "cardNumber": "072",
     "rarity": "L",
     "colors": [
-      "PURPLE BLACK"
+      "PURPLE",
+      "BLACK"
     ],
     "type": "LEADER",
     "cost": null,
@@ -9401,7 +9412,8 @@
     "cardNumber": "022",
     "rarity": "L",
     "colors": [
-      "GREEN YELLOW"
+      "GREEN",
+      "YELLOW"
     ],
     "type": "LEADER",
     "cost": null,
@@ -10660,7 +10672,8 @@
     "cardNumber": "077",
     "rarity": "L",
     "colors": [
-      "YELLOW BLACK"
+      "YELLOW",
+      "BLACK"
     ],
     "type": "LEADER",
     "cost": null,
@@ -11704,7 +11717,8 @@
     "cardNumber": "001",
     "rarity": "L",
     "colors": [
-      "BLUE RED"
+      "BLUE",
+      "RED"
     ],
     "type": "LEADER",
     "cost": null,
@@ -12113,7 +12127,8 @@
     "cardNumber": "019",
     "rarity": "L",
     "colors": [
-      "GREEN PURPLE"
+      "GREEN",
+      "PURPLE"
     ],
     "type": "LEADER",
     "cost": null,
@@ -12137,7 +12152,8 @@
     "cardNumber": "020",
     "rarity": "L",
     "colors": [
-      "GREEN BLACK"
+      "GREEN",
+      "BLACK"
     ],
     "type": "LEADER",
     "cost": null,
@@ -12562,7 +12578,8 @@
     "cardNumber": "039",
     "rarity": "L",
     "colors": [
-      "BLUE BLACK"
+      "BLUE",
+      "BLACK"
     ],
     "type": "LEADER",
     "cost": null,
@@ -12585,7 +12602,8 @@
     "cardNumber": "040",
     "rarity": "L",
     "colors": [
-      "BLUE YELLOW"
+      "BLUE",
+      "YELLOW"
     ],
     "type": "LEADER",
     "cost": null,
@@ -12986,7 +13004,8 @@
     "cardNumber": "058",
     "rarity": "L",
     "colors": [
-      "PURPLE YELLOW"
+      "PURPLE",
+      "YELLOW"
     ],
     "type": "LEADER",
     "cost": null,
@@ -14381,7 +14400,8 @@
     "cardNumber": "001",
     "rarity": "L",
     "colors": [
-      "RED BLACK"
+      "RED",
+      "BLACK"
     ],
     "type": "LEADER",
     "cost": null,
@@ -14404,7 +14424,8 @@
     "cardNumber": "002",
     "rarity": "L",
     "colors": [
-      "RED YELLOW"
+      "RED",
+      "YELLOW"
     ],
     "type": "LEADER",
     "cost": null,
@@ -14850,7 +14871,8 @@
     "cardNumber": "022",
     "rarity": "L",
     "colors": [
-      "BLUE GREEN"
+      "BLUE",
+      "GREEN"
     ],
     "type": "LEADER",
     "cost": null,
@@ -15272,7 +15294,8 @@
     "cardNumber": "041",
     "rarity": "L",
     "colors": [
-      "BLUE BLACK"
+      "BLUE",
+      "BLACK"
     ],
     "type": "LEADER",
     "cost": null,
@@ -17035,7 +17058,8 @@
     "cardNumber": "001",
     "rarity": "L",
     "colors": [
-      "PURPLE RED"
+      "PURPLE",
+      "RED"
     ],
     "type": "LEADER",
     "cost": null,
@@ -17495,7 +17519,8 @@
     "cardNumber": "021",
     "rarity": "L",
     "colors": [
-      "GREEN BLACK"
+      "GREEN",
+      "BLACK"
     ],
     "type": "LEADER",
     "cost": null,
@@ -17518,7 +17543,8 @@
     "cardNumber": "022",
     "rarity": "L",
     "colors": [
-      "GREEN YELLOW"
+      "GREEN",
+      "YELLOW"
     ],
     "type": "LEADER",
     "cost": null,
@@ -17973,7 +17999,8 @@
     "cardNumber": "042",
     "rarity": "L",
     "colors": [
-      "BLUE PURPLE"
+      "BLUE",
+      "PURPLE"
     ],
     "type": "LEADER",
     "cost": null,
@@ -22428,11 +22455,12 @@
     "cardNumber": "001",
     "rarity": "L",
     "colors": [
-      "GREEN RED"
+      "GREEN",
+      "RED"
     ],
     "type": "LEADER",
     "cost": null,
-    "power": 4,
+    "power": 5000,
     "counter": null,
     "attribute": null,
     "effect": "[Activate: Main] [Once Per Turn] Give up to 3 of your {Animal} or {Drum Kingdom} type Characters up to 1 rested DON!! card each.",
@@ -22453,7 +22481,8 @@
     "cardNumber": "002",
     "rarity": "L",
     "colors": [
-      "BLUE RED"
+      "BLUE",
+      "RED"
     ],
     "type": "LEADER",
     "cost": null,
@@ -23679,7 +23708,8 @@
     "cardNumber": "057",
     "rarity": "L",
     "colors": [
-      "BLUE PURPLE"
+      "BLUE",
+      "PURPLE"
     ],
     "type": "LEADER",
     "cost": null,
@@ -23702,7 +23732,8 @@
     "cardNumber": "058",
     "rarity": "L",
     "colors": [
-      "PURPLE YELLOW"
+      "PURPLE",
+      "YELLOW"
     ],
     "type": "LEADER",
     "cost": null,
@@ -25572,7 +25603,8 @@
     "cardNumber": "022",
     "rarity": "L",
     "colors": [
-      "GREEN PURPLE"
+      "GREEN",
+      "PURPLE"
     ],
     "type": "LEADER",
     "cost": null,
@@ -26465,7 +26497,8 @@
     "cardNumber": "061",
     "rarity": "L",
     "colors": [
-      "PURPLE BLACK"
+      "PURPLE",
+      "BLACK"
     ],
     "type": "LEADER",
     "cost": null,
@@ -26489,7 +26522,8 @@
     "cardNumber": "062",
     "rarity": "L",
     "colors": [
-      "PURPLE YELLOW"
+      "PURPLE",
+      "YELLOW"
     ],
     "type": "LEADER",
     "cost": null,
@@ -27786,7 +27820,8 @@
     "cardNumber": "001",
     "rarity": "L",
     "colors": [
-      "GREEN RED"
+      "GREEN",
+      "RED"
     ],
     "type": "LEADER",
     "cost": null,
@@ -27810,7 +27845,8 @@
     "cardNumber": "002",
     "rarity": "L",
     "colors": [
-      "BLUE RED"
+      "BLUE",
+      "RED"
     ],
     "type": "LEADER",
     "cost": null,
@@ -27834,7 +27870,8 @@
     "cardNumber": "003",
     "rarity": "L",
     "colors": [
-      "PURPLE RED"
+      "PURPLE",
+      "RED"
     ],
     "type": "LEADER",
     "cost": null,
@@ -28268,7 +28305,8 @@
     "cardNumber": "022",
     "rarity": "L",
     "colors": [
-      "GREEN YELLOW"
+      "GREEN",
+      "YELLOW"
     ],
     "type": "LEADER",
     "cost": null,
@@ -28738,7 +28776,8 @@
     "cardNumber": "042",
     "rarity": "L",
     "colors": [
-      "BLUE BLACK"
+      "BLUE",
+      "BLACK"
     ],
     "type": "LEADER",
     "cost": null,
@@ -30519,7 +30558,8 @@
     "cardNumber": "001",
     "rarity": "L",
     "colors": [
-      "RED BLACK"
+      "RED",
+      "BLACK"
     ],
     "type": "LEADER",
     "cost": null,
@@ -30998,7 +31038,8 @@
     "cardNumber": "022",
     "rarity": "L",
     "colors": [
-      "GREEN YELLOW"
+      "GREEN",
+      "YELLOW"
     ],
     "type": "LEADER",
     "cost": null,
@@ -31416,7 +31457,8 @@
     "cardNumber": "040",
     "rarity": "L",
     "colors": [
-      "BLUE PURPLE"
+      "BLUE",
+      "PURPLE"
     ],
     "type": "LEADER",
     "cost": null,
@@ -31439,7 +31481,8 @@
     "cardNumber": "041",
     "rarity": "L",
     "colors": [
-      "BLUE YELLOW"
+      "BLUE",
+      "YELLOW"
     ],
     "type": "LEADER",
     "cost": null,
@@ -34128,7 +34171,8 @@
     "cardNumber": "041",
     "rarity": "L",
     "colors": [
-      "BLUE PURPLE"
+      "BLUE",
+      "PURPLE"
     ],
     "type": "LEADER",
     "cost": null,
@@ -34576,7 +34620,8 @@
     "cardNumber": "061",
     "rarity": "L",
     "colors": [
-      "PURPLE YELLOW"
+      "PURPLE",
+      "YELLOW"
     ],
     "type": "LEADER",
     "cost": null,
@@ -35029,7 +35074,8 @@
     "cardNumber": "081",
     "rarity": "L",
     "colors": [
-      "BLACK YELLOW"
+      "BLACK",
+      "YELLOW"
     ],
     "type": "LEADER",
     "cost": null,
@@ -35922,7 +35968,8 @@
     "cardNumber": "001",
     "rarity": "L",
     "colors": [
-      "GREEN RED"
+      "GREEN",
+      "RED"
     ],
     "type": "LEADER",
     "cost": null,
@@ -35946,7 +35993,8 @@
     "cardNumber": "002",
     "rarity": "L",
     "colors": [
-      "BLUE RED"
+      "BLUE",
+      "RED"
     ],
     "type": "LEADER",
     "cost": null,
@@ -35969,7 +36017,8 @@
     "cardNumber": "003",
     "rarity": "L",
     "colors": [
-      "PURPLE RED"
+      "PURPLE",
+      "RED"
     ],
     "type": "LEADER",
     "cost": null,
@@ -35993,7 +36042,8 @@
     "cardNumber": "004",
     "rarity": "L",
     "colors": [
-      "RED BLACK"
+      "RED",
+      "BLACK"
     ],
     "type": "LEADER",
     "cost": null,
@@ -39573,7 +39623,8 @@
     "cardNumber": "041",
     "rarity": "L",
     "colors": [
-      "BLUE YELLOW"
+      "BLUE",
+      "YELLOW"
     ],
     "type": "LEADER",
     "cost": null,
@@ -40462,7 +40513,8 @@
     "cardNumber": "080",
     "rarity": "L",
     "colors": [
-      "BLACK YELLOW"
+      "BLACK",
+      "YELLOW"
     ],
     "type": "LEADER",
     "cost": null,
@@ -45754,7 +45806,8 @@
     "cardNumber": "001",
     "rarity": "L",
     "colors": [
-      "PURPLE RED"
+      "PURPLE",
+      "RED"
     ],
     "type": "LEADER",
     "cost": null,
@@ -45777,7 +45830,8 @@
     "cardNumber": "002",
     "rarity": "L",
     "colors": [
-      "PURPLE RED"
+      "PURPLE",
+      "RED"
     ],
     "type": "LEADER",
     "cost": null,
@@ -45800,7 +45854,8 @@
     "cardNumber": "003",
     "rarity": "L",
     "colors": [
-      "PURPLE RED"
+      "PURPLE",
+      "RED"
     ],
     "type": "LEADER",
     "cost": null,
@@ -46247,7 +46302,8 @@
     "cardNumber": "001",
     "rarity": "L",
     "colors": [
-      "BLUE GREEN"
+      "BLUE",
+      "GREEN"
     ],
     "type": "LEADER",
     "cost": null,
@@ -46626,7 +46682,8 @@
     "cardNumber": "001",
     "rarity": "L",
     "colors": [
-      "RED YELLOW"
+      "RED",
+      "YELLOW"
     ],
     "type": "LEADER",
     "cost": null,
@@ -46650,7 +46707,8 @@
     "cardNumber": "002",
     "rarity": "L",
     "colors": [
-      "BLUE YELLOW"
+      "BLUE",
+      "YELLOW"
     ],
     "type": "LEADER",
     "cost": null,
@@ -49439,7 +49497,8 @@
     "cardNumber": "001",
     "rarity": "L",
     "colors": [
-      "RED BLUE"
+      "RED",
+      "BLUE"
     ],
     "type": "LEADER",
     "cost": null,

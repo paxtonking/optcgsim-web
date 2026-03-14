@@ -33,6 +33,7 @@ export * from './constants/profile.js';
 // Re-export new game types and classes (these override the old ones)
 export * from './types/game.js';
 export * from './game/GameStateManager.js';
+export * from './game/cardHelpers.js';
 
 // Re-export effect system
 export * from './effects/index.js';

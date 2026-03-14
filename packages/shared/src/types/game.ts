@@ -55,7 +55,7 @@ export enum CardState {
 }
 
 // Power buff tracking for temporary effects
-export type BuffDuration = 'PERMANENT' | 'THIS_TURN' | 'THIS_BATTLE' | 'STAGE_CONTINUOUS' | 'WHILE_ON_FIELD';
+export type BuffDuration = 'PERMANENT' | 'THIS_TURN' | 'THIS_BATTLE' | 'STAGE_CONTINUOUS' | 'WHILE_ON_FIELD' | 'UNTIL_END_OF_OPPONENT_TURN' | 'UNTIL_START_OF_YOUR_TURN';
 
 export interface PowerBuff {
   id: string;              // Unique buff ID
@@ -360,6 +360,7 @@ export interface GameState {
   pendingHandSelectEffect?: PendingHandSelectEffect; // Hand selection effect waiting for card selection (discard, etc.)
   pendingFieldSelectEffect?: PendingFieldSelectEffect; // Field selection effect waiting for character selection
   pendingChoiceEffect?: PendingChoiceEffect; // Choice effect waiting for option selection
+  triggerCardId?: string; // Card ID of the life card with a trigger effect (for TRIGGER_STEP UI)
 }
 
 export interface GameAction {

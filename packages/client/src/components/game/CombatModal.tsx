@@ -87,8 +87,14 @@ export const CombatModal: React.FC<CombatModalProps> = ({
     if (!defenderPlayer || gameState.phase !== GamePhase.BLOCKER_STEP) return [];
     return defenderPlayer.field.filter(card => {
       if (card.state !== 'ACTIVE') return false;
+      // Check all keyword sources: static definition, runtime, temporary, continuous, granted effects
       const def = cardDefinitions.get(card.cardId);
-      return def?.keywords?.includes('Blocker');
+      if (def?.keywords?.includes('Blocker')) return true;
+      if (card.keywords?.includes('Blocker')) return true;
+      if (card.temporaryKeywords?.includes('Blocker')) return true;
+      if (card.continuousKeywords?.includes('Blocker')) return true;
+      if (card.grantedEffects?.some(e => e.keyword === 'Blocker')) return true;
+      return false;
     });
   }, [defenderPlayer, gameState.phase, cardDefinitions]);
 

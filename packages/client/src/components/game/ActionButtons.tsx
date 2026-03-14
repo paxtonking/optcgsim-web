@@ -23,6 +23,9 @@ interface ActionButtonsProps {
   isAttackMode?: boolean;
   onAttack?: () => void;
   onCancelAttack?: () => void;
+  // Trigger card info
+  triggerCardName?: string;
+  triggerCardEffect?: string;
 }
 
 export const ActionButtons: React.FC<ActionButtonsProps> = ({
@@ -45,6 +48,8 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
   isAttackMode = false,
   onAttack,
   onCancelAttack,
+  triggerCardName,
+  triggerCardEffect,
 }) => {
   // Note: These props are kept for interface compatibility but are handled elsewhere
   // Combat actions are handled by CombatModal, mulligan actions by MulliganModal
@@ -92,10 +97,20 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
     );
   }
 
-  // Trigger step buttons
+  // Trigger step buttons with card info
   if (phase === GamePhase.TRIGGER_STEP) {
     return (
       <div className="action-buttons">
+        {triggerCardName && (
+          <div style={{ color: '#ffd700', textAlign: 'center', fontSize: '11px', padding: '4px 8px', marginBottom: '4px', background: 'rgba(255,215,0,0.1)', borderRadius: '4px' }}>
+            <strong>[Trigger] {triggerCardName}</strong>
+            {triggerCardEffect && (
+              <div style={{ color: '#a0aec0', fontSize: '10px', marginTop: '2px' }}>
+                {triggerCardEffect}
+              </div>
+            )}
+          </div>
+        )}
         <button
           className="action-btn action-btn--attack"
           onClick={onActivateTrigger}

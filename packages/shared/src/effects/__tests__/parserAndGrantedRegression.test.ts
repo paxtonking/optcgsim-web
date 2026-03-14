@@ -1257,10 +1257,9 @@ describe('Gameplay flow audit fixes', () => {
     });
 
     expect(passTriggerSuccess).toBe(true);
-    expect(state.phase).toBe(GamePhase.MAIN_PHASE);
-    expect(state.currentCombat).toBeUndefined();
-    expect(state.winner).toBeUndefined();
-    expect(state.players.player2.lifeCards).toHaveLength(0);
+    // Double Attack CAN win from 1 life -- second damage hits with 0 life = game over
+    expect(state.phase).toBe(GamePhase.GAME_OVER);
+    expect(state.winner).toBe('player1');
   });
 
   it('rejects RESOLVE_COMBAT while in TRIGGER_STEP', () => {

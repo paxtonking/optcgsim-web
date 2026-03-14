@@ -3585,6 +3585,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             onPassBlocker={isTutorial ? handleTutorialPassBlocker : passBlocker}
             onActivateTrigger={() => activateTrigger('')}
             onPassTrigger={passTrigger}
+            triggerCardName={gameState?.triggerCardId ? (cardDefinitions.get(gameState.triggerCardId)?.name ?? gameState.triggerCardId) : undefined}
+            triggerCardEffect={gameState?.triggerCardId ? (cardDefinitions.get(gameState.triggerCardId)?.effectText ?? cardDefinitions.get(gameState.triggerCardId)?.effect ?? undefined) : undefined}
             showAttackButton={selectedCardHasAbilities}
             canAttack={selectedCardCanAttack}
             isAttackMode={isAttackMode}
