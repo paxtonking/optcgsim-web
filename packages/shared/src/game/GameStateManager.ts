@@ -2358,7 +2358,7 @@ export class GameStateManager {
       playerId: attacker.owner,
       targetId: targetId,
     };
-    const pendingEffects = this.processTriggers(triggerEvent);
+    const attackerPendingEffects = this.processTriggers(triggerEvent);
 
     // Trigger OPPONENT_ATTACK for defending player's cards
     const opponentAttackTrigger: TriggerEvent = {
@@ -2367,30 +2367,17 @@ export class GameStateManager {
       playerId: attacker.owner,
       targetId: targetId,
     };
-    this.processTriggers(opponentAttackTrigger);
+    const defenderPendingEffects = this.processTriggers(opponentAttackTrigger);
+
+    const pendingEffects = [...attackerPendingEffects, ...defenderPendingEffects]
+      .sort((a, b) => b.priority - a.priority);
 
     // Check if any ON_ATTACK effects require target selection
     const effectsRequiringChoice = pendingEffects.filter(e => e.requiresChoice);
     if (effectsRequiringChoice.length > 0) {
-      // Pause at ATTACK_EFFECT_STEP to let player select targets
+      // Pause at ATTACK_EFFECT_STEP to let either side select targets
       this.state.phase = GamePhase.ATTACK_EFFECT_STEP;
-
-      // Populate pendingAttackEffects for the client to display (compute valid targets like play effects)
-      this.state.pendingAttackEffects = effectsRequiringChoice.map(e => {
-        // Get valid targets for the effect
-        const validTargets = this.getValidTargetsForEffect(e.id);
-        const effectAction = e.effect.effects[0];
-
-        return {
-          id: e.id,
-          sourceCardId: e.sourceCardId,
-          playerId: e.playerId,
-          description: e.effect.description || 'Activate ability',
-          validTargets,
-          requiresChoice: e.requiresChoice,
-          maxTargets: effectAction?.target?.count || 1
-        };
-      });
+      this.state.pendingAttackEffects = this.buildPendingAttackEffects(effectsRequiringChoice);
 
       return true;
     }
@@ -2418,7 +2405,7 @@ export class GameStateManager {
 
     // Check if there are more pending ON_ATTACK effects requiring choices
     const remainingEffects = this.effectEngine.getPendingEffects().filter(e =>
-      e.trigger === EffectTrigger.ON_ATTACK && e.requiresChoice
+      this.isAttackStepPendingEffect(e) && e.requiresChoice
     );
 
     if (remainingEffects.length > 0) {
@@ -2440,7 +2427,7 @@ export class GameStateManager {
 
     // Check if there are more pending ON_ATTACK effects requiring choices
     const remainingEffects = this.effectEngine.getPendingEffects().filter(e =>
-      e.trigger === EffectTrigger.ON_ATTACK && e.requiresChoice
+      this.isAttackStepPendingEffect(e) && e.requiresChoice
     );
 
     if (remainingEffects.length > 0) {
@@ -2452,7 +2439,7 @@ export class GameStateManager {
     return this.proceedFromAttackEffectStep();
   }
 
-  /** Build the pendingAttackEffects client payload from remaining ON_ATTACK effects. */
+  /** Build the pendingAttackEffects client payload from remaining attack-step effects. */
   private buildPendingAttackEffects(effects: PendingEffect[]) {
     return effects.map(e => {
       const validTargets = this.getValidTargetsForEffect(e.id);
@@ -2467,6 +2454,11 @@ export class GameStateManager {
         maxTargets: effectAction?.target?.count || 1
       };
     });
+  }
+
+  private isAttackStepPendingEffect(effect: PendingEffect): boolean {
+    return effect.trigger === EffectTrigger.ON_ATTACK ||
+      effect.trigger === EffectTrigger.OPPONENT_ATTACK;
   }
 
   /** Build the pendingPlayEffects client payload from remaining ON_PLAY effects. */
@@ -3069,13 +3061,7 @@ export class GameStateManager {
           );
 
           if (!koPrevented) {
-            // Check if attacker has Banish - KO'd character goes to deck bottom instead of trash
-            const hasBanish = attacker ? this.effectEngine.hasBanish(attacker, this.state) : false;
-            if (hasBanish) {
-              this.banishCharacter(targetId!);
-            } else {
-              this.koCharacter(targetId!);
-            }
+            this.koCharacter(targetId!);
 
             // Trigger ON_KO (for the card being KO'd)
             const triggerEvent: TriggerEvent = {
@@ -3341,27 +3327,6 @@ export class GameStateManager {
         playerId: card.owner,
       };
       this.processTriggers(trashAllyTrigger);
-
-      this.detachDonFromCard(cardId, player.id);
-    }
-  }
-
-  /**
-   * Banish: Send a KO'd character to the bottom of its owner's deck instead of trash
-   */
-  private banishCharacter(cardId: string): void {
-    const card = this.findCard(cardId);
-    if (!card) return;
-
-    const player = this.state.players[card.owner];
-    if (!player) return;
-
-    const fieldIndex = player.field.findIndex(c => c.id === cardId);
-    if (fieldIndex !== -1) {
-      const banishedCard = player.field.splice(fieldIndex, 1)[0];
-      banishedCard.zone = CardZone.DECK;
-      banishedCard.faceUp = false;
-      player.deck.push(banishedCard); // Bottom of deck
 
       this.detachDonFromCard(cardId, player.id);
     }
@@ -3680,6 +3645,14 @@ export class GameStateManager {
 
     if (buff.duration === 'STAGE_CONTINUOUS' || buff.duration === 'WHILE_ON_FIELD') {
       return this.isCardInPlay(this.findCard(buff.sourceCardId));
+    }
+
+    if (buff.duration === 'UNTIL_END_OF_OPPONENT_TURN') {
+      return this.state.turn <= (buff.appliedTurn ?? 0) + 1;
+    }
+
+    if (buff.duration === 'UNTIL_START_OF_YOUR_TURN') {
+      return this.state.turn < (buff.appliedTurn ?? 0) + 2;
     }
 
     if (buff.duration === 'THIS_TURN') {
@@ -6033,6 +6006,10 @@ export class GameStateManager {
   public sanitizeStateForPlayer(playerId: string): GameState {
     const state = this.getState();
     const sanitizedState = JSON.parse(JSON.stringify(state)) as GameState;
+    const ownRevealedDeckCardIds = sanitizedState.phase === GamePhase.DECK_REVEAL_STEP &&
+      sanitizedState.pendingDeckRevealEffect?.playerId === playerId
+      ? new Set(sanitizedState.pendingDeckRevealEffect.revealedCardIds)
+      : null;
 
     for (const [id, player] of Object.entries(sanitizedState.players)) {
       // Create a single hidden deck card template for this player — reused
@@ -6065,6 +6042,11 @@ export class GameStateManager {
           cardId: card.faceUp ? card.cardId : 'hidden',
           id: card.faceUp ? card.id : `hidden-life-${index}`,
         }));
+      } else if (ownRevealedDeckCardIds) {
+        // Preserve currently revealed cards so the client can resolve deck-reveal selections by ID.
+        player.deck = player.deck.map(card =>
+          ownRevealedDeckCardIds.has(card.id) ? card : { ...hiddenDeckCard }
+        );
       } else {
         // Hide own deck order — prevent client from seeing upcoming draws
         player.deck = Array(player.deck.length).fill(hiddenDeckCard);
