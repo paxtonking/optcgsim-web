@@ -39,6 +39,8 @@ import {
   TargetFilter,
 } from '../effects';
 
+import { normalizeColors } from './cardHelpers';
+
 export interface GameStateManagerOptions {
   isTutorial?: boolean;
 }
@@ -448,6 +450,16 @@ export class GameStateManager {
 
     const drawnCards: GameCard[] = [];
     for (let i = 0; i < count; i++) {
+      // Deck-out: if deck is empty when a draw is required, that player loses
+      if (player.deck.length === 0) {
+        const opponentId = Object.keys(this.state.players).find(id => id !== playerId);
+        if (opponentId) {
+          this.state.winner = opponentId;
+          this.state.phase = GamePhase.GAME_OVER;
+        }
+        break;
+      }
+
       const card = player.deck.shift();
       if (card) {
         card.zone = CardZone.HAND;
@@ -1569,7 +1581,9 @@ export class GameStateManager {
         }
         case 'COLOR': {
           const colors = filter.value as string[];
-          if (!colors.some(c => cardDef.colors?.includes(c))) return false;
+          // Handle both ["GREEN", "RED"] and legacy ["GREEN RED"] compound format
+          const cardColors = normalizeColors(cardDef.colors ?? []);
+          if (!colors.some(c => cardColors.includes(c))) return false;
           break;
         }
         case 'COST': {
@@ -2114,6 +2128,15 @@ export class GameStateManager {
     if (donIndex === -1) return false;
 
     const don = player.donField[donIndex];
+
+    // Validate DON is ACTIVE and not already attached
+    if (don.state !== CardState.ACTIVE || don.attachedTo) return false;
+
+    // Validate target is a leader or field character
+    const target = this.findCard(targetId);
+    if (!target) return false;
+    if (target.zone !== CardZone.LEADER && target.zone !== CardZone.FIELD) return false;
+
     don.attachedTo = targetId;
     don.state = CardState.ATTACHED;
 
@@ -2281,10 +2304,11 @@ export class GameStateManager {
       return false;
     }
 
-    // Neither player can attack on their first personal turn (One Piece TCG rule)
+    // Only the FIRST player cannot attack on their first personal turn (OPTCG rules)
+    // The second player CAN attack on their first turn
     const attackerPlayer = this.state.players[attacker.owner];
-    if (attackerPlayer && attackerPlayer.turnCount === 1) {
-      console.log('[DEBUG ATTACK GSM] First turn - cannot attack');
+    if (attackerPlayer && attackerPlayer.turnCount === 1 && attacker.owner === this.state.firstPlayerId) {
+      console.log('[DEBUG ATTACK GSM] First player cannot attack on turn 1');
       return false;
     }
 
@@ -2334,30 +2358,26 @@ export class GameStateManager {
       playerId: attacker.owner,
       targetId: targetId,
     };
-    const pendingEffects = this.processTriggers(triggerEvent);
+    const attackerPendingEffects = this.processTriggers(triggerEvent);
+
+    // Trigger OPPONENT_ATTACK for defending player's cards
+    const opponentAttackTrigger: TriggerEvent = {
+      type: EffectTrigger.OPPONENT_ATTACK,
+      cardId: attackerId,
+      playerId: attacker.owner,
+      targetId: targetId,
+    };
+    const defenderPendingEffects = this.processTriggers(opponentAttackTrigger);
+
+    const pendingEffects = [...attackerPendingEffects, ...defenderPendingEffects]
+      .sort((a, b) => b.priority - a.priority);
 
     // Check if any ON_ATTACK effects require target selection
     const effectsRequiringChoice = pendingEffects.filter(e => e.requiresChoice);
     if (effectsRequiringChoice.length > 0) {
-      // Pause at ATTACK_EFFECT_STEP to let player select targets
+      // Pause at ATTACK_EFFECT_STEP to let either side select targets
       this.state.phase = GamePhase.ATTACK_EFFECT_STEP;
-
-      // Populate pendingAttackEffects for the client to display (compute valid targets like play effects)
-      this.state.pendingAttackEffects = effectsRequiringChoice.map(e => {
-        // Get valid targets for the effect
-        const validTargets = this.getValidTargetsForEffect(e.id);
-        const effectAction = e.effect.effects[0];
-
-        return {
-          id: e.id,
-          sourceCardId: e.sourceCardId,
-          playerId: e.playerId,
-          description: e.effect.description || 'Activate ability',
-          validTargets,
-          requiresChoice: e.requiresChoice,
-          maxTargets: effectAction?.target?.count || 1
-        };
-      });
+      this.state.pendingAttackEffects = this.buildPendingAttackEffects(effectsRequiringChoice);
 
       return true;
     }
@@ -2385,7 +2405,7 @@ export class GameStateManager {
 
     // Check if there are more pending ON_ATTACK effects requiring choices
     const remainingEffects = this.effectEngine.getPendingEffects().filter(e =>
-      e.trigger === EffectTrigger.ON_ATTACK && e.requiresChoice
+      this.isAttackStepPendingEffect(e) && e.requiresChoice
     );
 
     if (remainingEffects.length > 0) {
@@ -2407,7 +2427,7 @@ export class GameStateManager {
 
     // Check if there are more pending ON_ATTACK effects requiring choices
     const remainingEffects = this.effectEngine.getPendingEffects().filter(e =>
-      e.trigger === EffectTrigger.ON_ATTACK && e.requiresChoice
+      this.isAttackStepPendingEffect(e) && e.requiresChoice
     );
 
     if (remainingEffects.length > 0) {
@@ -2419,7 +2439,7 @@ export class GameStateManager {
     return this.proceedFromAttackEffectStep();
   }
 
-  /** Build the pendingAttackEffects client payload from remaining ON_ATTACK effects. */
+  /** Build the pendingAttackEffects client payload from remaining attack-step effects. */
   private buildPendingAttackEffects(effects: PendingEffect[]) {
     return effects.map(e => {
       const validTargets = this.getValidTargetsForEffect(e.id);
@@ -2434,6 +2454,11 @@ export class GameStateManager {
         maxTargets: effectAction?.target?.count || 1
       };
     });
+  }
+
+  private isAttackStepPendingEffect(effect: PendingEffect): boolean {
+    return effect.trigger === EffectTrigger.ON_ATTACK ||
+      effect.trigger === EffectTrigger.OPPONENT_ATTACK;
   }
 
   /** Build the pendingPlayEffects client payload from remaining ON_PLAY effects. */
@@ -3018,9 +3043,10 @@ export class GameStateManager {
       const target = this.findCard(targetId!);
       if (target) {
         // getEffectivePower includes base, buffs, DON, and THIS_BATTLE buffs from counter events
-        // Counter power should not apply to character attacks (counter step is leader-only)
+        // Counter power applies to blocker combat (counter step happens after block step)
         const targetPower = this.getEffectivePower(target);
-        if (attackPower >= targetPower) {
+        const blockerCounterPower = this.state.currentCombat?.isBlocked ? counterPower : 0;
+        if (attackPower >= targetPower + blockerCounterPower) {
           // Trigger PRE_KO before the KO happens (allows prevention effects)
           const preKoTrigger: TriggerEvent = {
             type: EffectTrigger.PRE_KO,
@@ -3123,11 +3149,8 @@ export class GameStateManager {
     for (let i = 0; i < damage; i++) {
       // Win condition: If player has no life cards and takes damage, they lose
       if (player.lifeCards.length === 0) {
-        // Double Attack cannot win if opponent had only 1 life (One Piece TCG rule)
-        if (isDoubleAttack && lifeBeforeDamage === 1) {
-          // Opponent survives - Double Attack rule prevents win
-          return;
-        }
+        // Double Attack CAN win from any life total -- no protection rule in OPTCG
+        // If life is 0 and damage is dealt, the player loses regardless of Double Attack
 
         const opponentId = Object.keys(this.state.players).find(id => id !== playerId);
         this.state.winner = opponentId;
@@ -3166,6 +3189,7 @@ export class GameStateManager {
             };
             this.processTriggers(triggerEvent);
             this.state.phase = GamePhase.TRIGGER_STEP;
+            this.state.triggerCardId = lifeCard.cardId; // Store for client UI display
 
             // Store remaining damage for after trigger resolves (Double Attack fix)
             const remaining = damage - i - 1;
@@ -3208,7 +3232,6 @@ export class GameStateManager {
       remainingDamagePlayerId,
       remainingDamageHasBanish,
       remainingDamageIsDoubleAttack,
-      remainingDamageOriginalLife,
     } = this.state.currentCombat;
     // Clear before calling takeDamage to avoid infinite loops
     this.state.currentCombat.remainingDamage = undefined;
@@ -3218,11 +3241,7 @@ export class GameStateManager {
     this.state.currentCombat.remainingDamageOriginalLife = undefined;
 
     if (remainingDamagePlayerId) {
-      // Preserve One Piece rule: Double Attack cannot deal lethal from exactly 1 life.
-      if (remainingDamageIsDoubleAttack && remainingDamageOriginalLife === 1) {
-        this.finalizeCombatCleanup();
-        return true;
-      }
+      // Double Attack CAN deal lethal from any life total -- no protection rule in OPTCG
 
       const attacker = this.findCard(attackerId);
       this.takeDamage(
@@ -3628,6 +3647,14 @@ export class GameStateManager {
       return this.isCardInPlay(this.findCard(buff.sourceCardId));
     }
 
+    if (buff.duration === 'UNTIL_END_OF_OPPONENT_TURN') {
+      return this.state.turn <= (buff.appliedTurn ?? 0) + 1;
+    }
+
+    if (buff.duration === 'UNTIL_START_OF_YOUR_TURN') {
+      return this.state.turn < (buff.appliedTurn ?? 0) + 2;
+    }
+
     if (buff.duration === 'THIS_TURN') {
       return buff.appliedTurn === this.state.turn;
     }
@@ -3823,6 +3850,7 @@ export class GameStateManager {
         }
         // Pass on trigger - continue to next phase
         if (this.state.phase === GamePhase.TRIGGER_STEP) {
+          this.state.triggerCardId = undefined; // Clear trigger card info
           // Continue dealing remaining damage (Double Attack with multiple triggers)
           if (this.continueRemainingDamage()) {
             return true; // Still in trigger resolution
@@ -5978,8 +6006,25 @@ export class GameStateManager {
   public sanitizeStateForPlayer(playerId: string): GameState {
     const state = this.getState();
     const sanitizedState = JSON.parse(JSON.stringify(state)) as GameState;
+    const ownRevealedDeckCardIds = sanitizedState.phase === GamePhase.DECK_REVEAL_STEP &&
+      sanitizedState.pendingDeckRevealEffect?.playerId === playerId
+      ? new Set(sanitizedState.pendingDeckRevealEffect.revealedCardIds)
+      : null;
 
     for (const [id, player] of Object.entries(sanitizedState.players)) {
+      // Create a single hidden deck card template for this player — reused
+      // via Array.fill() to avoid allocating N individual objects per sync.
+      // The client only needs deck.length for the count display (CardPile
+      // renders a generic card back for face-down decks) and never matches
+      // hidden IDs in .find()/.filter() calls, so sharing one object is safe.
+      const hiddenDeckCard: GameCard = {
+        id: id !== playerId ? 'hidden-deck' : 'own-deck',
+        cardId: 'hidden',
+        zone: CardZone.DECK,
+        state: CardState.ACTIVE,
+        owner: id,
+      };
+
       if (id !== playerId) {
         // Hide opponent's hand card IDs (keep structure for count)
         player.hand = player.hand.map((card, index) => ({
@@ -5989,14 +6034,7 @@ export class GameStateManager {
         }));
 
         // Hide opponent's deck completely (just keep count info)
-        const deckCount = player.deck.length;
-        player.deck = Array(deckCount).fill(null).map((_, i) => ({
-          id: `hidden-deck-${i}`,
-          cardId: 'hidden',
-          zone: CardZone.DECK,
-          state: CardState.ACTIVE,
-          owner: id,
-        }));
+        player.deck = Array(player.deck.length).fill(hiddenDeckCard);
 
         // Hide face-down life cards (keep faceUp ones visible)
         player.lifeCards = player.lifeCards.map((card, index) => ({
@@ -6004,6 +6042,14 @@ export class GameStateManager {
           cardId: card.faceUp ? card.cardId : 'hidden',
           id: card.faceUp ? card.id : `hidden-life-${index}`,
         }));
+      } else if (ownRevealedDeckCardIds) {
+        // Preserve currently revealed cards so the client can resolve deck-reveal selections by ID.
+        player.deck = player.deck.map(card =>
+          ownRevealedDeckCardIds.has(card.id) ? card : { ...hiddenDeckCard }
+        );
+      } else {
+        // Hide own deck order — prevent client from seeing upcoming draws
+        player.deck = Array(player.deck.length).fill(hiddenDeckCard);
       }
     }
 

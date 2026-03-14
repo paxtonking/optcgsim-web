@@ -12,6 +12,7 @@ import {
   CardState,
   ActionType,
   CardZone,
+  getReadyAttackers,
 } from '@optcgsim/shared';
 import { AIDecision, DifficultyLevel } from './types.js';
 import { AI_CONFIG } from './config.js';
@@ -111,10 +112,9 @@ export class AIService {
         return this.getAttackEffectAction(gameState, player);
 
       case GamePhase.TRIGGER_STEP:
-        // Trigger step - AI should pass if no trigger to activate
-        // Use TRIGGER_LIFE with no effectId to pass the trigger
-        console.log('[AI] In TRIGGER_STEP, passing trigger');
-        return { action: ActionType.TRIGGER_LIFE, data: {} };
+        // Trigger step - activate triggers by default since they are free beneficial effects
+        console.log('[AI] In TRIGGER_STEP, activating trigger');
+        return { action: ActionType.TRIGGER_LIFE, data: { activate: true } };
 
       default:
         return null;
@@ -475,7 +475,7 @@ export class AIService {
     }
 
     // 3. Declare attacks
-    const readyAttackers = this.getReadyAttackers(player, gameState.turn);
+    const readyAttackers = getReadyAttackers(player, gameState.turn, gameState);
     if (readyAttackers.length > 0) {
       const target = this.strategy.selectAttackTarget(gameState, player, readyAttackers[0]);
       return {
@@ -492,7 +492,7 @@ export class AIService {
    * Combat phase action
    */
   private getCombatAction(gameState: GameState, player: PlayerState): AIDecision | null {
-    const readyAttackers = this.getReadyAttackers(player, gameState.turn);
+    const readyAttackers = getReadyAttackers(player, gameState.turn, gameState);
 
     if (readyAttackers.length > 0) {
       const target = this.strategy.selectAttackTarget(gameState, player, readyAttackers[0]);
@@ -615,35 +615,23 @@ export class AIService {
         return this.strategy.decideBlock(gameState, player);
 
       case GamePhase.TRIGGER_STEP:
-        return { action: ActionType.TRIGGER_LIFE, data: {} };
+        // Activate triggers by default since they are free beneficial effects from life cards
+        console.log('[AI] Defensive TRIGGER_STEP, activating trigger');
+        return { action: ActionType.TRIGGER_LIFE, data: { activate: true } };
+
+      case GamePhase.COUNTER_EFFECT_STEP: {
+        // Handle pending counter effects (e.g., target selection for event counters)
+        const pendingCounter = gameState.pendingCounterEffects?.find(e => e.playerId === this.playerId);
+        if (pendingCounter) {
+          return this.getCounterEffectAction(gameState, player, pendingCounter);
+        }
+        // No pending counter effect for this player - skip
+        return { action: ActionType.PASS_COUNTER, data: {} };
+      }
 
       default:
         return null;
     }
-  }
-
-  /**
-   * Get characters ready to attack
-   */
-  private getReadyAttackers(player: PlayerState, currentTurn: number): any[] {
-    // First turn rule: neither player can attack on their first personal turn
-    if (player.turnCount === 1) {
-      return [];
-    }
-
-    return player.field.filter(card => {
-      if (card.state !== CardState.ACTIVE) return false;
-      if (card.hasAttacked) return false;
-
-      // Check if can attack (Rush or not played this turn)
-      if (card.turnPlayed === currentTurn) {
-        // Use runtime keywords (card.keywords) not static card definition
-        // This respects conditional Rush that may not be active
-        if (!card.keywords?.includes('Rush')) return false;
-      }
-
-      return true;
-    });
   }
 
   /**

@@ -29,6 +29,8 @@ import {
   DEFAULT_GAME_CONFIG,
 } from '../types/game';
 
+import { normalizeColors } from '../game/cardHelpers';
+
 // Card definition with effects (from database)
 export interface CardDefinition {
   id: string;
@@ -102,6 +104,10 @@ export class EffectEngine {
         return 'PERMANENT';
       case EffectDuration.WHILE_ON_FIELD:
         return 'WHILE_ON_FIELD';
+      case EffectDuration.UNTIL_END_OF_OPPONENT_TURN:
+        return 'UNTIL_END_OF_OPPONENT_TURN';
+      case EffectDuration.UNTIL_START_OF_YOUR_TURN:
+        return 'UNTIL_START_OF_YOUR_TURN';
       case EffectDuration.INSTANT:
       default:
         // Default to THIS_TURN for "during this turn" effects
@@ -170,9 +176,19 @@ export class EffectEngine {
       return buff.appliedCombatId === currentCombatId;
     }
 
-    if (buff.duration === 'WHILE_ON_FIELD') {
+    if (buff.duration === 'WHILE_ON_FIELD' || buff.duration === 'STAGE_CONTINUOUS') {
       const sourceCard = this.findCard(gameState, buff.sourceCardId);
       return this.isCardInPlay(sourceCard);
+    }
+
+    // Lasts through opponent's turn (applied turn + 1)
+    if (buff.duration === 'UNTIL_END_OF_OPPONENT_TURN') {
+      return gameState.turn <= (buff.appliedTurn ?? 0) + 1;
+    }
+
+    // Lasts until the start of your next turn (applied turn + 2, exclusive)
+    if (buff.duration === 'UNTIL_START_OF_YOUR_TURN') {
+      return gameState.turn < (buff.appliedTurn ?? 0) + 2;
     }
 
     return false;
@@ -396,6 +412,17 @@ export class EffectEngine {
     // ON_PLAY triggers should only fire for the card that was just played
     if (effect.trigger === EffectTrigger.ON_PLAY) {
       if (event.cardId !== sourceCard.id) return false;
+    }
+
+    // ON_ATTACK / ON_KO / ON_BLOCK triggers should only fire for the specific card involved
+    if ([EffectTrigger.ON_ATTACK, EffectTrigger.ON_KO, EffectTrigger.ON_BLOCK].includes(effect.trigger)) {
+      if (event.cardId !== sourceCard.id) return false;
+    }
+
+    // OPPONENT_ATTACK triggers should only fire for the defending player's cards
+    if (effect.trigger === EffectTrigger.OPPONENT_ATTACK) {
+      // event.playerId is the attacker's owner — trigger only fires for opponent's cards
+      if (event.playerId === player.id) return false;
     }
 
     // Check DON! requirements for DON_X triggers
@@ -705,7 +732,9 @@ export class EffectEngine {
 
       case ConditionType.LEADER_IS_MULTICOLORED: {
         const leaderDefMulti = this.cardDefinitions.get(sourcePlayer.leaderCard?.cardId || '');
-        return (leaderDefMulti?.colors?.length ?? 0) > 1;
+        // Handle both ["GREEN", "RED"] and legacy ["GREEN RED"] format
+        const allColors = normalizeColors(leaderDefMulti?.colors ?? []);
+        return allColors.length > 1;
       }
 
       // Turn conditions
@@ -952,8 +981,8 @@ export class EffectEngine {
               context.sourceCard.id,
               gameState
             );
-            // During combat, also track in effectBuffPower for combat resolution
-            if (gameState.currentCombat) {
+            // During combat, track effectBuffPower only for defender-side buffs (not attacker)
+            if (gameState.currentCombat && targetId !== gameState.currentCombat.attackerId) {
               gameState.currentCombat.effectBuffPower =
                 (gameState.currentCombat.effectBuffPower || 0) + (action.value || 0);
             }
@@ -1022,7 +1051,10 @@ export class EffectEngine {
         targets.forEach(targetId => {
           const card = this.findCard(gameState, targetId);
           if (card) {
+            card.basePower = 0;
             card.power = 0;
+            // Clear all power buffs so effective power is actually 0
+            card.powerBuffs = [];
             changes.push({
               type: 'POWER_CHANGED',
               cardId: targetId,
@@ -1831,15 +1863,18 @@ export class EffectEngine {
       // ============================================
       // OPPONENT_RETURN_DON - Opponent returns DON to deck
       // ============================================
-      case EffectType.OPPONENT_RETURN_DON:
+      case EffectType.OPPONENT_RETURN_DON: {
         const returnDonCount = action.value || 1;
         const oppPlayer = Object.values(gameState.players).find(p => p.id !== sourcePlayer.id);
         if (oppPlayer && oppPlayer.donField && oppPlayer.donField.length > 0) {
           const donToReturn = Math.min(returnDonCount, oppPlayer.donField.length);
-          // Return DON from field to deck
+          // Prefer returning non-attached DON first
           for (let i = 0; i < donToReturn; i++) {
-            const donCard = oppPlayer.donField.pop();
+            let donIndex = oppPlayer.donField.findIndex(d => !d.attachedTo);
+            if (donIndex === -1) donIndex = oppPlayer.donField.length - 1;
+            const donCard = oppPlayer.donField.splice(donIndex, 1)[0];
             if (donCard) {
+              if (donCard.attachedTo) donCard.attachedTo = undefined;
               oppPlayer.donDeck = (oppPlayer.donDeck || 0) + 1;
             }
           }
@@ -1852,6 +1887,7 @@ export class EffectEngine {
           console.log('[OPPONENT_RETURN_DON] Opponent returned', donToReturn, 'DON to deck');
         }
         break;
+      }
 
       // ============================================
       // IMMUNE_EFFECTS - Cannot be affected by opponent effects
@@ -1944,11 +1980,14 @@ export class EffectEngine {
         if (targets.length >= 2) {
           const card1 = this.findCard(gameState, targets[0]);
           const card2 = this.findCard(gameState, targets[1]);
-          if (card1 && card2 && card1.power !== undefined && card2.power !== undefined) {
-            // Swap the base power
-            const temp = card1.power;
-            card1.power = card2.power;
-            card2.power = temp;
+          if (card1 && card2) {
+            // Swap basePower (which getEffectivePower uses) rather than display power
+            const power1 = card1.basePower ?? card1.power ?? 0;
+            const power2 = card2.basePower ?? card2.power ?? 0;
+            card1.basePower = power2;
+            card1.power = power2;
+            card2.basePower = power1;
+            card2.power = power1;
             changes.push({
               type: 'POWER_CHANGED',
               cardId: targets[0],
@@ -2326,11 +2365,17 @@ export class EffectEngine {
 
         // Return DON from field to DON deck
         while (returned < returnCount && sourcePlayer.donField.length > 0) {
-          // Prefer returning rested DON first
-          let donIndex = sourcePlayer.donField.findIndex(d => d.state === CardState.RESTED);
+          // Prefer returning: rested non-attached > active non-attached > attached
+          let donIndex = sourcePlayer.donField.findIndex(d => d.state === CardState.RESTED && !d.attachedTo);
+          if (donIndex === -1) donIndex = sourcePlayer.donField.findIndex(d => d.state === CardState.ACTIVE && !d.attachedTo);
           if (donIndex === -1) donIndex = sourcePlayer.donField.length - 1;
 
           if (donIndex >= 0) {
+            const donCard = sourcePlayer.donField[donIndex];
+            // Clean up attachment reference if DON was attached
+            if (donCard.attachedTo) {
+              donCard.attachedTo = undefined;
+            }
             sourcePlayer.donField.splice(donIndex, 1);
             sourcePlayer.donDeck = (sourcePlayer.donDeck || 0) + 1;
             returned++;
@@ -3640,8 +3685,10 @@ export class EffectEngine {
 
           case 'COLOR':
             const colors = Array.isArray(filter.value) ? filter.value as string[] : [filter.value as string];
+            // Handle both ["GREEN", "RED"] and legacy ["GREEN RED"] compound format
+            const cardColors = normalizeColors(def.colors);
             if (filter.operator === 'CONTAINS') {
-              return colors.some(c => def.colors.includes(c));
+              return colors.some(c => cardColors.includes(c));
             }
             break;
 
@@ -3762,11 +3809,12 @@ export class EffectEngine {
         return currentTurn > effect.appliedAt;
 
       case EffectDuration.UNTIL_END_OF_BATTLE:
-        return gameState.phase !== GamePhase.COMBAT_PHASE;
+        // Combat is over when currentCombat is cleared (COMBAT_PHASE is never actually set)
+        return !gameState.currentCombat;
 
       case EffectDuration.WHILE_ON_FIELD:
         const card = this.findCard(gameState, effect.sourceCardId);
-        return !card || card.zone !== CardZone.FIELD;
+        return !card || !this.isCardInPlay(card);
 
       default:
         return false;

@@ -229,6 +229,8 @@ export function setupWebSocket(io: SocketServer) {
         console.log(`[WebSocket] Found lobby ${lobby.id} for user, calling startGame`);
         try {
           await gameManager.startGame(lobby, socket);
+          // Clean up lobby after game starts to prevent memory leak and "already in lobby" blocking
+          lobbyManager.removeLobby(lobby.id);
         } catch (error) {
           console.error('[WebSocket] Failed to start game from lobby:', error);
           socket.emit('game:error', { error: 'Failed to start game' });

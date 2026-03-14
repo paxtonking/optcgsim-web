@@ -15,6 +15,7 @@ import {
   GamePhase,
   ActionType,
   CardState,
+  EffectTrigger,
 } from '@optcgsim/shared';
 import { prisma } from '../services/prisma.js';
 import { cardLoaderService } from '../services/CardLoaderService.js';
@@ -1140,6 +1141,8 @@ export class AIGameManager {
       decision = game.aiPlayer.getNextAction(state);
     }
 
+    this.enrichTriggerDecision(decision, game);
+
     if (decision) {
       const aiAction: GameAction = {
         id: `ai-def-${Date.now()}`,
@@ -1355,8 +1358,18 @@ export class AIGameManager {
     }
 
     // Get AI decision
-    const decision = game.aiPlayer.getNextAction(state);
+    let decision = game.aiPlayer.getNextAction(state);
     console.log('[AIGameManager] AI decision:', decision);
+
+    // Fallback: if getNextAction returns null during MAIN_PHASE, end the turn
+    // to prevent the game from stalling permanently
+    if (!decision && state.phase === GamePhase.MAIN_PHASE &&
+        state.activePlayerId === game.aiPlayer.getPlayerId()) {
+      console.log('[AIGameManager] AI returned null during MAIN_PHASE, falling back to END_TURN');
+      decision = { action: ActionType.END_TURN, data: {} };
+    }
+
+    this.enrichTriggerDecision(decision, game);
 
     if (decision) {
       const aiAction: GameAction = {
@@ -1396,6 +1409,34 @@ export class AIGameManager {
           this.processAITurn(gameId);
         }, game.aiThinkDelay);
       }
+    }
+  }
+
+  /**
+   * Find the effectId of a pending trigger effect for the AI player.
+   * Returns the effectId string if found, or null if no trigger effect is pending.
+   */
+  private findTriggerEffectId(game: AIGameRoom): string | null {
+    const pendingEffects = game.stateManager.getPendingEffects();
+    const aiPlayerId = game.aiPlayer.getPlayerId();
+    const triggerEffect = pendingEffects.find(
+      e => e.trigger === EffectTrigger.TRIGGER && e.playerId === aiPlayerId
+    );
+    return triggerEffect?.id ?? null;
+  }
+
+  /**
+   * Enrich an AI trigger-activate decision with the actual effectId.
+   * If no trigger effect is found, clears the data so the action passes instead.
+   */
+  private enrichTriggerDecision(decision: { action: ActionType; data: any } | null, game: AIGameRoom): void {
+    if (!decision || decision.action !== ActionType.TRIGGER_LIFE || !decision.data?.activate) return;
+    const triggerEffect = this.findTriggerEffectId(game);
+    if (triggerEffect) {
+      decision.data = { effectId: triggerEffect };
+    } else {
+      console.log('[AIGameManager] No trigger effect found to activate, passing');
+      decision.data = {};
     }
   }
 

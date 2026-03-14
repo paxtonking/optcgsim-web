@@ -2,7 +2,7 @@
  * EffectEngine Unit Tests
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { EffectEngine, EffectContext } from '../EffectEngine';
 import { EffectType, EffectTrigger, EffectDuration, TargetType, ConditionType } from '../types';
 import { GamePhase, CardState, CardZone } from '../../types/game';
