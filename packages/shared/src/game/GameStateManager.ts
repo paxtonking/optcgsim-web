@@ -675,14 +675,9 @@ export class GameStateManager {
         }
       }
 
-      // Auto-resolve effects that don't require target selection (like MILL_DECK, DRAW_CARDS, etc.)
-      const effectsNotRequiringChoice = pendingEffects.filter(e => !e.requiresChoice);
-      for (const effect of effectsNotRequiringChoice) {
-        console.log('[playCard] Auto-resolving non-choice effect:', effect.effect.effects[0]?.type);
-        this.resolveEffect(effect.id, []);
-      }
-
-      // Check if any ON_PLAY effects require target selection
+      // Show all ON_PLAY effects to the player for confirmation, even non-choice ones.
+      // Non-choice effects (like MILL_DECK, DRAW_CARDS) still need player to confirm activation.
+      // Cost-handling only applies to effects that require choice (targeting).
       const effectsRequiringChoice = pendingEffects.filter(e => e.requiresChoice);
       if (effectsRequiringChoice.length > 0) {
         // Check if the first effect has a cost that requires card selection
@@ -808,7 +803,13 @@ export class GameStateManager {
         }
 
         // Build pending play effects with valid targets (no cost or cost already handled)
-        const pendingPlayEffects = effectsRequiringChoice.map(e => {
+        // Include ALL effects (choice and non-choice) so player can confirm/skip them
+        const currentPendingIds = new Set(this.effectEngine.getPendingEffects().map(pe => pe.id));
+        const allEffectsToShow = pendingEffects.filter(e =>
+          // Only include effects still in the engine (costs may have removed some)
+          currentPendingIds.has(e.id)
+        );
+        const pendingPlayEffects = allEffectsToShow.map(e => {
           // Get valid targets for the effect
           const validTargets = this.getValidTargetsForEffect(e.id);
 
@@ -848,9 +849,21 @@ export class GameStateManager {
         });
 
         if (actionableEffects.length > 0) {
-          // Pause at PLAY_EFFECT_STEP to let player select targets
+          // Pause at PLAY_EFFECT_STEP to let player confirm/select targets
           this.state.phase = GamePhase.PLAY_EFFECT_STEP;
           this.state.pendingPlayEffects = actionableEffects;
+        }
+      }
+
+      // Also show non-choice effects even when there are no choice effects
+      if (effectsRequiringChoice.length === 0 && pendingEffects.length > 0) {
+        const currentPending = this.effectEngine.getPendingEffects();
+        const pendingIds = new Set(currentPending.map(pe => pe.id));
+        const nonChoiceEffects = pendingEffects.filter(e => pendingIds.has(e.id));
+        if (nonChoiceEffects.length > 0) {
+          const pendingPlayEffects = this.buildPendingPlayEffects(nonChoiceEffects);
+          this.state.phase = GamePhase.PLAY_EFFECT_STEP;
+          this.state.pendingPlayEffects = pendingPlayEffects;
         }
       }
     } else if (targetZone === CardZone.STAGE) {
@@ -2372,12 +2385,11 @@ export class GameStateManager {
     const pendingEffects = [...attackerPendingEffects, ...defenderPendingEffects]
       .sort((a, b) => b.priority - a.priority);
 
-    // Check if any ON_ATTACK effects require target selection
-    const effectsRequiringChoice = pendingEffects.filter(e => e.requiresChoice);
-    if (effectsRequiringChoice.length > 0) {
-      // Pause at ATTACK_EFFECT_STEP to let either side select targets
+    // Show all ON_ATTACK effects to the player for confirmation (choice and non-choice)
+    if (pendingEffects.length > 0) {
+      // Pause at ATTACK_EFFECT_STEP to let player confirm/select targets
       this.state.phase = GamePhase.ATTACK_EFFECT_STEP;
-      this.state.pendingAttackEffects = this.buildPendingAttackEffects(effectsRequiringChoice);
+      this.state.pendingAttackEffects = this.buildPendingAttackEffects(pendingEffects);
 
       return true;
     }
@@ -2395,7 +2407,7 @@ export class GameStateManager {
     return true;
   }
 
-  // Resolve an ON_ATTACK effect that requires target selection
+  // Resolve an ON_ATTACK effect (with or without target selection)
   public resolveAttackEffect(effectId: string, selectedTargets: string[]): boolean {
     if (this.state.phase !== GamePhase.ATTACK_EFFECT_STEP) return false;
     if (!this.state.currentCombat) return false;
@@ -2403,9 +2415,9 @@ export class GameStateManager {
     // Resolve the effect with selected targets
     this.resolveEffect(effectId, selectedTargets);
 
-    // Check if there are more pending ON_ATTACK effects requiring choices
+    // Check if there are more pending ON_ATTACK effects (choice or non-choice)
     const remainingEffects = this.effectEngine.getPendingEffects().filter(e =>
-      this.isAttackStepPendingEffect(e) && e.requiresChoice
+      this.isAttackStepPendingEffect(e)
     );
 
     if (remainingEffects.length > 0) {
@@ -2425,9 +2437,9 @@ export class GameStateManager {
     // Remove the effect from pending without resolving
     this.effectEngine.removePendingEffect(effectId);
 
-    // Check if there are more pending ON_ATTACK effects requiring choices
+    // Check if there are more pending ON_ATTACK effects (choice or non-choice)
     const remainingEffects = this.effectEngine.getPendingEffects().filter(e =>
-      this.isAttackStepPendingEffect(e) && e.requiresChoice
+      this.isAttackStepPendingEffect(e)
     );
 
     if (remainingEffects.length > 0) {
@@ -2520,7 +2532,7 @@ export class GameStateManager {
     return false;
   }
 
-  // Resolve an ON_PLAY effect that requires target selection
+  // Resolve an ON_PLAY effect (with or without target selection)
   public resolvePlayEffect(effectId: string, selectedTargets: string[]): boolean {
     if (this.state.phase !== GamePhase.PLAY_EFFECT_STEP) return false;
 
@@ -2529,9 +2541,9 @@ export class GameStateManager {
     // Resolve the effect with selected targets
     this.resolveEffect(effectId, selectedTargets);
 
-    // Check if there are more pending ON_PLAY effects requiring choices
+    // Check if there are more pending ON_PLAY effects (choice or non-choice)
     const remainingEffects = this.effectEngine.getPendingEffects().filter(e =>
-      e.trigger === EffectTrigger.ON_PLAY && e.requiresChoice
+      e.trigger === EffectTrigger.ON_PLAY
     );
 
     if (remainingEffects.length > 0) {
@@ -2555,9 +2567,9 @@ export class GameStateManager {
     // Remove the effect from pending without resolving
     this.effectEngine.removePendingEffect(effectId);
 
-    // Check if there are more pending ON_PLAY effects requiring choices
+    // Check if there are more pending ON_PLAY effects (choice or non-choice)
     const remainingEffects = this.effectEngine.getPendingEffects().filter(e =>
-      e.trigger === EffectTrigger.ON_PLAY && e.requiresChoice
+      e.trigger === EffectTrigger.ON_PLAY
     );
 
     if (remainingEffects.length > 0) {
@@ -3086,6 +3098,26 @@ export class GameStateManager {
               playerId: target.owner,
             };
             this.processTriggers(afterKoTrigger);
+          } else {
+            // KO was prevented - find and trash the protector card instead
+            const targetOwner = this.state.players[target.owner];
+            if (targetOwner) {
+              const protectorIndex = targetOwner.field.findIndex(
+                c => c.temporaryKeywords?.includes('KOProtector')
+              );
+              if (protectorIndex !== -1) {
+                const protector = targetOwner.field[protectorIndex];
+                console.log('[GameStateManager] KO prevented: trashing protector', protector.cardId, 'instead of', target.cardId);
+                this.koCharacter(protector.id);
+              }
+
+              // Clean up KOProtector keyword from all cards
+              for (const card of targetOwner.field) {
+                if (card.temporaryKeywords) {
+                  card.temporaryKeywords = card.temporaryKeywords.filter(k => k !== 'KOProtector');
+                }
+              }
+            }
           }
         }
       }
@@ -3357,6 +3389,7 @@ export class GameStateManager {
 
     // Cleanup expired effects from previous turn
     this.effectEngine.cleanupExpiredEffects(this.state);
+    this.effectEngine.cleanupExpiredGrantedEffects(this.state);
 
     // Recalculate hand costs based on stage effects (your turn only)
     this.applyStageEffects(playerId);

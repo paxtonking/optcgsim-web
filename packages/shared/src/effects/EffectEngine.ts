@@ -3796,6 +3796,25 @@ export class EffectEngine {
     return changes;
   }
 
+  public cleanupExpiredGrantedEffects(gameState: GameState): void {
+    for (const player of Object.values(gameState.players)) {
+      // Only field/leader/stage cards can have active granted effects
+      const cardsWithEffects = [
+        ...player.field,
+        player.leaderCard,
+        player.stage,
+      ].filter(Boolean) as GameCard[];
+
+      for (const card of cardsWithEffects) {
+        if (card.grantedEffects && card.grantedEffects.length > 0) {
+          card.grantedEffects = card.grantedEffects.filter(
+            ge => this.isGrantedEffectActive(ge, gameState)
+          );
+        }
+      }
+    }
+  }
+
   private shouldRemoveEffect(
     effect: ActiveEffect,
     gameState: GameState,

@@ -491,6 +491,14 @@ export class AIService {
       };
     }
 
+    // Non-choice effects: auto-confirm (resolve with no targets)
+    if (!pendingEffect.requiresChoice) {
+      return {
+        action: ActionType.RESOLVE_PLAY_EFFECT,
+        data: { effectId: pendingEffect.id, selectedTargets: [] }
+      };
+    }
+
     // For other effect types with valid targets
     if (validTargets.length > 0) {
       // Select first valid target
@@ -547,12 +555,12 @@ export class AIService {
       };
     }
 
-    // If effect doesn't require choice or has no valid targets, skip it
+    // Non-choice effects: auto-confirm (resolve with no targets)
     if (!pendingEffect.requiresChoice) {
-      console.log('[AIService] Effect does not require choice, skipping');
+      console.log('[AIService] Non-choice effect, auto-confirming');
       return {
-        action: ActionType.SKIP_ATTACK_EFFECT,
-        data: { effectId: pendingEffect.id }
+        action: ActionType.RESOLVE_ATTACK_EFFECT,
+        data: { effectId: pendingEffect.id, selectedTargets: [] }
       };
     }
 

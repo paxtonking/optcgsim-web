@@ -1114,6 +1114,82 @@
   z-index: 10;
 }
 
+/* Keyword badges container */
+.game-card__keyword-badges {
+  position: absolute;
+  left: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* Individual keyword badge */
+.game-card__keyword-badge {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 7px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+  opacity: 0.9;
+  pointer-events: auto;
+  line-height: 1;
+}
+
+.game-card__keyword-badge--rush {
+  background: rgba(230, 126, 34, 0.85);
+}
+
+.game-card__keyword-badge--blocker {
+  background: rgba(41, 128, 185, 0.85);
+}
+
+.game-card__keyword-badge--double-attack {
+  background: rgba(192, 57, 43, 0.85);
+}
+
+.game-card__keyword-badge--banish {
+  background: rgba(142, 68, 173, 0.85);
+}
+
+/* Action button info badges */
+.action-info-badge {
+  text-align: center;
+  font-size: 11px;
+  padding: 4px 8px;
+  margin-bottom: 4px;
+  border-radius: 4px;
+}
+
+.action-info-badge--double-attack {
+  color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.15);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+}
+
+.action-info-badge--double-attack .action-info-badge__detail {
+  color: #e0a0a0;
+  font-size: 10px;
+  margin-top: 2px;
+}
+
+.action-info-badge--trigger {
+  color: #ffd700;
+  background: rgba(255, 215, 0, 0.1);
+}
+
+.action-info-badge--trigger .action-info-badge__detail {
+  color: #a0aec0;
+  font-size: 10px;
+  margin-top: 2px;
+}
+
 /* Card with stats wrapper */
 .card-with-stats {
   display: flex;

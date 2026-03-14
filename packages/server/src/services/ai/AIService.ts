@@ -552,6 +552,14 @@ export class AIService {
       };
     }
 
+    // Non-choice effects: auto-confirm (resolve with no targets)
+    if (!pendingEffect.requiresChoice) {
+      return {
+        action: ActionType.RESOLVE_PLAY_EFFECT,
+        data: { effectId: pendingEffect.id, selectedTargets: [] },
+      };
+    }
+
     // Use strategy for target selection
     if (validTargets.length > 0) {
       const selectedTargets = this.strategy.selectEffectTargets(validTargets, gameState, pendingEffect.effectType);
@@ -590,10 +598,7 @@ export class AIService {
       };
     }
 
-    if (!pendingEffect.requiresChoice) {
-      return { action: ActionType.SKIP_ATTACK_EFFECT, data: { effectId: pendingEffect.id } };
-    }
-
+    // Non-choice effects: auto-confirm (resolve with no targets)
     return {
       action: ActionType.RESOLVE_ATTACK_EFFECT,
       data: { effectId: pendingEffect.id, selectedTargets: [] },
