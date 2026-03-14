@@ -18,6 +18,7 @@ import {
   PendingPlayEffect,
   ChoiceOption,
   CardRestriction,
+  PowerBuff,
 } from '../types/game';
 
 import {
@@ -3592,22 +3593,9 @@ export class GameStateManager {
     // Use basePower if available, otherwise fall back to power field
     const base = card.basePower ?? card.power ?? 0;
 
-    // Sum active buffs (PERMANENT, THIS_TURN, THIS_BATTLE, STAGE_CONTINUOUS)
+    // Sum active buffs (PERMANENT, THIS_TURN, THIS_BATTLE, STAGE_CONTINUOUS, WHILE_ON_FIELD)
     const buffTotal = (card.powerBuffs || [])
-      .filter(buff => {
-        if (buff.duration === 'PERMANENT') return true;
-        if (buff.duration === 'STAGE_CONTINUOUS') return true; // Stage continuous effects
-        if (buff.duration === 'THIS_TURN') {
-          return buff.appliedTurn === this.state.turn;
-        }
-        if (buff.duration === 'THIS_BATTLE') {
-          // Only include if we're currently in combat
-          if (!this.state.currentCombat) return false;
-          const currentCombatId = `${this.state.turn}-${this.state.currentCombat.attackerId}`;
-          return buff.appliedCombatId === currentCombatId;
-        }
-        return false;
-      })
+      .filter(buff => this.isPowerBuffActive(buff))
       .reduce((sum, buff) => sum + buff.value, 0);
 
     // DON bonus (+1000 per attached DON) - applies at all times while attached
@@ -3622,23 +3610,37 @@ export class GameStateManager {
    */
   public getBuffTotal(card: GameCard): number {
     return (card.powerBuffs || [])
-      .filter(buff => {
-        if (buff.duration === 'PERMANENT') return true;
-        if (buff.duration === 'STAGE_CONTINUOUS') return true; // Stage continuous effects
-        if (buff.duration === 'THIS_TURN') {
-          return buff.appliedTurn === this.state.turn;
-        }
-        if (buff.duration === 'THIS_BATTLE') {
-          if (!this.state.currentCombat) return false;
-          const currentCombatId = `${this.state.turn}-${this.state.currentCombat.attackerId}`;
-          return buff.appliedCombatId === currentCombatId;
-        }
-        return false;
-      })
+      .filter(buff => this.isPowerBuffActive(buff))
       .reduce((sum, buff) => sum + buff.value, 0);
   }
 
   // Helper methods
+  private isCardInPlay(card: GameCard | undefined): boolean {
+    return card?.zone === CardZone.FIELD ||
+      card?.zone === CardZone.LEADER ||
+      card?.zone === CardZone.STAGE;
+  }
+
+  private isPowerBuffActive(buff: PowerBuff): boolean {
+    if (buff.duration === 'PERMANENT') return true;
+
+    if (buff.duration === 'STAGE_CONTINUOUS' || buff.duration === 'WHILE_ON_FIELD') {
+      return this.isCardInPlay(this.findCard(buff.sourceCardId));
+    }
+
+    if (buff.duration === 'THIS_TURN') {
+      return buff.appliedTurn === this.state.turn;
+    }
+
+    if (buff.duration === 'THIS_BATTLE') {
+      if (!this.state.currentCombat) return false;
+      const currentCombatId = `${this.state.turn}-${this.state.currentCombat.attackerId}`;
+      return buff.appliedCombatId === currentCombatId;
+    }
+
+    return false;
+  }
+
   private findCard(cardId: string): GameCard | undefined {
     for (const player of Object.values(this.state.players)) {
       // Check all zones

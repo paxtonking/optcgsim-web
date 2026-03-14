@@ -172,10 +172,7 @@ export class EffectEngine {
 
     if (buff.duration === 'WHILE_ON_FIELD') {
       const sourceCard = this.findCard(gameState, buff.sourceCardId);
-      if (!sourceCard) return false;
-      return sourceCard.zone === CardZone.FIELD ||
-        sourceCard.zone === CardZone.LEADER ||
-        sourceCard.zone === CardZone.STAGE;
+      return this.isCardInPlay(sourceCard);
     }
 
     return false;
@@ -372,9 +369,7 @@ export class EffectEngine {
         return Boolean(gameState.currentCombat) && grantedEffect.turnGranted === gameState.turn;
       case 'WHILE_ON_FIELD': {
         const sourceCard = this.findCard(gameState, grantedEffect.sourceCardId);
-        return sourceCard?.zone === CardZone.FIELD ||
-          sourceCard?.zone === CardZone.LEADER ||
-          sourceCard?.zone === CardZone.STAGE;
+        return this.isCardInPlay(sourceCard);
       }
       case 'PERMANENT':
       default:
@@ -2939,15 +2934,21 @@ export class EffectEngine {
   /**
    * Check if an immunity entry is still active based on its duration.
    * PERMANENT immunities are always active. STAGE_CONTINUOUS immunities
-   * require the source card (stage) to still be on the field.
+   * require the source card to still be in play.
    */
   private isImmunityActive(gameState: GameState, immunity: CardImmunity): boolean {
     if (!immunity.duration || immunity.duration === 'PERMANENT') return true;
     if (immunity.duration === 'STAGE_CONTINUOUS' && immunity.sourceCardId) {
       const sourceCard = this.findCard(gameState, immunity.sourceCardId);
-      return sourceCard != null && sourceCard.zone === CardZone.STAGE;
+      return this.isCardInPlay(sourceCard);
     }
     return true;
+  }
+
+  private isCardInPlay(card: GameCard | null | undefined): boolean {
+    return card?.zone === CardZone.FIELD ||
+      card?.zone === CardZone.LEADER ||
+      card?.zone === CardZone.STAGE;
   }
 
   /**
