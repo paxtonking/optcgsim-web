@@ -1192,30 +1192,9 @@ export class EffectEngine {
         }
         break;
 
-      case EffectType.GAIN_RESTED_DON:
-        for (let i = 0; i < (action.value || 1); i++) {
-          if (sourcePlayer.donDeck > 0) {
-            sourcePlayer.donDeck--;
-            const newDon: GameCard = {
-              id: `${sourcePlayer.id}-don-${Date.now()}-${i}`,
-              cardId: 'DON',
-              zone: CardZone.DON_FIELD,
-              state: CardState.RESTED,
-              owner: sourcePlayer.id,
-            };
-            sourcePlayer.donField.push(newDon);
-            changes.push({
-              type: 'DON_CHANGED',
-              playerId: sourcePlayer.id,
-              value: 1,
-            });
-          }
-        }
-        break;
-
       case EffectType.ADD_DON:
-        // Add DON from DON deck to field (rested state)
-        // This is typically used by card effects like "Add up to 1 DON!! card from your DON!! deck and rest it"
+      case EffectType.GAIN_RESTED_DON:
+        // Both add DON from DON deck to field in rested state
         for (let i = 0; i < (action.value || 1); i++) {
           if (sourcePlayer.donDeck > 0) {
             sourcePlayer.donDeck--;
@@ -1567,55 +1546,8 @@ export class EffectEngine {
 
       // ============ PLAY FROM HAND EFFECTS ============
       case EffectType.PLAY_FROM_HAND:
-        // Play a card from hand to field
-        // targets should contain the card ID from hand that was selected
         targets.forEach(targetId => {
-          const handIndex = sourcePlayer.hand.findIndex(c => c.id === targetId);
-          if (handIndex === -1) {
-            console.warn('[PLAY_FROM_HAND] Card not found in hand:', targetId);
-            return;
-          }
-
-          const cardToPlay = sourcePlayer.hand[handIndex];
-          const cardDef = this.getCardDefinition(cardToPlay.cardId);
-
-          // Remove from hand
-          sourcePlayer.hand.splice(handIndex, 1);
-
-          // Play to appropriate zone based on card type
-          if (cardDef?.type === 'CHARACTER') {
-            // Check field character limit
-            if (sourcePlayer.field.length >= DEFAULT_GAME_CONFIG.maxFieldCharacters) {
-              // Field full - return card to hand
-              sourcePlayer.hand.splice(handIndex, 0, cardToPlay);
-              console.warn('[PLAY_FROM_HAND] Field full, cannot play character');
-              return;
-            }
-            cardToPlay.zone = CardZone.FIELD;
-            cardToPlay.state = CardState.ACTIVE;
-            cardToPlay.turnPlayed = gameState.turn;
-            cardToPlay.owner = sourcePlayer.id;
-            sourcePlayer.field.push(cardToPlay);
-            console.log('[PLAY_FROM_HAND] Played character to field:', cardToPlay.cardId);
-          } else if (cardDef?.type === 'STAGE') {
-            // Replace existing stage if any
-            if (sourcePlayer.stage) {
-              sourcePlayer.stage.zone = CardZone.TRASH;
-              sourcePlayer.trash.push(sourcePlayer.stage);
-            }
-            cardToPlay.zone = CardZone.STAGE;
-            cardToPlay.state = CardState.ACTIVE;
-            cardToPlay.owner = sourcePlayer.id;
-            sourcePlayer.stage = cardToPlay;
-            console.log('[PLAY_FROM_HAND] Played stage:', cardToPlay.cardId);
-          }
-
-          changes.push({
-            type: 'CARD_MOVED',
-            cardId: targetId,
-            from: CardZone.HAND,
-            to: cardDef?.type === 'STAGE' ? CardZone.STAGE : CardZone.FIELD,
-          });
+          this.playCardFromZone(sourcePlayer.hand, CardZone.HAND, targetId, sourcePlayer, gameState, changes);
         });
         break;
 
@@ -1648,54 +1580,8 @@ export class EffectEngine {
       // PLAY FROM TRASH
       // ============================================
       case EffectType.PLAY_FROM_TRASH:
-        // Play a card from trash to field
         targets.forEach(targetId => {
-          const trashIndex = sourcePlayer.trash.findIndex(c => c.id === targetId);
-          if (trashIndex === -1) {
-            console.warn('[PLAY_FROM_TRASH] Card not found in trash:', targetId);
-            return;
-          }
-
-          const cardToPlay = sourcePlayer.trash[trashIndex];
-          const cardDef = this.getCardDefinition(cardToPlay.cardId);
-
-          // Remove from trash
-          sourcePlayer.trash.splice(trashIndex, 1);
-
-          // Play to appropriate zone based on card type
-          if (cardDef?.type === 'CHARACTER') {
-            // Check field character limit
-            if (sourcePlayer.field.length >= DEFAULT_GAME_CONFIG.maxFieldCharacters) {
-              sourcePlayer.trash.splice(trashIndex, 0, cardToPlay);
-              console.warn('[PLAY_FROM_TRASH] Field full, cannot play character');
-              return;
-            }
-            cardToPlay.zone = CardZone.FIELD;
-            // Check if should be rested (some effects play rested)
-            cardToPlay.state = action.playRested ? CardState.RESTED : CardState.ACTIVE;
-            cardToPlay.turnPlayed = gameState.turn;
-            cardToPlay.owner = sourcePlayer.id;
-            sourcePlayer.field.push(cardToPlay);
-            console.log('[PLAY_FROM_TRASH] Played character to field:', cardToPlay.cardId);
-          } else if (cardDef?.type === 'STAGE') {
-            // Replace existing stage if any
-            if (sourcePlayer.stage) {
-              sourcePlayer.stage.zone = CardZone.TRASH;
-              sourcePlayer.trash.push(sourcePlayer.stage);
-            }
-            cardToPlay.zone = CardZone.STAGE;
-            cardToPlay.state = CardState.ACTIVE;
-            cardToPlay.owner = sourcePlayer.id;
-            sourcePlayer.stage = cardToPlay;
-            console.log('[PLAY_FROM_TRASH] Played stage:', cardToPlay.cardId);
-          }
-
-          changes.push({
-            type: 'CARD_MOVED',
-            cardId: targetId,
-            from: CardZone.TRASH,
-            to: cardDef?.type === 'STAGE' ? CardZone.STAGE : CardZone.FIELD,
-          });
+          this.playCardFromZone(sourcePlayer.trash, CardZone.TRASH, targetId, sourcePlayer, gameState, changes, action.playRested);
         });
         break;
 
@@ -1703,54 +1589,8 @@ export class EffectEngine {
       // PLAY FROM DECK
       // ============================================
       case EffectType.PLAY_FROM_DECK:
-        // Play a card from deck to field
         targets.forEach(targetId => {
-          const deckIndex = sourcePlayer.deck.findIndex(c => c.id === targetId);
-          if (deckIndex === -1) {
-            console.warn('[PLAY_FROM_DECK] Card not found in deck:', targetId);
-            return;
-          }
-
-          const cardToPlay = sourcePlayer.deck[deckIndex];
-          const cardDef = this.getCardDefinition(cardToPlay.cardId);
-
-          // Remove from deck
-          sourcePlayer.deck.splice(deckIndex, 1);
-
-          // Play to appropriate zone based on card type
-          if (cardDef?.type === 'CHARACTER') {
-            // Check field character limit
-            if (sourcePlayer.field.length >= DEFAULT_GAME_CONFIG.maxFieldCharacters) {
-              sourcePlayer.deck.splice(deckIndex, 0, cardToPlay);
-              console.warn('[PLAY_FROM_DECK] Field full, cannot play character');
-              return;
-            }
-            cardToPlay.zone = CardZone.FIELD;
-            // Check if should be rested (some effects play rested)
-            cardToPlay.state = action.playRested ? CardState.RESTED : CardState.ACTIVE;
-            cardToPlay.turnPlayed = gameState.turn;
-            cardToPlay.owner = sourcePlayer.id;
-            sourcePlayer.field.push(cardToPlay);
-            console.log('[PLAY_FROM_DECK] Played character to field:', cardToPlay.cardId);
-          } else if (cardDef?.type === 'STAGE') {
-            // Replace existing stage if any
-            if (sourcePlayer.stage) {
-              sourcePlayer.stage.zone = CardZone.TRASH;
-              sourcePlayer.trash.push(sourcePlayer.stage);
-            }
-            cardToPlay.zone = CardZone.STAGE;
-            cardToPlay.state = CardState.ACTIVE;
-            cardToPlay.owner = sourcePlayer.id;
-            sourcePlayer.stage = cardToPlay;
-            console.log('[PLAY_FROM_DECK] Played stage:', cardToPlay.cardId);
-          }
-
-          changes.push({
-            type: 'CARD_MOVED',
-            cardId: targetId,
-            from: CardZone.DECK,
-            to: cardDef?.type === 'STAGE' ? CardZone.STAGE : CardZone.FIELD,
-          });
+          this.playCardFromZone(sourcePlayer.deck, CardZone.DECK, targetId, sourcePlayer, gameState, changes, action.playRested);
         });
         break;
 
@@ -2936,6 +2776,61 @@ export class EffectEngine {
 
   private getOpponent(gameState: GameState, playerId: string): PlayerState | undefined {
     return Object.values(gameState.players).find(p => p.id !== playerId);
+  }
+
+  /**
+   * Play a card from a source zone (hand/trash/deck) to field or stage.
+   * Shared by PLAY_FROM_HAND, PLAY_FROM_TRASH, and PLAY_FROM_DECK.
+   */
+  private playCardFromZone(
+    sourceArray: GameCard[],
+    sourceZone: CardZone,
+    targetId: string,
+    sourcePlayer: PlayerState,
+    gameState: GameState,
+    changes: StateChange[],
+    playRested = false,
+  ): void {
+    const index = sourceArray.findIndex(c => c.id === targetId);
+    if (index === -1) {
+      console.warn(`[PLAY_FROM_${sourceZone}] Card not found:`, targetId);
+      return;
+    }
+
+    const cardToPlay = sourceArray[index];
+    const cardDef = this.getCardDefinition(cardToPlay.cardId);
+
+    // Remove from source
+    sourceArray.splice(index, 1);
+
+    if (cardDef?.type === 'CHARACTER') {
+      if (sourcePlayer.field.length >= DEFAULT_GAME_CONFIG.maxFieldCharacters) {
+        sourceArray.splice(index, 0, cardToPlay);
+        console.warn(`[PLAY_FROM_${sourceZone}] Field full, cannot play character`);
+        return;
+      }
+      cardToPlay.zone = CardZone.FIELD;
+      cardToPlay.state = playRested ? CardState.RESTED : CardState.ACTIVE;
+      cardToPlay.turnPlayed = gameState.turn;
+      cardToPlay.owner = sourcePlayer.id;
+      sourcePlayer.field.push(cardToPlay);
+    } else if (cardDef?.type === 'STAGE') {
+      if (sourcePlayer.stage) {
+        sourcePlayer.stage.zone = CardZone.TRASH;
+        sourcePlayer.trash.push(sourcePlayer.stage);
+      }
+      cardToPlay.zone = CardZone.STAGE;
+      cardToPlay.state = CardState.ACTIVE;
+      cardToPlay.owner = sourcePlayer.id;
+      sourcePlayer.stage = cardToPlay;
+    }
+
+    changes.push({
+      type: 'CARD_MOVED',
+      cardId: targetId,
+      from: sourceZone,
+      to: cardDef?.type === 'STAGE' ? CardZone.STAGE : CardZone.FIELD,
+    });
   }
 
   private findCard(gameState: GameState, cardId: string): GameCard | undefined {

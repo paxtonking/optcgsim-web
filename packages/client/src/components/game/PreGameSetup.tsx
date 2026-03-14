@@ -1,24 +1,13 @@
 import React, { useState } from 'react';
 import { PendingPreGameEffect, GameCard } from '@optcgsim/shared';
+import { ClientCardDefinition } from '../../types/card';
 import { GameCard as GameCardComponent } from './GameCard';
 import './GameBoard.css';
-
-interface CardDefinition {
-  id: string;
-  name: string;
-  type?: string;
-  colors?: string[];
-  cost?: number | null;
-  power?: number | null;
-  imageUrl?: string;
-  traits?: string[];
-  effectText?: string;
-}
 
 interface PreGameSetupProps {
   effect: PendingPreGameEffect;
   deckCards: GameCard[];
-  cardDefinitions: Map<string, CardDefinition>;
+  cardDefinitions: Map<string, ClientCardDefinition>;
   onSelect: (cardId: string) => void;
   onSkip: () => void;
   onHover?: (card: GameCard | null) => void;

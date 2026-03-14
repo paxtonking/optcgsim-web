@@ -1,23 +1,12 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { GameCard as GameCardType, CardState } from '@optcgsim/shared';
+import { ClientCardDefinition } from '../../types/card';
+import { resolveCardImageUrl } from '../../utils/cardImage';
 import './GameBoard.css';
-
-interface CardDefinition {
-  id: string;
-  name: string;
-  type?: string;
-  cardType?: string;
-  color?: string;
-  colors?: string[];
-  cost?: number | null;
-  power?: number | null;
-  counter?: number | null;
-  imageUrl?: string;
-}
 
 interface GameCardProps {
   card: GameCardType;
-  cardDef?: CardDefinition;
+  cardDef?: ClientCardDefinition;
   faceUp: boolean;
   isPlayable?: boolean;
   isTarget?: boolean;
@@ -84,24 +73,9 @@ export const GameCard: React.FC<GameCardProps> = ({
   const isRested = card.state === CardState.RESTED;
 
   // Get image URL - use cardDef.imageUrl if available, proxy through our API
-  const getImageUrl = () => {
-    // DON cards use local image
-    if (isDon || card.cardId === 'DON') {
-      return '/assets/cardbacks/CardFrontDon.png';
-    }
-    // Use API URL from environment if set (for production where frontend and backend are separate)
-    const apiBase = import.meta.env.VITE_API_URL || '';
-    if (cardDef?.imageUrl) {
-      const filename = cardDef.imageUrl.split('/').pop();
-      // Use different proxy based on the source domain
-      if (cardDef.imageUrl.includes('onepiece-cardgame.com')) {
-        return `${apiBase}/api/images/official/${filename}`;
-      }
-      return `${apiBase}/api/images/cards/${filename}`;
-    }
-    return `${apiBase}/api/images/cards/${card.cardId}.png`;
-  };
-  const imageUrl = getImageUrl();
+  const imageUrl = (isDon || card.cardId === 'DON')
+    ? '/assets/cardbacks/CardFrontDon.png'
+    : resolveCardImageUrl(card.cardId, cardDef?.imageUrl);
 
   // Preload image in background - keep showing old image until new one is ready
   useEffect(() => {
@@ -292,7 +266,7 @@ interface CardPileProps {
   showLastCard?: boolean; // Show last card in array instead of first (for trash pile)
   onClick?: () => void;
   onCardHover?: (card: GameCardType | null) => void;
-  cardDefinitions?: Map<string, CardDefinition>; // For showing proper card images when faceUp
+  cardDefinitions?: Map<string, ClientCardDefinition>; // For showing proper card images when faceUp
   size?: 'small' | 'normal' | 'large';
 }
 

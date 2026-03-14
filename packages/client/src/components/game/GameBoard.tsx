@@ -14,6 +14,7 @@ import { RPSModal } from './RPSModal';
 import { RPSResultModal } from './RPSResultModal';
 import { FirstChoiceModal } from './FirstChoiceModal';
 import { PreGameSetup } from './PreGameSetup';
+import { EffectPrompt } from './EffectPrompt';
 import { DeckRevealModal } from './DeckRevealModal';
 import { ChatPopup } from './ChatPopup';
 import { useLobbyStore } from '../../stores/lobbyStore';
@@ -24,6 +25,9 @@ import { EffectAnimationLayer, EffectAnimationAPI } from './EffectAnimation';
 import { useEffectToast } from '../../hooks/useEffectToast';
 import { TutorialOverlay } from './tutorial/TutorialOverlay';
 import { useTutorialStore } from '../../stores/tutorialStore';
+import { useTimedBanner } from '../../hooks/useTimedBanner';
+import { useEffectStep } from '../../hooks/useEffectStep';
+import { resolveCardImageUrl as resolveCardImageUrlBase } from '../../utils/cardImage';
 import './GameBoard.css';
 import './RPSModal.css';
 import './EffectToast.css';
@@ -156,57 +160,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     return Math.random() > 0.5 ? playmats : [playmats[1], playmats[0]];
   }, []);
 
-  // Error banner state
-  const [errorBanner, setErrorBanner] = useState<string | null>(null);
-  const errorBannerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Info banner state (for ON_PLAY effects, etc.)
-  const [infoBanner, setInfoBanner] = useState<string | null>(null);
-  const infoBannerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Counter notification state (shows when opponent uses counter)
-  const [counterNotification, setCounterNotification] = useState<{ amount: number } | null>(null);
-  const counterNotificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Auto-dismissing banners
+  const [errorBanner, showErrorBanner, clearErrorBanner] = useTimedBanner<string>(4000);
+  const [infoBanner, showInfoBanner, clearInfoBanner] = useTimedBanner<string>(4000);
+  const [counterNotification, showCounterNotification] = useTimedBanner<{ amount: number }>(3000);
   const prevCounterPowerRef = useRef<number>(0);
-
-  // Show error banner with auto-dismiss
-  const showErrorBanner = useCallback((message: string) => {
-    // Clear any existing timeout
-    if (errorBannerTimeoutRef.current) {
-      clearTimeout(errorBannerTimeoutRef.current);
-    }
-    setErrorBanner(message);
-    // Auto-dismiss after 4 seconds
-    errorBannerTimeoutRef.current = setTimeout(() => {
-      setErrorBanner(null);
-    }, 4000);
-  }, []);
-
-  // Show info banner with auto-dismiss (for ON_PLAY effects, etc.)
-  const showInfoBanner = useCallback((message: string) => {
-    // Clear any existing timeout
-    if (infoBannerTimeoutRef.current) {
-      clearTimeout(infoBannerTimeoutRef.current);
-    }
-    setInfoBanner(message);
-    // Auto-dismiss after 4 seconds
-    infoBannerTimeoutRef.current = setTimeout(() => {
-      setInfoBanner(null);
-    }, 4000);
-  }, []);
-
-  // Show counter notification with auto-dismiss
-  const showCounterNotification = useCallback((amount: number) => {
-    // Clear any existing timeout
-    if (counterNotificationTimeoutRef.current) {
-      clearTimeout(counterNotificationTimeoutRef.current);
-    }
-    setCounterNotification({ amount });
-    // Auto-dismiss after 3 seconds
-    counterNotificationTimeoutRef.current = setTimeout(() => {
-      setCounterNotification(null);
-    }, 3000);
-  }, []);
 
   // Game state hook
   const {
@@ -309,7 +267,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     // If counter power increased and player is the attacker (not defender), opponent used counter
     if (currentCounterPower > prevCounterPower && gameState?.currentCombat && !isDefender) {
       const counterAmount = currentCounterPower - prevCounterPower;
-      showCounterNotification(counterAmount);
+      showCounterNotification({ amount: counterAmount });
     }
 
     // Update ref for next comparison
@@ -546,17 +504,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
   // Resolve card image URL matching GameCard's URL logic (for AnimatingCard cache alignment)
   const resolveCardImageUrl = useCallback((card: GameCardType): string => {
-    const apiBase = import.meta.env.VITE_API_URL || '';
-    if (card.cardId === 'DON') return '/assets/cardbacks/CardFrontDon.png';
-    const cardDef = cardDefinitions.get(card.cardId);
-    if (cardDef?.imageUrl) {
-      const filename = cardDef.imageUrl.split('/').pop();
-      if (cardDef.imageUrl.includes('onepiece-cardgame.com')) {
-        return `${apiBase}/api/images/official/${filename}`;
-      }
-      return `${apiBase}/api/images/cards/${filename}`;
-    }
-    return `${apiBase}/api/images/cards/${card.cardId}.png`;
+    return resolveCardImageUrlBase(card.cardId, cardDefinitions.get(card.cardId)?.imageUrl);
   }, [cardDefinitions]);
 
   const getLifeCardPosition = useCallback((index: number, isOpponent: boolean): { x: number; y: number } => {
@@ -2022,14 +1970,27 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   // Trash modal - pinned card ID for preview (uses main hoveredCard for display)
   const [trashPinnedCardId, setTrashPinnedCardId] = useState<string | null>(null);
 
-  // Attack effect step state - selected targets for the current effect
-  const [attackEffectSelectedTargets, setAttackEffectSelectedTargets] = useState<string[]>([]);
-
-  // Get current pending attack effect (first one in list)
-  const currentAttackEffect = useMemo(() => {
-    if (phase !== GamePhase.ATTACK_EFFECT_STEP || !gameState?.pendingAttackEffects) return null;
-    return gameState.pendingAttackEffects[0] || null;
-  }, [phase, gameState?.pendingAttackEffects]);
+  // Attack effect step
+  const getAttackValidTargets = useCallback((e: { validTargets?: string[]; playerId: string }) => {
+    if (e.validTargets && e.validTargets.length > 0) return e.validTargets;
+    // Default: own leader and field characters
+    const activePlayer = gameState?.players[e.playerId];
+    const ids: string[] = [];
+    if (activePlayer?.leaderCard) ids.push(activePlayer.leaderCard.id);
+    activePlayer?.field.forEach(card => ids.push(card.id));
+    return ids;
+  }, [gameState]);
+  const attackStep = useEffectStep({
+    active: phase === GamePhase.ATTACK_EFFECT_STEP,
+    pendingEffects: gameState?.pendingAttackEffects,
+    getValidTargets: getAttackValidTargets,
+    resolveAction: resolveAttackEffect,
+    skipAction: skipAttackEffect,
+    playSound: useCallback(() => playSound('play'), [playSound]),
+  });
+  const { currentEffect: currentAttackEffect, validTargets: attackEffectValidTargets,
+    selectedTargets: attackEffectSelectedTargets, setSelectedTargets: setAttackEffectSelectedTargets,
+    handleUse: handleUseAttackEffect, handleSkip: handleSkipAttackEffect } = attackStep;
 
   // Get the source card for the current attack effect
   const attackEffectSourceCard = useMemo(() => {
@@ -2044,40 +2005,30 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     return null;
   }, [currentAttackEffect, gameState]);
 
-  // Get valid targets for the current attack effect
-  const attackEffectValidTargets = useMemo(() => {
-    const targets = new Set<string>();
-    if (!currentAttackEffect || !gameState) return targets;
-
-    // If validTargets is specified, use those; otherwise, default to player's own cards
-    if (currentAttackEffect.validTargets && currentAttackEffect.validTargets.length > 0) {
-      currentAttackEffect.validTargets.forEach(id => targets.add(id));
-    } else {
-      // Default: own leader and field characters
-      const activePlayer = gameState.players[currentAttackEffect.playerId];
-      if (activePlayer?.leaderCard) {
-        targets.add(activePlayer.leaderCard.id);
+  // Play effect step
+  const getPlayValidTargets = useCallback((e: { validTargets?: string[]; playerId: string }) => {
+    if (e.validTargets && e.validTargets.length > 0) return e.validTargets;
+    // Default: own rested DON cards (for "give DON to leader/character" effects)
+    const activePlayer = gameState?.players[e.playerId];
+    const ids: string[] = [];
+    activePlayer?.donField.forEach(don => {
+      if (don.state === CardState.RESTED && !don.attachedTo) {
+        ids.push(don.id);
       }
-      activePlayer?.field.forEach(card => targets.add(card.id));
-    }
-    return targets;
-  }, [currentAttackEffect, gameState]);
-
-  // Clear attack effect selection when phase changes
-  useEffect(() => {
-    if (phase !== GamePhase.ATTACK_EFFECT_STEP) {
-      setAttackEffectSelectedTargets([]);
-    }
-  }, [phase]);
-
-  // Play effect step state - selected targets for the current ON_PLAY effect
-  const [playEffectSelectedTargets, setPlayEffectSelectedTargets] = useState<string[]>([]);
-
-  // Get current pending play effect (first one in list)
-  const currentPlayEffect = useMemo(() => {
-    if (phase !== GamePhase.PLAY_EFFECT_STEP || !gameState?.pendingPlayEffects) return null;
-    return gameState.pendingPlayEffects[0] || null;
-  }, [phase, gameState?.pendingPlayEffects]);
+    });
+    return ids;
+  }, [gameState]);
+  const playStep = useEffectStep({
+    active: phase === GamePhase.PLAY_EFFECT_STEP,
+    pendingEffects: gameState?.pendingPlayEffects,
+    getValidTargets: getPlayValidTargets,
+    resolveAction: resolvePlayEffect,
+    skipAction: skipPlayEffect,
+    playSound: useCallback(() => playSound('play'), [playSound]),
+  });
+  const { currentEffect: currentPlayEffect, validTargets: playEffectValidTargets,
+    selectedTargets: playEffectSelectedTargets, setSelectedTargets: setPlayEffectSelectedTargets,
+    handleUse: handleUsePlayEffect, handleSkip: handleSkipPlayEffect } = playStep;
 
   // Get the source card for the current play effect
   const playEffectSourceCard = useMemo(() => {
@@ -2087,26 +2038,6 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       if (fieldCard) return fieldCard;
     }
     return null;
-  }, [currentPlayEffect, gameState]);
-
-  // Get valid targets for the current play effect
-  const playEffectValidTargets = useMemo(() => {
-    const targets = new Set<string>();
-    if (!currentPlayEffect || !gameState) return targets;
-
-    // Use validTargets from the effect
-    if (currentPlayEffect.validTargets && currentPlayEffect.validTargets.length > 0) {
-      currentPlayEffect.validTargets.forEach(id => targets.add(id));
-    } else {
-      // Default: own rested DON cards (for "give DON to leader/character" effects)
-      const activePlayer = gameState.players[currentPlayEffect.playerId];
-      activePlayer?.donField.forEach(don => {
-        if (don.state === CardState.RESTED && !don.attachedTo) {
-          targets.add(don.id);
-        }
-      });
-    }
-    return targets;
   }, [currentPlayEffect, gameState]);
 
   // Play effect info for CardPreview (used for ATTACH_DON effects)
@@ -2120,40 +2051,21 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     };
   }, [currentPlayEffect, playerId]);
 
-  // Clear play effect selection when phase changes
-  useEffect(() => {
-    if (phase !== GamePhase.PLAY_EFFECT_STEP) {
-      setPlayEffectSelectedTargets([]);
-    }
-  }, [phase]);
-
-  // Note: Removed info banner for PLAY_EFFECT_STEP - CardPreview box already shows effect info
-
   // =====================================================
   // EVENT EFFECT STEP - Event card [Main] effect resolution
   // =====================================================
-  const [eventEffectSelectedTargets, setEventEffectSelectedTargets] = useState<string[]>([]);
-
-  // Get current pending event effect
-  const currentEventEffect = useMemo(() => {
-    if (phase !== GamePhase.EVENT_EFFECT_STEP || !gameState?.pendingEventEffects) return null;
-    return gameState.pendingEventEffects[0] || null;
-  }, [phase, gameState?.pendingEventEffects]);
-
-  // Get valid targets for event effect
-  const eventEffectValidTargets = useMemo(() => {
-    const targets = new Set<string>();
-    if (!currentEventEffect) return targets;
-    currentEventEffect.validTargets?.forEach(id => targets.add(id));
-    return targets;
-  }, [currentEventEffect]);
-
-  // Clear event effect selection when phase changes
-  useEffect(() => {
-    if (phase !== GamePhase.EVENT_EFFECT_STEP) {
-      setEventEffectSelectedTargets([]);
-    }
-  }, [phase]);
+  const getSimpleValidTargets = useCallback((e: { validTargets?: string[] }) => e.validTargets || [], []);
+  const eventStep = useEffectStep({
+    active: phase === GamePhase.EVENT_EFFECT_STEP,
+    pendingEffects: gameState?.pendingEventEffects,
+    getValidTargets: getSimpleValidTargets,
+    resolveAction: resolveEventEffect,
+    skipAction: skipEventEffect,
+    playSound: useCallback(() => playSound('play'), [playSound]),
+  });
+  const { currentEffect: currentEventEffect, validTargets: eventEffectValidTargets,
+    selectedTargets: eventEffectSelectedTargets, setSelectedTargets: setEventEffectSelectedTargets,
+    handleUse: handleUseEventEffect, handleSkip: handleSkipEventEffect } = eventStep;
 
   // Show info banner when entering EVENT_EFFECT_STEP and handle fizzle cases
   useEffect(() => {
@@ -2182,28 +2094,17 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   // =====================================================
   // COUNTER EFFECT STEP - Event counter effect target selection
   // =====================================================
-  const [counterEffectSelectedTargets, setCounterEffectSelectedTargets] = useState<string[]>([]);
-
-  // Get current pending counter effect
-  const currentCounterEffect = useMemo(() => {
-    if (phase !== GamePhase.COUNTER_EFFECT_STEP || !gameState?.pendingCounterEffects) return null;
-    return gameState.pendingCounterEffects[0] || null;
-  }, [phase, gameState?.pendingCounterEffects]);
-
-  // Get valid targets for counter effect
-  const counterEffectValidTargets = useMemo(() => {
-    const targets = new Set<string>();
-    if (!currentCounterEffect) return targets;
-    currentCounterEffect.validTargets?.forEach(id => targets.add(id));
-    return targets;
-  }, [currentCounterEffect]);
-
-  // Clear counter effect selection when phase changes
-  useEffect(() => {
-    if (phase !== GamePhase.COUNTER_EFFECT_STEP) {
-      setCounterEffectSelectedTargets([]);
-    }
-  }, [phase]);
+  const counterStep = useEffectStep({
+    active: phase === GamePhase.COUNTER_EFFECT_STEP,
+    pendingEffects: gameState?.pendingCounterEffects,
+    getValidTargets: getSimpleValidTargets,
+    resolveAction: resolveCounterEffect,
+    skipAction: skipCounterEffect,
+    playSound: useCallback(() => playSound('play'), [playSound]),
+  });
+  const { currentEffect: currentCounterEffect, validTargets: counterEffectValidTargets,
+    selectedTargets: counterEffectSelectedTargets, setSelectedTargets: setCounterEffectSelectedTargets,
+    handleUse: handleUseCounterEffect, handleSkip: handleSkipCounterEffect } = counterStep;
 
   // Show info banner when entering COUNTER_EFFECT_STEP
   useEffect(() => {
@@ -2397,28 +2298,18 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   }, [currentPlayEffect, playerId]);
 
   // Activate effect state - for ACTIVATE_MAIN abilities that require hand selection (e.g., Empty Throne)
-  const [activateEffectSelectedTargets, setActivateEffectSelectedTargets] = useState<string[]>([]);
-
-  // Get current pending activate effect (first one in list)
-  const currentActivateEffect = useMemo((): PendingActivateEffect | null => {
-    if (!gameState?.pendingActivateEffects || gameState.pendingActivateEffects.length === 0) return null;
-    return gameState.pendingActivateEffects[0];
-  }, [gameState?.pendingActivateEffects]);
-
-  // Valid hand cards for the current activate effect
-  const activateEffectValidTargets = useMemo(() => {
-    const targets = new Set<string>();
-    if (!currentActivateEffect) return targets;
-    currentActivateEffect.validHandCardIds.forEach(id => targets.add(id));
-    return targets;
-  }, [currentActivateEffect]);
-
-  // Clear selection when activate effect is resolved
-  useEffect(() => {
-    if (!currentActivateEffect) {
-      setActivateEffectSelectedTargets([]);
-    }
-  }, [currentActivateEffect]);
+  const getActivateValidTargets = useCallback((e: PendingActivateEffect) => e.validHandCardIds, []);
+  const activateStep = useEffectStep({
+    active: true, // Activate effects don't use a specific phase gate
+    pendingEffects: gameState?.pendingActivateEffects,
+    getValidTargets: getActivateValidTargets,
+    resolveAction: resolveActivateEffect,
+    skipAction: skipActivateEffect,
+    playSound: useCallback(() => playSound('play'), [playSound]),
+  });
+  const { currentEffect: currentActivateEffect, validTargets: activateEffectValidTargets,
+    selectedTargets: activateEffectSelectedTargets, setSelectedTargets: setActivateEffectSelectedTargets,
+    handleUse: handleUseActivateEffect, handleSkip: handleSkipActivateEffect } = activateStep;
 
   // Show info banner when there's a pending activate effect
   // Don't show if we're in HAND_SELECT_STEP (cost payment shows its own banner)
@@ -3219,82 +3110,6 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     playSound('counter');
   }, [useCounter, playSound]);
 
-  // Attack effect step handlers
-  const handleUseAttackEffect = useCallback(() => {
-    if (!currentAttackEffect) return;
-    // Resolve the effect with selected targets
-    resolveAttackEffect(currentAttackEffect.id, attackEffectSelectedTargets);
-    setAttackEffectSelectedTargets([]);
-    playSound('play');
-  }, [currentAttackEffect, attackEffectSelectedTargets, resolveAttackEffect, playSound]);
-
-  const handleSkipAttackEffect = useCallback(() => {
-    if (!currentAttackEffect) return;
-    // Skip this effect
-    skipAttackEffect(currentAttackEffect.id);
-    setAttackEffectSelectedTargets([]);
-  }, [currentAttackEffect, skipAttackEffect]);
-
-  // Play effect step handlers
-  const handleUsePlayEffect = useCallback(() => {
-    if (!currentPlayEffect) return;
-    // Resolve the effect with selected targets
-    resolvePlayEffect(currentPlayEffect.id, playEffectSelectedTargets);
-    setPlayEffectSelectedTargets([]);
-    playSound('play');
-  }, [currentPlayEffect, playEffectSelectedTargets, resolvePlayEffect, playSound]);
-
-  const handleSkipPlayEffect = useCallback(() => {
-    if (!currentPlayEffect) return;
-    // Skip this effect
-    skipPlayEffect(currentPlayEffect.id);
-    setPlayEffectSelectedTargets([]);
-  }, [currentPlayEffect, skipPlayEffect]);
-
-  // Activate effect handlers (for hand card selection like Empty Throne)
-  const handleUseActivateEffect = useCallback(() => {
-    if (!currentActivateEffect) return;
-    // Resolve the effect with selected hand cards
-    resolveActivateEffect(currentActivateEffect.id, activateEffectSelectedTargets);
-    setActivateEffectSelectedTargets([]);
-    playSound('play');
-  }, [currentActivateEffect, activateEffectSelectedTargets, resolveActivateEffect, playSound]);
-
-  const handleSkipActivateEffect = useCallback(() => {
-    if (!currentActivateEffect) return;
-    // Skip this effect (only if optional)
-    skipActivateEffect(currentActivateEffect.id);
-    setActivateEffectSelectedTargets([]);
-  }, [currentActivateEffect, skipActivateEffect]);
-
-  // Event effect step handlers
-  const handleUseEventEffect = useCallback(() => {
-    if (!currentEventEffect) return;
-    resolveEventEffect(currentEventEffect.id, eventEffectSelectedTargets);
-    setEventEffectSelectedTargets([]);
-    playSound('play');
-  }, [currentEventEffect, eventEffectSelectedTargets, resolveEventEffect, playSound]);
-
-  const handleSkipEventEffect = useCallback(() => {
-    if (!currentEventEffect) return;
-    skipEventEffect(currentEventEffect.id);
-    setEventEffectSelectedTargets([]);
-  }, [currentEventEffect, skipEventEffect]);
-
-  // Counter effect step handlers
-  const handleUseCounterEffect = useCallback(() => {
-    if (!currentCounterEffect) return;
-    resolveCounterEffect(currentCounterEffect.id, counterEffectSelectedTargets);
-    setCounterEffectSelectedTargets([]);
-    playSound('play');
-  }, [currentCounterEffect, counterEffectSelectedTargets, resolveCounterEffect, playSound]);
-
-  const handleSkipCounterEffect = useCallback(() => {
-    if (!currentCounterEffect) return;
-    skipCounterEffect(currentCounterEffect.id);
-    setCounterEffectSelectedTargets([]);
-  }, [currentCounterEffect, skipCounterEffect]);
-
   // Additional cost handlers
   const handlePayAdditionalCost = useCallback(() => {
     if (!currentAdditionalCost) return;
@@ -3436,6 +3251,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
   // Hide life zone during hand dealing
   const hideLifeZone = dealingPhase === 'dealing-hand' || dealingPhase === 'waiting-mulligan';
+
+  // Memoize selected-targets arrays → Sets for PlayerArea props
+  const attackEffectSelectedSet = useMemo(() => new Set(attackEffectSelectedTargets), [attackEffectSelectedTargets]);
+  const playEffectSelectedSet = useMemo(() => new Set(playEffectSelectedTargets), [playEffectSelectedTargets]);
+  const eventEffectSelectedSet = useMemo(() => new Set(eventEffectSelectedTargets), [eventEffectSelectedTargets]);
+  const counterEffectSelectedSet = useMemo(() => new Set(counterEffectSelectedTargets), [counterEffectSelectedTargets]);
 
   return (
     <div
@@ -3651,7 +3472,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             selectedCard={selectedCard}
             attackAnimation={attackAnimation}
             eventEffectTargets={eventEffectValidTargets}
-            eventEffectSelected={new Set(eventEffectSelectedTargets)}
+            eventEffectSelected={eventEffectSelectedSet}
             onCardHover={handleCardHover}
             onCardClick={handleCardClick}
             onTrashClick={handleOpponentTrashClick}
@@ -3679,13 +3500,13 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             activationDonTargets={activationDonTargets}
             activationTargets={activationTargets}
             attackEffectTargets={attackEffectValidTargets}
-            attackEffectSelected={new Set(attackEffectSelectedTargets)}
+            attackEffectSelected={attackEffectSelectedSet}
             playEffectTargets={playEffectValidTargets}
-            playEffectSelected={new Set(playEffectSelectedTargets)}
+            playEffectSelected={playEffectSelectedSet}
             eventEffectTargets={eventEffectValidTargets}
-            eventEffectSelected={new Set(eventEffectSelectedTargets)}
+            eventEffectSelected={eventEffectSelectedSet}
             counterEffectTargets={counterEffectValidTargets}
-            counterEffectSelected={new Set(counterEffectSelectedTargets)}
+            counterEffectSelected={counterEffectSelectedSet}
             attackAnimation={attackAnimation}
             onCardHover={handleCardHover}
             onCardClick={handleCardClick}
@@ -3911,234 +3732,116 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
       {/* Attack Effect Step prompt - shown when ON_ATTACK effect needs target selection */}
       {currentAttackEffect && currentAttackEffect.playerId === playerId && (
-        <div className="attack-effect-prompt">
-          <div className="attack-effect-prompt__content">
-            <div className="attack-effect-prompt__header">
-              <span className="attack-effect-prompt__icon">✨</span>
-              <span className="attack-effect-prompt__title">Attack Ability</span>
-            </div>
-            <div className="attack-effect-prompt__card-name">
-              {attackEffectSourceCard && cardDefinitions.get(attackEffectSourceCard.cardId)?.name}
-            </div>
-            <p className="attack-effect-prompt__description">{currentAttackEffect.description}</p>
-            {currentAttackEffect.requiresChoice && (
-              <p className="attack-effect-prompt__instruction">
-                {attackEffectSelectedTargets.length === 0
-                  ? 'Select a target (highlighted cards)'
-                  : `Target: ${attackEffectSelectedTargets.length} selected`}
-              </p>
-            )}
-            <div className="attack-effect-prompt__buttons">
-              <button
-                className="action-btn action-btn--use-effect"
-                onClick={handleUseAttackEffect}
-                disabled={currentAttackEffect.requiresChoice && attackEffectSelectedTargets.length === 0}
-              >
-                Use
-              </button>
-              <button
-                className="action-btn action-btn--skip-effect"
-                onClick={handleSkipAttackEffect}
-              >
-                Skip
-              </button>
-            </div>
-          </div>
-        </div>
+        <EffectPrompt
+          className="attack-effect-prompt"
+          icon="✨"
+          title="Attack Ability"
+          cardName={attackEffectSourceCard ? cardDefinitions.get(attackEffectSourceCard.cardId)?.name : undefined}
+          description={currentAttackEffect.description}
+          instruction={currentAttackEffect.requiresChoice
+            ? (attackEffectSelectedTargets.length === 0
+                ? 'Select a target (highlighted cards)'
+                : `Target: ${attackEffectSelectedTargets.length} selected`)
+            : undefined}
+          confirmLabel="Use"
+          confirmDisabled={currentAttackEffect.requiresChoice && attackEffectSelectedTargets.length === 0}
+          showSkip
+          onConfirm={handleUseAttackEffect}
+          onSkip={handleSkipAttackEffect}
+        />
       )}
 
       {/* Play Effect Step prompt - shown when ON_PLAY effect needs target selection */}
       {/* ATTACH_DON effects show instructions in CardPreview instead */}
       {currentPlayEffect && currentPlayEffect.playerId === playerId &&
        currentPlayEffect.effectType !== 'ATTACH_DON' && (
-        <div className="play-effect-prompt">
-          <div className="play-effect-prompt__content">
-            <div className="play-effect-prompt__header">
-              <span className="play-effect-prompt__icon">⭐</span>
-              <span className="play-effect-prompt__title">On Play Ability</span>
-            </div>
-            <div className="play-effect-prompt__card-name">
-              {playEffectSourceCard && cardDefinitions.get(playEffectSourceCard.cardId)?.name}
-            </div>
-            <p className="play-effect-prompt__description">{currentPlayEffect.description}</p>
-            {currentPlayEffect.requiresChoice && (
-              <p className="play-effect-prompt__instruction">
-                {currentPlayEffect.effectType === 'ATTACH_DON'
-                  ? (playEffectSelectedTargets.length === 0
-                      ? 'Select a rested DON card, then a target (Leader or Character)'
-                      : playEffectSelectedTargets.length === 1
-                        ? 'Now select target (Leader or Character)'
-                        : `Selected: DON + Target`)
-                  : (playEffectSelectedTargets.length === 0
-                      ? `Select target(s) (up to ${currentPlayEffect.maxTargets || 1})`
-                      : `Selected: ${playEffectSelectedTargets.length}/${currentPlayEffect.maxTargets || 1}`)}
-              </p>
-            )}
-            <div className="play-effect-prompt__buttons">
-              <button
-                className="action-btn action-btn--use-effect"
-                onClick={handleUsePlayEffect}
-                disabled={currentPlayEffect.requiresChoice && (
-                  currentPlayEffect.effectType === 'ATTACH_DON'
-                    ? playEffectSelectedTargets.length < 2  // ATTACH_DON requires exactly 2 (DON + target)
-                    : playEffectSelectedTargets.length === 0
-                )}
-              >
-                Use
-              </button>
-              {(currentPlayEffect.minTargets === 0 || !currentPlayEffect.minTargets) && (
-                <button
-                  className="action-btn action-btn--skip-effect"
-                  onClick={handleSkipPlayEffect}
-                >
-                  Skip
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+        <EffectPrompt
+          icon="⭐"
+          title="On Play Ability"
+          cardName={playEffectSourceCard ? cardDefinitions.get(playEffectSourceCard.cardId)?.name : undefined}
+          description={currentPlayEffect.description}
+          instruction={currentPlayEffect.requiresChoice
+            ? (playEffectSelectedTargets.length === 0
+                ? `Select target(s) (up to ${currentPlayEffect.maxTargets || 1})`
+                : `Selected: ${playEffectSelectedTargets.length}/${currentPlayEffect.maxTargets || 1}`)
+            : undefined}
+          confirmLabel="Use"
+          confirmDisabled={currentPlayEffect.requiresChoice && playEffectSelectedTargets.length === 0}
+          showSkip={currentPlayEffect.minTargets === 0 || !currentPlayEffect.minTargets}
+          onConfirm={handleUsePlayEffect}
+          onSkip={handleSkipPlayEffect}
+        />
       )}
 
       {/* Activate Effect prompt - shown when ACTIVATE_MAIN ability needs hand card selection */}
       {currentActivateEffect && currentActivateEffect.playerId === playerId && (
-        <div className="play-effect-prompt activate-effect-prompt">
-          <div className="play-effect-prompt__content">
-            <div className="play-effect-prompt__header">
-              <span className="play-effect-prompt__icon">🎯</span>
-              <span className="play-effect-prompt__title">Activate Ability</span>
-            </div>
-            <p className="play-effect-prompt__description">{currentActivateEffect.description}</p>
-            <p className="play-effect-prompt__instruction">
-              {activateEffectSelectedTargets.length === 0
-                ? `Select a card from your hand (${currentActivateEffect.validHandCardIds.length} valid)`
-                : `Selected: ${activateEffectSelectedTargets.length}/${currentActivateEffect.maxTargets || 1}`}
-            </p>
-            <div className="play-effect-prompt__buttons">
-              <button
-                className="action-btn action-btn--use-effect"
-                onClick={handleUseActivateEffect}
-                disabled={activateEffectSelectedTargets.length === 0}
-              >
-                Play
-              </button>
-              {currentActivateEffect.optional && (
-                <button
-                  className="action-btn action-btn--skip-effect"
-                  onClick={handleSkipActivateEffect}
-                >
-                  Skip
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+        <EffectPrompt
+          className="activate-effect-prompt"
+          icon="🎯"
+          title="Activate Ability"
+          description={currentActivateEffect.description}
+          instruction={activateEffectSelectedTargets.length === 0
+            ? `Select a card from your hand (${currentActivateEffect.validHandCardIds.length} valid)`
+            : `Selected: ${activateEffectSelectedTargets.length}/${currentActivateEffect.maxTargets || 1}`}
+          confirmLabel="Play"
+          confirmDisabled={activateEffectSelectedTargets.length === 0}
+          showSkip={!!currentActivateEffect.optional}
+          onConfirm={handleUseActivateEffect}
+          onSkip={handleSkipActivateEffect}
+        />
       )}
 
       {/* Event Effect prompt - shown when event [Main] effect needs target selection */}
       {currentEventEffect && currentEventEffect.playerId === playerId && (
-        <div className="play-effect-prompt event-effect-prompt">
-          <div className="play-effect-prompt__content">
-            <div className="play-effect-prompt__header">
-              <span className="play-effect-prompt__icon">📜</span>
-              <span className="play-effect-prompt__title">Event Effect</span>
-            </div>
-            <p className="play-effect-prompt__description">{currentEventEffect.description}</p>
-            {!currentEventEffect.conditionsMet && (
-              <p className="play-effect-prompt__warning">Leader condition not met - effect will fizzle</p>
-            )}
-            <p className="play-effect-prompt__instruction">
-              {eventEffectSelectedTargets.length === 0
-                ? `Select a target (${currentEventEffect.validTargets?.length || 0} valid)`
-                : `Selected: ${eventEffectSelectedTargets.length}/${currentEventEffect.maxTargets || 1}`}
-            </p>
-            <div className="play-effect-prompt__buttons">
-              <button
-                className="action-btn action-btn--use-effect"
-                onClick={handleUseEventEffect}
-                disabled={eventEffectSelectedTargets.length === 0 && currentEventEffect.minTargets > 0}
-              >
-                Confirm
-              </button>
-              {currentEventEffect.minTargets === 0 && (
-                <button
-                  className="action-btn action-btn--skip-effect"
-                  onClick={handleSkipEventEffect}
-                >
-                  Skip
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+        <EffectPrompt
+          className="event-effect-prompt"
+          icon="📜"
+          title="Event Effect"
+          description={currentEventEffect.description}
+          warning={!currentEventEffect.conditionsMet ? 'Leader condition not met - effect will fizzle' : undefined}
+          instruction={eventEffectSelectedTargets.length === 0
+            ? `Select a target (${currentEventEffect.validTargets?.length || 0} valid)`
+            : `Selected: ${eventEffectSelectedTargets.length}/${currentEventEffect.maxTargets || 1}`}
+          confirmLabel="Confirm"
+          confirmDisabled={eventEffectSelectedTargets.length === 0 && currentEventEffect.minTargets > 0}
+          showSkip={currentEventEffect.minTargets === 0}
+          onConfirm={handleUseEventEffect}
+          onSkip={handleSkipEventEffect}
+        />
       )}
 
       {/* Counter Effect prompt - shown when counter effect needs target selection */}
       {currentCounterEffect && currentCounterEffect.playerId === playerId && (
-        <div className="play-effect-prompt counter-effect-prompt">
-          <div className="play-effect-prompt__content">
-            <div className="play-effect-prompt__header">
-              <span className="play-effect-prompt__icon">🛡️</span>
-              <span className="play-effect-prompt__title">Counter Effect</span>
-            </div>
-            <p className="play-effect-prompt__description">{currentCounterEffect.description}</p>
-            {!currentCounterEffect.conditionsMet && (
-              <p className="play-effect-prompt__warning">Leader condition not met - effect will fizzle</p>
-            )}
-            <p className="play-effect-prompt__instruction">
-              {currentCounterEffect.powerBoost > 0
-                ? `Select target for +${currentCounterEffect.powerBoost} power`
-                : `Select target for ${currentCounterEffect.effectType}`}
-            </p>
-            <div className="play-effect-prompt__buttons">
-              <button
-                className="action-btn action-btn--use-effect"
-                onClick={handleUseCounterEffect}
-                disabled={counterEffectSelectedTargets.length === 0}
-              >
-                Apply
-              </button>
-              {(!currentCounterEffect.conditionsMet ||
-                currentCounterEffect.validTargets.length === 0) && (
-                <button
-                  className="action-btn action-btn--skip-effect"
-                  onClick={handleSkipCounterEffect}
-                >
-                  Skip
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+        <EffectPrompt
+          className="counter-effect-prompt"
+          icon="🛡️"
+          title="Counter Effect"
+          description={currentCounterEffect.description}
+          warning={!currentCounterEffect.conditionsMet ? 'Leader condition not met - effect will fizzle' : undefined}
+          instruction={currentCounterEffect.powerBoost > 0
+            ? `Select target for +${currentCounterEffect.powerBoost} power`
+            : `Select target for ${currentCounterEffect.effectType}`}
+          confirmLabel="Apply"
+          confirmDisabled={counterEffectSelectedTargets.length === 0}
+          showSkip={!currentCounterEffect.conditionsMet || currentCounterEffect.validTargets.length === 0}
+          onConfirm={handleUseCounterEffect}
+          onSkip={handleSkipCounterEffect}
+        />
       )}
 
       {/* Additional Cost prompt - shown when optional cost can be paid */}
       {currentAdditionalCost && currentAdditionalCost.playerId === playerId && (
-        <div className="play-effect-prompt additional-cost-prompt">
-          <div className="play-effect-prompt__content">
-            <div className="play-effect-prompt__header">
-              <span className="play-effect-prompt__icon">💰</span>
-              <span className="play-effect-prompt__title">Optional Cost</span>
-            </div>
-            <p className="play-effect-prompt__description">{currentAdditionalCost.description}</p>
-            <p className="play-effect-prompt__instruction">
-              Do you want to pay this cost to activate the effect?
-            </p>
-            <div className="play-effect-prompt__buttons">
-              <button
-                className="action-btn action-btn--use-effect"
-                onClick={handlePayAdditionalCost}
-              >
-                Pay
-              </button>
-              <button
-                className="action-btn action-btn--skip-effect"
-                onClick={handleSkipAdditionalCost}
-              >
-                Skip
-              </button>
-            </div>
-          </div>
-        </div>
+        <EffectPrompt
+          className="additional-cost-prompt"
+          icon="💰"
+          title="Optional Cost"
+          description={currentAdditionalCost.description}
+          instruction="Do you want to pay this cost to activate the effect?"
+          confirmLabel="Pay"
+          showSkip
+          onConfirm={handlePayAdditionalCost}
+          onSkip={handleSkipAdditionalCost}
+        />
       )}
 
       {/* Deck Reveal Modal - shown when player needs to select from revealed deck cards */}
@@ -4252,7 +3955,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
       {/* Error banner - shown when an action is not allowed */}
       {errorBanner && (
-        <div className="error-banner" onClick={() => setErrorBanner(null)}>
+        <div className="error-banner" onClick={clearErrorBanner}>
           <div className="error-banner__content">
             <span className="error-banner__icon">⚠️</span>
             <span className="error-banner__text">{errorBanner}</span>
@@ -4262,7 +3965,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
       {/* Info banner - shown for ON_PLAY effects and other info messages */}
       {infoBanner && (
-        <div className="info-banner" onClick={() => setInfoBanner(null)}>
+        <div className="info-banner" onClick={clearInfoBanner}>
           <div className="info-banner__content">
             <span className="info-banner__icon">⭐</span>
             <span className="info-banner__text">{infoBanner}</span>

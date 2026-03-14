@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { GameCard as GameCardType } from '@optcgsim/shared';
+import { resolveCardImageUrl } from '../../utils/cardImage';
 import './GameBoard.css';
 
 interface Position {
@@ -224,7 +225,7 @@ export const AnimatingCard: React.FC<AnimatingCardProps> = ({
               /* Regular card - try to load image with fallback */
               <>
                 <img
-                  src={cardImageUrl || `${import.meta.env.VITE_API_URL || ''}/api/images/cards/${card.cardId}.png`}
+                  src={cardImageUrl || resolveCardImageUrl(card.cardId)}
                   alt={card.cardId}
                   style={{
                     width: '100%',

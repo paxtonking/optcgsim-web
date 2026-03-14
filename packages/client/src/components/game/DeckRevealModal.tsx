@@ -1,26 +1,13 @@
 import React, { useState, useCallback } from 'react';
 import { PendingDeckRevealEffect, GameCard as GameCardType } from '@optcgsim/shared';
+import { ClientCardDefinition } from '../../types/card';
 import { GameCard } from './GameCard';
 import './GameBoard.css';
-
-interface CardDefinition {
-  id: string;
-  name: string;
-  type?: string;
-  cardType?: string;
-  color?: string;
-  colors?: string[];
-  cost?: number | null;
-  power?: number | null;
-  counter?: number | null;
-  imageUrl?: string;
-  traits?: string[];
-}
 
 interface DeckRevealModalProps {
   effect: PendingDeckRevealEffect;
   revealedCards: GameCardType[];  // Actual card objects from game state
-  cardDefinitions: Map<string, CardDefinition>;
+  cardDefinitions: Map<string, ClientCardDefinition>;
   onSelect: (selectedCardIds: string[]) => void;
   onSkip: () => void;
   onCardHover: (card: GameCardType | null) => void;

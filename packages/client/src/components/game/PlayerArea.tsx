@@ -1,22 +1,11 @@
 import React from 'react';
 import { PlayerState, GameCard as GameCardType, CardState } from '@optcgsim/shared';
+import { ClientCardDefinition } from '../../types/card';
 import { GameCard, CardPile } from './GameCard';
 import { LifeBar } from './LifeBar';
 import './GameBoard.css';
 
-interface CardDefinition {
-  id: string;
-  name: string;
-  type?: string;
-  cardType?: string;
-  color?: string;
-  colors?: string[];
-  cost?: number | null;
-  power?: number | null;
-  counter?: number | null;
-  imageUrl?: string;
-  keywords?: string[];
-}
+const EMPTY_SET: ReadonlySet<string> = new Set<string>();
 
 // Create a fake DON deck card for the pile display
 const createDonDeckCard = (): GameCardType => ({
@@ -36,24 +25,24 @@ interface AttackAnimation {
 interface PlayerAreaProps {
   player: PlayerState;
   isOpponent: boolean;
-  cardDefinitions: Map<string, CardDefinition>;
-  playableCards?: Set<string>;
-  targetableCards?: Set<string>;
-  blockerCards?: Set<string>;
+  cardDefinitions: Map<string, ClientCardDefinition>;
+  playableCards?: ReadonlySet<string>;
+  targetableCards?: ReadonlySet<string>;
+  blockerCards?: ReadonlySet<string>;
   selectedCard?: GameCardType | null;
   selectedDon?: GameCardType | null;
   pendingPlayCard?: GameCardType | null;  // Character card selected from hand waiting to be placed
-  donAttachTargets?: Set<string>;
-  activationDonTargets?: Set<string>;  // DON cards valid for activation ability selection
-  activationTargets?: Set<string>;      // Characters/Leader valid for activation ability target
-  attackEffectTargets?: Set<string>;    // Valid targets for ON_ATTACK effect selection
-  attackEffectSelected?: Set<string>;   // Currently selected targets for ON_ATTACK effect
-  playEffectTargets?: Set<string>;      // Valid targets for ON_PLAY effect selection
-  playEffectSelected?: Set<string>;     // Currently selected targets for ON_PLAY effect
-  eventEffectTargets?: Set<string>;     // Valid targets for event [Main] effect selection
-  eventEffectSelected?: Set<string>;    // Currently selected targets for event effect
-  counterEffectTargets?: Set<string>;   // Valid targets for event counter effect selection
-  counterEffectSelected?: Set<string>;  // Currently selected targets for counter effect
+  donAttachTargets?: ReadonlySet<string>;
+  activationDonTargets?: ReadonlySet<string>;  // DON cards valid for activation ability selection
+  activationTargets?: ReadonlySet<string>;      // Characters/Leader valid for activation ability target
+  attackEffectTargets?: ReadonlySet<string>;    // Valid targets for ON_ATTACK effect selection
+  attackEffectSelected?: ReadonlySet<string>;   // Currently selected targets for ON_ATTACK effect
+  playEffectTargets?: ReadonlySet<string>;      // Valid targets for ON_PLAY effect selection
+  playEffectSelected?: ReadonlySet<string>;     // Currently selected targets for ON_PLAY effect
+  eventEffectTargets?: ReadonlySet<string>;     // Valid targets for event [Main] effect selection
+  eventEffectSelected?: ReadonlySet<string>;    // Currently selected targets for event effect
+  counterEffectTargets?: ReadonlySet<string>;   // Valid targets for event counter effect selection
+  counterEffectSelected?: ReadonlySet<string>;  // Currently selected targets for counter effect
   attackAnimation?: AttackAnimation | null;
   onCardHover: (card: GameCardType | null) => void;
   onCardClick: (card: GameCardType) => void;
@@ -68,8 +57,8 @@ interface PlayerAreaProps {
   playmatImage?: string;  // Custom playmat background image path
   isMyTurn?: boolean;  // Whether it's the current player's turn (for DON power display)
   fieldSelectMode?: boolean;  // Whether field character selection is active
-  fieldSelectValidTargets?: Set<string>;  // Valid character IDs for field selection
-  fieldSelectSelectedTargets?: Set<string>;  // Currently selected character IDs
+  fieldSelectValidTargets?: ReadonlySet<string>;  // Valid character IDs for field selection
+  fieldSelectSelectedTargets?: ReadonlySet<string>;  // Currently selected character IDs
   onFieldSelectClick?: (cardId: string) => void;  // Called when a field card is clicked during selection
 }
 
@@ -77,22 +66,22 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
   player,
   isOpponent,
   cardDefinitions,
-  playableCards = new Set(),
-  targetableCards = new Set(),
-  blockerCards = new Set(),
+  playableCards = EMPTY_SET,
+  targetableCards = EMPTY_SET,
+  blockerCards = EMPTY_SET,
   selectedCard,
   selectedDon,
-  donAttachTargets = new Set(),
-  activationDonTargets = new Set(),
-  activationTargets = new Set(),
-  attackEffectTargets = new Set(),
-  attackEffectSelected = new Set(),
-  playEffectTargets = new Set(),
-  playEffectSelected = new Set(),
-  eventEffectTargets = new Set(),
-  eventEffectSelected = new Set(),
-  counterEffectTargets = new Set(),
-  counterEffectSelected = new Set(),
+  donAttachTargets = EMPTY_SET,
+  activationDonTargets = EMPTY_SET,
+  activationTargets = EMPTY_SET,
+  attackEffectTargets = EMPTY_SET,
+  attackEffectSelected = EMPTY_SET,
+  playEffectTargets = EMPTY_SET,
+  playEffectSelected = EMPTY_SET,
+  eventEffectTargets = EMPTY_SET,
+  eventEffectSelected = EMPTY_SET,
+  counterEffectTargets = EMPTY_SET,
+  counterEffectSelected = EMPTY_SET,
   attackAnimation,
   onCardHover,
   onCardClick,
@@ -108,8 +97,8 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
   playmatImage,
   isMyTurn = true,
   fieldSelectMode = false,
-  fieldSelectValidTargets = new Set(),
-  fieldSelectSelectedTargets = new Set(),
+  fieldSelectValidTargets = EMPTY_SET,
+  fieldSelectSelectedTargets = EMPTY_SET,
   onFieldSelectClick
 }) => {
   // DON attached to cards are inactive (dimmed) when it's not the card owner's turn
@@ -460,14 +449,14 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
 interface HandZoneProps {
   cards: GameCardType[];
   isOpponent: boolean;
-  cardDefinitions: Map<string, CardDefinition>;
-  playableCards?: Set<string>;
+  cardDefinitions: Map<string, ClientCardDefinition>;
+  playableCards?: ReadonlySet<string>;
   selectedCard?: GameCardType | null;
   pinnedCard?: GameCardType | null;  // For combat phase card selection highlighting
   pendingPlayCard?: GameCardType | null;  // Character card selected for placement
   activateEffectSelectedTargets?: string[];  // Cards selected for activate effect
   handSelectMode?: boolean;                  // Whether hand select mode is active (discard, etc.)
-  handSelectSelectedCards?: Set<string>;     // Cards selected for hand select effect
+  handSelectSelectedCards?: ReadonlySet<string>;     // Cards selected for hand select effect
   onCardHover: (card: GameCardType | null) => void;
   onCardClick: (card: GameCardType) => void;
   onHandSelectCardClick?: (card: GameCardType) => void;  // Handler for hand select clicks
@@ -477,13 +466,13 @@ export const HandZone: React.FC<HandZoneProps> = ({
   cards,
   isOpponent,
   cardDefinitions,
-  playableCards = new Set(),
+  playableCards = EMPTY_SET,
   selectedCard,
   pinnedCard,
   pendingPlayCard,
   activateEffectSelectedTargets = [],
   handSelectMode = false,
-  handSelectSelectedCards = new Set(),
+  handSelectSelectedCards = EMPTY_SET,
   onCardHover,
   onCardClick,
   onHandSelectCardClick

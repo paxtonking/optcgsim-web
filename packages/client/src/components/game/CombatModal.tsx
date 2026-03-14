@@ -1,24 +1,13 @@
 import React, { useMemo } from 'react';
 import { GameState, GameCard as GameCardType, GamePhase } from '@optcgsim/shared';
+import { ClientCardDefinition } from '../../types/card';
 import { GameCard } from './GameCard';
 import './CombatModal.css';
-
-interface CardDefinition {
-  id: string;
-  name: string;
-  type?: string;
-  cost?: number | null;
-  power?: number | null;
-  counter?: number | null;
-  imageUrl?: string;
-  keywords?: string[];  // Detected from effect text: [Blocker], [Rush], etc.
-  effect?: string | null;  // Raw effect text for checking [Counter] effects
-}
 
 interface CombatModalProps {
   gameState: GameState;
   playerId: string;
-  cardDefinitions: Map<string, CardDefinition>;
+  cardDefinitions: Map<string, ClientCardDefinition>;
   isDefender: boolean;
   pinnedCard?: GameCardType | null;
   isAttackerUnblockable?: boolean;  // True if attacker has Unblockable (permanent or temporary)

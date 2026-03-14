@@ -35,6 +35,7 @@ import {
   parseLeaderRestrictions,
   extractSearchAndSelectDetails,
   EffectCost,
+  TargetFilter,
 } from '../effects';
 
 export interface GameStateManagerOptions {
@@ -1547,6 +1548,47 @@ export class GameStateManager {
   }
 
   /**
+   * Check whether a card definition satisfies all target filters.
+   * Handles TRAIT, COLOR, COST, NAME, and TYPE property checks.
+   */
+  private matchesFilters(cardDef: CardDefinition, filters: TargetFilter[]): boolean {
+    for (const filter of filters) {
+      switch (filter.property) {
+        case 'TRAIT': {
+          const traits = filter.value as string[];
+          if (!traits.some(t => cardDef.traits?.includes(t))) return false;
+          break;
+        }
+        case 'COLOR': {
+          const colors = filter.value as string[];
+          if (!colors.some(c => cardDef.colors?.includes(c))) return false;
+          break;
+        }
+        case 'COST': {
+          const costValue = filter.value as number;
+          if (filter.operator === 'OR_MORE') {
+            if ((cardDef.cost ?? 0) < costValue) return false;
+          } else {
+            if (cardDef.cost !== costValue) return false;
+          }
+          break;
+        }
+        case 'NAME': {
+          const names = filter.value as string[];
+          if (!names.some(n => cardDef.name?.includes(n.replace(/[.\[\]]/g, '')))) return false;
+          break;
+        }
+        case 'TYPE': {
+          const types = filter.value as string[];
+          if (!types.includes(cardDef.type)) return false;
+          break;
+        }
+      }
+    }
+    return true;
+  }
+
+  /**
    * Apply cost modification to cards in a player's hand
    */
   private applyHandCostModification(
@@ -1561,32 +1603,7 @@ export class GameStateManager {
       const cardDef = this.effectEngine.getCardDefinition(card.cardId);
       if (!cardDef) continue;
 
-      // Check filters
-      let matches = true;
-      for (const filter of filters) {
-        if (filter.property === 'TRAIT') {
-          const traits = filter.value as string[];
-          if (!traits.some(t => cardDef.traits?.includes(t))) {
-            matches = false;
-            break;
-          }
-        }
-        if (filter.property === 'COLOR') {
-          const colors = filter.value as string[];
-          if (!colors.some(c => cardDef.colors?.includes(c))) {
-            matches = false;
-            break;
-          }
-        }
-        if (filter.property === 'COST' && filter.operator === 'OR_MORE') {
-          if ((cardDef.cost ?? 0) < (filter.value as number)) {
-            matches = false;
-            break;
-          }
-        }
-      }
-
-      if (matches && cardDef.cost !== null) {
+      if (this.matchesFilters(cardDef, filters) && cardDef.cost !== null) {
         const baseCost = cardDef.cost ?? 0;
         const currentModified = card.modifiedCost ?? baseCost;
         card.modifiedCost = Math.max(0, currentModified + modifier);
@@ -1614,26 +1631,7 @@ export class GameStateManager {
       const cardDef = this.effectEngine.getCardDefinition(card.cardId);
       if (!cardDef) return false;
 
-      // Check filters
-      let matches = true;
-      for (const filter of filters) {
-        if (filter.property === 'TRAIT') {
-          const traits = filter.value as string[];
-          if (!traits.some(t => cardDef.traits?.includes(t))) {
-            matches = false;
-            break;
-          }
-        }
-        if (filter.property === 'NAME') {
-          const names = filter.value as string[];
-          if (!names.some(n => cardDef.name?.includes(n.replace(/[.\[\]]/g, '')))) {
-            matches = false;
-            break;
-          }
-        }
-      }
-
-      if (matches) {
+      if (this.matchesFilters(cardDef, filters)) {
         if (!card.powerBuffs) card.powerBuffs = [];
         card.powerBuffs.push({
           id: `stage-${sourceCardId}-${card.id}`,
@@ -1674,38 +1672,14 @@ export class GameStateManager {
     const filters = action.target?.filters || [];
 
     // Check leader condition (e.g., leader must have Dressrosa trait)
-    for (const filter of filters) {
-      if (filter.property === 'TRAIT' && filter.value) {
-        const leaderDef = player.leaderCard ?
-          this.effectEngine.getCardDefinition(player.leaderCard.cardId) : null;
-        const traits = filter.value as string[];
-        // This is the leader condition check - if leader doesn't have the trait, skip
-        if (leaderDef && !traits.some(t => leaderDef.traits?.includes(t))) {
-          // Check if this is a leader condition or target condition
-          // For Corrida Coliseum, the leader must have Dressrosa trait
-          // But we also need the target characters to have Dressrosa
-          // This is handled below
-        }
-      }
-    }
+    // Note: this currently only logs a no-op check; actual gating is handled below per-card.
+    // Kept for structural parity with original behavior.
 
     for (const card of player.field) {
       const cardDef = this.effectEngine.getCardDefinition(card.cardId);
       if (!cardDef) continue;
 
-      // Check filters
-      let matches = true;
-      for (const filter of filters) {
-        if (filter.property === 'TRAIT') {
-          const traits = filter.value as string[];
-          if (!traits.some(t => cardDef.traits?.includes(t))) {
-            matches = false;
-            break;
-          }
-        }
-      }
-
-      if (matches) {
+      if (this.matchesFilters(cardDef, filters)) {
         card.hasRushVsCharacters = true;
         hadEffect = true;
       }
@@ -1732,26 +1706,7 @@ export class GameStateManager {
       const cardDef = this.effectEngine.getCardDefinition(card.cardId);
       if (!cardDef) continue;
 
-      // Check filters (e.g., TRAIT: "Five Elders")
-      let matches = true;
-      for (const filter of filters) {
-        if (filter.property === 'TRAIT') {
-          const traits = filter.value as string[];
-          if (!traits.some(t => cardDef.traits?.includes(t))) {
-            matches = false;
-            break;
-          }
-        }
-        if (filter.property === 'TYPE') {
-          const types = filter.value as string[];
-          if (!types.includes(cardDef.type)) {
-            matches = false;
-            break;
-          }
-        }
-      }
-
-      if (matches) {
+      if (this.matchesFilters(cardDef, filters)) {
         // Store original power if not already stored
         if (card.originalBasePower === undefined) {
           card.originalBasePower = card.basePower ?? cardDef.power ?? 0;
@@ -1782,26 +1737,7 @@ export class GameStateManager {
       const cardDef = this.effectEngine.getCardDefinition(card.cardId);
       if (!cardDef) continue;
 
-      // Check filters
-      let matches = true;
-      for (const filter of filters) {
-        if (filter.property === 'TRAIT') {
-          const traits = filter.value as string[];
-          if (!traits.some(t => cardDef.traits?.includes(t))) {
-            matches = false;
-            break;
-          }
-        }
-        if (filter.property === 'TYPE') {
-          const types = filter.value as string[];
-          if (!types.includes(cardDef.type)) {
-            matches = false;
-            break;
-          }
-        }
-      }
-
-      if (matches) {
+      if (this.matchesFilters(cardDef, filters)) {
         // Apply cost debuff cumulatively (multiple continuous sources can stack).
         const baseCost = cardDef.cost ?? 0;
         const currentModified = card.modifiedCost ?? baseCost;
@@ -1830,26 +1766,7 @@ export class GameStateManager {
       const cardDef = this.effectEngine.getCardDefinition(card.cardId);
       if (!cardDef) continue;
 
-      // Check filters
-      let matches = true;
-      for (const filter of filters) {
-        if (filter.property === 'TRAIT') {
-          const traits = filter.value as string[];
-          if (!traits.some(t => cardDef.traits?.includes(t))) {
-            matches = false;
-            break;
-          }
-        }
-        if (filter.property === 'TYPE') {
-          const types = filter.value as string[];
-          if (!types.includes(cardDef.type)) {
-            matches = false;
-            break;
-          }
-        }
-      }
-
-      if (matches) {
+      if (this.matchesFilters(cardDef, filters)) {
         // Add power debuff as a STAGE_CONTINUOUS buff (will be cleared at turn end)
         if (!card.powerBuffs) {
           card.powerBuffs = [];
@@ -1900,39 +1817,14 @@ export class GameStateManager {
 
     if (!keyword) return false;
 
-    const matchesFilters = (card: GameCard): boolean => {
+    const cardMatchesFilters = (card: GameCard): boolean => {
       const cardDef = this.effectEngine.getCardDefinition(card.cardId);
       if (!cardDef) return false;
-
-      let matches = true;
-      for (const filter of filters) {
-        if (filter.property === 'TRAIT') {
-          const traits = filter.value as string[];
-          if (!traits.some(t => cardDef.traits?.includes(t))) {
-            matches = false;
-            break;
-          }
-        }
-        if (filter.property === 'TYPE') {
-          const types = filter.value as string[];
-          if (!types.includes(cardDef.type)) {
-            matches = false;
-            break;
-          }
-        }
-        if (filter.property === 'NAME') {
-          const names = filter.value as string[];
-          if (!names.some(n => cardDef.name?.includes(n.replace(/[.\[\]]/g, '')))) {
-            matches = false;
-            break;
-          }
-        }
-      }
-      return matches;
+      return this.matchesFilters(cardDef, filters);
     };
 
     const addKeyword = (card: GameCard): void => {
-      if (!matchesFilters(card)) return;
+      if (!cardMatchesFilters(card)) return;
 
       if (!card.continuousKeywords) {
         card.continuousKeywords = [];
@@ -2040,26 +1932,7 @@ export class GameStateManager {
       const cardDef = this.effectEngine.getCardDefinition(card.cardId);
       if (!cardDef) continue;
 
-      // Check filters
-      let matches = true;
-      for (const filter of filters) {
-        if (filter.property === 'TRAIT') {
-          const traits = filter.value as string[];
-          if (!traits.some(t => cardDef.traits?.includes(t))) {
-            matches = false;
-            break;
-          }
-        }
-        if (filter.property === 'COST') {
-          const costValue = filter.value as number;
-          if (cardDef.cost !== costValue) {
-            matches = false;
-            break;
-          }
-        }
-      }
-
-      if (matches) {
+      if (this.matchesFilters(cardDef, filters)) {
         if (!card.immunities) {
           card.immunities = [];
         }
@@ -2517,21 +2390,7 @@ export class GameStateManager {
     );
 
     if (remainingEffects.length > 0) {
-      // Update pendingAttackEffects for the client (compute valid targets)
-      this.state.pendingAttackEffects = remainingEffects.map(e => {
-        const validTargets = this.getValidTargetsForEffect(e.id);
-        const effectAction = e.effect.effects[0];
-        return {
-          id: e.id,
-          sourceCardId: e.sourceCardId,
-          playerId: e.playerId,
-          description: e.effect.description || 'Activate ability',
-          validTargets,
-          requiresChoice: e.requiresChoice,
-          maxTargets: effectAction?.target?.count || 1
-        };
-      });
-      // Stay in ATTACK_EFFECT_STEP for next effect
+      this.state.pendingAttackEffects = this.buildPendingAttackEffects(remainingEffects);
       return true;
     }
 
@@ -2553,26 +2412,55 @@ export class GameStateManager {
     );
 
     if (remainingEffects.length > 0) {
-      // Update pendingAttackEffects for the client (compute valid targets)
-      this.state.pendingAttackEffects = remainingEffects.map(e => {
-        const validTargets = this.getValidTargetsForEffect(e.id);
-        const effectAction = e.effect.effects[0];
-        return {
-          id: e.id,
-          sourceCardId: e.sourceCardId,
-          playerId: e.playerId,
-          description: e.effect.description || 'Activate ability',
-          validTargets,
-          requiresChoice: e.requiresChoice,
-          maxTargets: effectAction?.target?.count || 1
-        };
-      });
-      // Stay in ATTACK_EFFECT_STEP for next effect
+      this.state.pendingAttackEffects = this.buildPendingAttackEffects(remainingEffects);
       return true;
     }
 
     // All effects handled, proceed to next combat phase
     return this.proceedFromAttackEffectStep();
+  }
+
+  /** Build the pendingAttackEffects client payload from remaining ON_ATTACK effects. */
+  private buildPendingAttackEffects(effects: PendingEffect[]) {
+    return effects.map(e => {
+      const validTargets = this.getValidTargetsForEffect(e.id);
+      const effectAction = e.effect.effects[0];
+      return {
+        id: e.id,
+        sourceCardId: e.sourceCardId,
+        playerId: e.playerId,
+        description: e.effect.description || 'Activate ability',
+        validTargets,
+        requiresChoice: e.requiresChoice,
+        maxTargets: effectAction?.target?.count || 1
+      };
+    });
+  }
+
+  /** Build the pendingPlayEffects client payload from remaining ON_PLAY effects. */
+  private buildPendingPlayEffects(effects: PendingEffect[]) {
+    return effects.map(e => {
+      const validTargets = this.getValidTargetsForEffect(e.id);
+      const effectAction = e.effect.effects[0];
+      const effectType = effectAction?.type || 'UNKNOWN';
+
+      let maxTargets = effectAction?.target?.count || 1;
+      if (effectAction?.type === EffectType.ATTACH_DON) {
+        maxTargets = 2; // DON card + target
+      }
+
+      return {
+        id: e.id,
+        sourceCardId: e.sourceCardId,
+        playerId: e.playerId,
+        description: e.effect.description || 'Activate ON PLAY ability',
+        validTargets,
+        requiresChoice: e.requiresChoice,
+        effectType: effectType.toString(),
+        maxTargets,
+        minTargets: e.effect.isOptional ? 0 : 1
+      };
+    });
   }
 
   // Helper to proceed from ATTACK_EFFECT_STEP to the next combat phase
@@ -2610,31 +2498,7 @@ export class GameStateManager {
     );
 
     if (remainingEffects.length > 0) {
-      // Update pendingPlayEffects for the client
-      this.state.pendingPlayEffects = remainingEffects.map(e => {
-        const validTargets = this.getValidTargetsForEffect(e.id);
-        const effectAction = e.effect.effects[0];
-        const effectType = effectAction?.type || 'UNKNOWN';
-
-        // ATTACH_DON needs 2 selections: DON card + target (leader/character)
-        let maxTargets = effectAction?.target?.count || 1;
-        if (effectAction?.type === EffectType.ATTACH_DON) {
-          maxTargets = 2; // DON card + target
-        }
-
-        return {
-          id: e.id,
-          sourceCardId: e.sourceCardId,
-          playerId: e.playerId,
-          description: e.effect.description || 'Activate ON PLAY ability',
-          validTargets,
-          requiresChoice: e.requiresChoice,
-          effectType: effectType.toString(),
-          maxTargets,
-          minTargets: e.effect.isOptional ? 0 : 1
-        };
-      });
-      // Stay in PLAY_EFFECT_STEP for next effect
+      this.state.pendingPlayEffects = this.buildPendingPlayEffects(remainingEffects);
       return true;
     }
 
@@ -2660,31 +2524,7 @@ export class GameStateManager {
     );
 
     if (remainingEffects.length > 0) {
-      // Update pendingPlayEffects for the client
-      this.state.pendingPlayEffects = remainingEffects.map(e => {
-        const validTargets = this.getValidTargetsForEffect(e.id);
-        const effectAction = e.effect.effects[0];
-        const effectType = effectAction?.type || 'UNKNOWN';
-
-        // ATTACH_DON needs 2 selections: DON card + target (leader/character)
-        let maxTargets = effectAction?.target?.count || 1;
-        if (effectAction?.type === EffectType.ATTACH_DON) {
-          maxTargets = 2; // DON card + target
-        }
-
-        return {
-          id: e.id,
-          sourceCardId: e.sourceCardId,
-          playerId: e.playerId,
-          description: e.effect.description || 'Activate ON PLAY ability',
-          validTargets,
-          requiresChoice: e.requiresChoice,
-          effectType: effectType.toString(),
-          maxTargets,
-          minTargets: e.effect.isOptional ? 0 : 1
-        };
-      });
-      // Stay in PLAY_EFFECT_STEP for next effect
+      this.state.pendingPlayEffects = this.buildPendingPlayEffects(remainingEffects);
       return true;
     }
 

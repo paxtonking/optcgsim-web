@@ -1,25 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { GameCard as GameCardType } from '@optcgsim/shared';
+import { ClientCardDefinition } from '../../types/card';
+import { resolveCardImageUrl } from '../../utils/cardImage';
 import { FormattedEffect } from '../common/FormattedEffect';
 import './GameBoard.css';
-
-interface CardDefinition {
-  id: string;
-  name: string;
-  type?: string;
-  cardType?: string;
-  color?: string;
-  colors?: string[];
-  cost?: number | null;
-  power?: number | null;
-  counter?: number | null;
-  life?: number | null;
-  attribute?: string | null;
-  effect?: string | null;
-  trigger?: string | null;
-  traits?: string[];
-  imageUrl?: string;
-}
 
 interface ActivateAbilityInfo {
   canActivate: boolean;
@@ -38,7 +22,7 @@ interface PlayEffectInfo {
 
 interface CardPreviewProps {
   card: GameCardType | null;
-  cardDef?: CardDefinition;
+  cardDef?: ClientCardDefinition;
   isHidden?: boolean;
   attachedDonCount?: number;  // Number of DON cards attached (for power calculation)
   showDonBonus?: boolean;     // Whether DON bonus applies (only on card owner's turn)
@@ -130,20 +114,7 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
   }
 
   // Get image URL - use cardDef.imageUrl if available
-  const getImageUrl = () => {
-    // Use API URL from environment if set (for production where frontend and backend are separate)
-    const apiBase = import.meta.env.VITE_API_URL || '';
-    if (cardDef?.imageUrl) {
-      const filename = cardDef.imageUrl.split('/').pop();
-      // Use different proxy based on the source domain
-      if (cardDef.imageUrl.includes('onepiece-cardgame.com')) {
-        return `${apiBase}/api/images/official/${filename}`;
-      }
-      return `${apiBase}/api/images/cards/${filename}`;
-    }
-    return `${apiBase}/api/images/cards/${card.cardId}.png`;
-  };
-  const imageUrl = getImageUrl();
+  const imageUrl = resolveCardImageUrl(card.cardId, cardDef?.imageUrl);
 
   // Get all colors for display (handles "GREEN RED" format and splits into separate colors)
   const getColors = (): string[] => {

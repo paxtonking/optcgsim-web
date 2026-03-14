@@ -18,6 +18,32 @@ export interface Card {
   imageUrl: string;
 }
 
+/**
+ * Loose card definition type used by game components.
+ * Superset of all fields that any component may reference.
+ * Most fields are optional because not all data sources provide every field.
+ */
+export interface ClientCardDefinition {
+  id: string;
+  name: string;
+  type?: string;
+  cardType?: string;
+  color?: string;
+  colors?: string[];
+  cost?: number | null;
+  power?: number | null;
+  counter?: number | null;
+  life?: number | null;
+  attribute?: string | null;
+  effect?: string | null;
+  trigger?: string | null;
+  imageUrl?: string;
+  images?: { small?: string; large?: string };
+  keywords?: string[];
+  traits?: string[];
+  effectText?: string;
+}
+
 export interface DeckCard {
   card: Card;
   count: number;

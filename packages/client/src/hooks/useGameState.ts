@@ -1,28 +1,8 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { GameState, GameCard, PlayerState, GamePhase } from '@optcgsim/shared';
 import { useCardStore } from '../stores/cardStore';
-
-interface CardDefinition {
-  id: string;
-  name: string;
-  type?: string;
-  cardType?: string;
-  color?: string;
-  colors?: string[];
-  cost?: number | null;
-  power?: number | null;
-  counter?: number | null;
-  attribute?: string | null;
-  effect?: string | null;
-  trigger?: string | null;
-  imageUrl?: string;
-  images?: {
-    small?: string;
-    large?: string;
-  };
-  keywords?: string[];
-  traits?: string[];
-}
+import { ClientCardDefinition } from '../types/card';
+import { resolveCardImageUrl } from '../utils/cardImage';
 
 // Keyword detection patterns (same as server-side)
 const KEYWORD_PATTERNS: { pattern: RegExp; keyword: string }[] = [
@@ -54,11 +34,11 @@ export interface UseGameStateReturn {
   turn: number;
   selectedCard: GameCard | null;
   hoveredCard: GameCard | null;
-  cardDefinitions: Map<string, CardDefinition>;
+  cardDefinitions: Map<string, ClientCardDefinition>;
   setGameState: (state: GameState) => void;
   setSelectedCard: (card: GameCard | null) => void;
   setHoveredCard: (card: GameCard | null) => void;
-  getCardDefinition: (cardId: string) => CardDefinition | undefined;
+  getCardDefinition: (cardId: string) => ClientCardDefinition | undefined;
   getCardImageUrl: (cardId: string) => string;
   canPlayCard: (card: GameCard) => boolean;
   isValidAttackTarget: (card: GameCard) => boolean;
@@ -80,7 +60,7 @@ export function useGameState(playerId: string | null): UseGameStateReturn {
 
   // Convert card array to map with keyword detection
   const cardDefinitions = useMemo(() => {
-    const defMap = new Map<string, CardDefinition>();
+    const defMap = new Map<string, ClientCardDefinition>();
     cardArray.forEach(card => {
       // Detect keywords from effect text (same as server-side CardLoaderService)
       const keywords = detectKeywords(card.effect);
@@ -118,18 +98,7 @@ export function useGameState(playerId: string | null): UseGameStateReturn {
 
   const getCardImageUrl = useCallback((cardId: string) => {
     const def = cardDefinitions.get(cardId);
-    // Use API URL from environment if set (for production where frontend and backend are separate)
-    const apiBase = import.meta.env.VITE_API_URL || '';
-    if (def?.imageUrl) {
-      // Use proxy to avoid CORS - extract filename from URL
-      const filename = def.imageUrl.split('/').pop();
-      // Use different proxy based on the source domain
-      if (def.imageUrl.includes('onepiece-cardgame.com')) {
-        return `${apiBase}/api/images/official/${filename}`;
-      }
-      return `${apiBase}/api/images/cards/${filename}`;
-    }
-    return `${apiBase}/api/images/cards/${cardId}.png`;
+    return resolveCardImageUrl(cardId, def?.imageUrl);
   }, [cardDefinitions]);
 
   const canPlayCard = useCallback((card: GameCard): boolean => {
