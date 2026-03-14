@@ -55,7 +55,7 @@ export enum CardState {
 }
 
 // Power buff tracking for temporary effects
-export type BuffDuration = 'PERMANENT' | 'THIS_TURN' | 'THIS_BATTLE' | 'STAGE_CONTINUOUS';
+export type BuffDuration = 'PERMANENT' | 'THIS_TURN' | 'THIS_BATTLE' | 'STAGE_CONTINUOUS' | 'WHILE_ON_FIELD';
 
 export interface PowerBuff {
   id: string;              // Unique buff ID

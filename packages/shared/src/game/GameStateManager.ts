@@ -424,6 +424,7 @@ export class GameStateManager {
     this.state.phase = GamePhase.DON_PHASE;
     const donToDraw = Math.min(1, activePlayer.donDeck);
     for (let i = 0; i < donToDraw; i++) {
+      if (activePlayer.donField.length >= DEFAULT_GAME_CONFIG.maxDon) break;
       activePlayer.donDeck--;
       activePlayer.donField.push({
         id: `${this.state.activePlayerId}-don-${Date.now()}-${i}`,
@@ -1551,6 +1552,12 @@ export class GameStateManager {
    * Check whether a card definition satisfies all target filters.
    * Handles TRAIT, COLOR, COST, NAME, and TYPE property checks.
    */
+  private matchesNumericFilter(actual: number, target: number, operator: string | undefined, raw: number | null | undefined): boolean {
+    if (operator === 'OR_MORE') return actual >= target;
+    if (operator === 'OR_LESS' || operator === 'LESS_THAN_OR_EQUAL') return actual <= target;
+    return raw === target;
+  }
+
   private matchesFilters(cardDef: CardDefinition, filters: TargetFilter[]): boolean {
     for (const filter of filters) {
       switch (filter.property) {
@@ -1565,12 +1572,11 @@ export class GameStateManager {
           break;
         }
         case 'COST': {
-          const costValue = filter.value as number;
-          if (filter.operator === 'OR_MORE') {
-            if ((cardDef.cost ?? 0) < costValue) return false;
-          } else {
-            if (cardDef.cost !== costValue) return false;
-          }
+          if (!this.matchesNumericFilter(cardDef.cost ?? 0, filter.value as number, filter.operator, cardDef.cost)) return false;
+          break;
+        }
+        case 'POWER': {
+          if (!this.matchesNumericFilter(cardDef.power ?? 0, filter.value as number, filter.operator, cardDef.power)) return false;
           break;
         }
         case 'NAME': {
@@ -2356,15 +2362,7 @@ export class GameStateManager {
     }
 
     // Combat order: Attack → Block → Counter → Damage
-    // Check if attacker became unblockable from ON_ATTACK effects
-    if (this.effectEngine.isUnblockable(attacker)) {
-      // Skip blocker step entirely, go to counter step
-      this.state.phase = GamePhase.COUNTER_STEP;
-      console.log('[DEBUG ATTACK GSM] Attack declared - going to COUNTER_STEP (unblockable)');
-    } else {
-      this.state.phase = GamePhase.BLOCKER_STEP;
-      console.log('[DEBUG ATTACK GSM] Attack declared - going to BLOCKER_STEP');
-    }
+    if (this.advanceCombatPhaseAfterAttack(attacker)) return true;
 
     console.log('[DEBUG ATTACK GSM] Combat state:', {
       attackerId: this.state.currentCombat.attackerId,
@@ -2473,14 +2471,27 @@ export class GameStateManager {
     const attacker = this.findCard(this.state.currentCombat.attackerId);
 
     // Check if attacker became unblockable from ON_ATTACK effects
-    if (attacker && this.effectEngine.isUnblockable(attacker)) {
-      // Skip blocker step entirely, go to counter step
-      this.state.phase = GamePhase.COUNTER_STEP;
+    if (attacker && this.advanceCombatPhaseAfterAttack(attacker)) return true;
+
+    return true;
+  }
+
+  /**
+   * Advance the combat phase after an attack is declared.
+   * Returns true if combat was resolved immediately (unblockable character attack).
+   */
+  private advanceCombatPhaseAfterAttack(attacker: GameCard): boolean {
+    if (this.effectEngine.isUnblockable(attacker)) {
+      if (this.state.currentCombat!.targetType === 'leader') {
+        this.state.phase = GamePhase.COUNTER_STEP;
+      } else {
+        this.resolveCombat();
+        return true;
+      }
     } else {
       this.state.phase = GamePhase.BLOCKER_STEP;
     }
-
-    return true;
+    return false;
   }
 
   // Resolve an ON_PLAY effect that requires target selection
@@ -2671,6 +2682,9 @@ export class GameStateManager {
 
     // Check if attacker is unblockable
     if (this.effectEngine.isUnblockable(attacker, this.state)) return false;
+
+    // Blocker can only redirect attacks targeting the leader (OPTCG rules)
+    if (this.state.currentCombat.targetType !== 'leader') return false;
 
     blocker.state = CardState.RESTED;
     this.state.currentCombat.isBlocked = true;
@@ -2898,8 +2912,13 @@ export class GameStateManager {
     const attacker = this.findCard(this.state.currentCombat.attackerId);
     if (!attacker || attacker.owner === playerId) return false;
 
-    // No blocker selected, move to counter step
-    this.state.phase = GamePhase.COUNTER_STEP;
+    // Counter step only happens when attacking the leader (OPTCG rules)
+    if (this.state.currentCombat.targetType === 'leader') {
+      this.state.phase = GamePhase.COUNTER_STEP;
+    } else {
+      // Character attack: skip counter step, go directly to damage
+      this.resolveCombat();
+    }
 
     return true;
   }
@@ -2998,7 +3017,8 @@ export class GameStateManager {
       const target = this.findCard(targetId!);
       if (target) {
         // getEffectivePower includes base, buffs, DON, and THIS_BATTLE buffs from counter events
-        const targetPower = this.getEffectivePower(target) + (counterPower || 0);
+        // Counter power should not apply to character attacks (counter step is leader-only)
+        const targetPower = this.getEffectivePower(target);
         if (attackPower >= targetPower) {
           // Trigger PRE_KO before the KO happens (allows prevention effects)
           const preKoTrigger: TriggerEvent = {
@@ -3323,7 +3343,7 @@ export class GameStateManager {
 
     // REFRESH PHASE: Return all attached DON to cost area (skip on turn 1)
     // According to official rules, Refresh Phase is skipped on the very first turn
-    if (this.state.turn > 1) {
+    if (player.turnCount > 1) {
       player.donField.forEach(don => {
         if (don.attachedTo) {
           don.attachedTo = undefined;
@@ -3356,6 +3376,7 @@ export class GameStateManager {
     this.state.phase = GamePhase.DON_PHASE;
     const donCount = Math.min(DEFAULT_GAME_CONFIG.donPerTurn, player.donDeck);
     for (let i = 0; i < donCount; i++) {
+      if (player.donField.length >= DEFAULT_GAME_CONFIG.maxDon) break;
       player.donDeck--;
       player.donField.push({
         id: `${playerId}-don-${Date.now()}-${i}`,

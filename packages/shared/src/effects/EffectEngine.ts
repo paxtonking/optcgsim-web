@@ -25,6 +25,7 @@ import {
   GamePhase,
   PowerBuff,
   BuffDuration,
+  CardImmunity,
   DEFAULT_GAME_CONFIG,
 } from '../types/game';
 
@@ -98,8 +99,9 @@ export class EffectEngine {
       case EffectDuration.UNTIL_END_OF_BATTLE:
         return 'THIS_BATTLE';
       case EffectDuration.PERMANENT:
-      case EffectDuration.WHILE_ON_FIELD:
         return 'PERMANENT';
+      case EffectDuration.WHILE_ON_FIELD:
+        return 'WHILE_ON_FIELD';
       case EffectDuration.INSTANT:
       default:
         // Default to THIS_TURN for "during this turn" effects
@@ -166,6 +168,14 @@ export class EffectEngine {
         ? `${gameState.turn}-${gameState.currentCombat.attackerId}`
         : undefined;
       return buff.appliedCombatId === currentCombatId;
+    }
+
+    if (buff.duration === 'WHILE_ON_FIELD') {
+      const sourceCard = this.findCard(gameState, buff.sourceCardId);
+      if (!sourceCard) return false;
+      return sourceCard.zone === CardZone.FIELD ||
+        sourceCard.zone === CardZone.LEADER ||
+        sourceCard.zone === CardZone.STAGE;
     }
 
     return false;
@@ -337,11 +347,8 @@ export class EffectEngine {
     player: PlayerState,
     gameState: GameState
   ): boolean {
-    const normalizedEffect: CardEffectDefinition = syntheticEffect.trigger === EffectTrigger.PASSIVE
-      ? { ...syntheticEffect, trigger: EffectTrigger.ON_ATTACK }
-      : syntheticEffect;
-
-    if (!this.doesTriggerMatch(normalizedEffect, event, sourceCard, player, gameState)) {
+    // Don't normalize PASSIVE to ON_ATTACK - PASSIVE effects should match any trigger
+    if (!this.doesTriggerMatch(syntheticEffect, event, sourceCard, player, gameState)) {
       return false;
     }
 
@@ -360,7 +367,7 @@ export class EffectEngine {
       case 'UNTIL_END_OF_OPPONENT_TURN':
       case 'UNTIL_START_OF_YOUR_TURN':
         // Two-player turn progression: active through the next turn after grant.
-        return gameState.turn <= grantedEffect.turnGranted + 1;
+        return gameState.turn < grantedEffect.turnGranted + 2;
       case 'THIS_BATTLE':
         return Boolean(gameState.currentCombat) && grantedEffect.turnGranted === gameState.turn;
       case 'WHILE_ON_FIELD': {
@@ -1290,7 +1297,8 @@ export class EffectEngine {
         targets.forEach(targetId => {
           if (this.isRemovalBlocked(gameState, targetId, 'KO', sourcePlayer.id)) return;
           const card = this.findCard(gameState, targetId);
-          if (card && (card.cost || 0) <= (action.value || 0)) {
+          const cardDef = card ? this.cardDefinitions.get(card.cardId) : undefined;
+          if (card && ((cardDef?.cost ?? card.cost) || 0) <= (action.value || 0)) {
             const result = this.koCard(gameState, targetId);
             changes.push(...result);
           }
@@ -1301,7 +1309,7 @@ export class EffectEngine {
         targets.forEach(targetId => {
           if (this.isRemovalBlocked(gameState, targetId, 'KO', sourcePlayer.id)) return;
           const card = this.findCard(gameState, targetId);
-          if (card && (card.power || 0) <= (action.value || 0)) {
+          if (card && (card.basePower ?? card.power ?? 0) <= (action.value || 0)) {
             const result = this.koCard(gameState, targetId);
             changes.push(...result);
           }
@@ -2324,8 +2332,8 @@ export class EffectEngine {
         // Return DON from field to DON deck
         while (returned < returnCount && sourcePlayer.donField.length > 0) {
           // Prefer returning rested DON first
-          const donIndex = sourcePlayer.donField.findIndex(d => d.state === CardState.RESTED)
-            ?? sourcePlayer.donField.length - 1;
+          let donIndex = sourcePlayer.donField.findIndex(d => d.state === CardState.RESTED);
+          if (donIndex === -1) donIndex = sourcePlayer.donField.length - 1;
 
           if (donIndex >= 0) {
             sourcePlayer.donField.splice(donIndex, 1);
@@ -2908,7 +2916,7 @@ export class EffectEngine {
     // Check immunities[] array for KO immunity
     if (removalType === 'KO' && card.immunities?.length) {
       for (const immunity of card.immunities) {
-        if (immunity.type === 'KO') {
+        if (immunity.type === 'KO' && this.isImmunityActive(gameState, immunity)) {
           console.log(`[IMMUNITY] Card ${cardId} has KO immunity from immunities[]`);
           return true;
         }
@@ -2918,7 +2926,7 @@ export class EffectEngine {
     // Check immunities[] for general EFFECTS immunity
     if (isOpponentEffect && card.immunities?.length) {
       for (const immunity of card.immunities) {
-        if (immunity.type === 'EFFECTS') {
+        if (immunity.type === 'EFFECTS' && this.isImmunityActive(gameState, immunity)) {
           console.log(`[IMMUNITY] Card ${cardId} has EFFECTS immunity from immunities[]`);
           return true;
         }
@@ -2926,6 +2934,20 @@ export class EffectEngine {
     }
 
     return false;
+  }
+
+  /**
+   * Check if an immunity entry is still active based on its duration.
+   * PERMANENT immunities are always active. STAGE_CONTINUOUS immunities
+   * require the source card (stage) to still be on the field.
+   */
+  private isImmunityActive(gameState: GameState, immunity: CardImmunity): boolean {
+    if (!immunity.duration || immunity.duration === 'PERMANENT') return true;
+    if (immunity.duration === 'STAGE_CONTINUOUS' && immunity.sourceCardId) {
+      const sourceCard = this.findCard(gameState, immunity.sourceCardId);
+      return sourceCard != null && sourceCard.zone === CardZone.STAGE;
+    }
+    return true;
   }
 
   /**
@@ -3091,6 +3113,13 @@ export class EffectEngine {
       EffectType.BUFF_POWER, EffectType.BUFF_ANY,
       EffectType.DEBUFF_POWER, EffectType.SET_POWER_ZERO,
       EffectType.GRANT_KEYWORD,
+      // Card selection effects
+      EffectType.DISCARD_FROM_HAND,
+      EffectType.SEARCH_DECK, EffectType.SEARCH_AND_SELECT,
+      EffectType.OPPONENT_TRASH_FROM_HAND,
+      EffectType.SWAP_POWER, EffectType.REDIRECT_ATTACK,
+      EffectType.PLAY_FROM_HAND, EffectType.PLAY_FROM_TRASH, EffectType.PLAY_FROM_DECK,
+      EffectType.ACTIVATE_CHARACTER,
     ];
 
     return effect.effects.some(action => {
@@ -3552,7 +3581,7 @@ export class EffectEngine {
         case 'DON_COUNT':
           return sourcePlayer.donField.length;
         case 'ACTIVE_DON_COUNT':
-          return sourcePlayer.donField.filter(d => d.state === CardState.ACTIVE && !d.attachedTo).length;
+          return sourcePlayer.donField.filter(d => d.state === CardState.ACTIVE).length;
 
         // Player's zone counts
         case 'TRASH_COUNT':
