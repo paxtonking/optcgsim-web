@@ -3336,7 +3336,13 @@ export class GameStateManager {
           );
 
           if (!koPrevented) {
-            this.koCharacter(targetId!);
+            // Check if attacker has Banish - KO'd character goes to deck bottom instead of trash
+            const hasBanish = attacker ? this.effectEngine.hasBanish(attacker, this.state) : false;
+            if (hasBanish) {
+              this.banishCharacter(targetId!);
+            } else {
+              this.koCharacter(targetId!);
+            }
 
             // Trigger ON_KO (for the card being KO'd)
             const triggerEvent: TriggerEvent = {
@@ -3617,6 +3623,27 @@ export class GameStateManager {
         playerId: card.owner,
       };
       this.processTriggers(opponentKoTrigger);
+
+      this.detachDonFromCard(cardId, player.id);
+    }
+  }
+
+  /**
+   * Banish: Send a KO'd character to the bottom of its owner's deck instead of trash
+   */
+  private banishCharacter(cardId: string): void {
+    const card = this.findCard(cardId);
+    if (!card) return;
+
+    const player = this.state.players[card.owner];
+    if (!player) return;
+
+    const fieldIndex = player.field.findIndex(c => c.id === cardId);
+    if (fieldIndex !== -1) {
+      const banishedCard = player.field.splice(fieldIndex, 1)[0];
+      banishedCard.zone = CardZone.DECK;
+      banishedCard.faceUp = false;
+      player.deck.push(banishedCard); // Bottom of deck
 
       this.detachDonFromCard(cardId, player.id);
     }
