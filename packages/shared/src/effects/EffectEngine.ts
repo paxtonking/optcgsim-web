@@ -26,6 +26,7 @@ import {
   PowerBuff,
   BuffDuration,
   CardImmunity,
+  PlayerRestriction,
   DEFAULT_GAME_CONFIG,
 } from '../types/game';
 
@@ -923,7 +924,7 @@ export class EffectEngine {
 
     const changes: StateChange[] = [];
     const { gameState, sourcePlayer } = context;
-    const targets = context.selectedTargets !== undefined
+    const targets = context.selectedTargets !== undefined && context.selectedTargets.length > 0
       ? context.selectedTargets
       : (action.target ? this.getValidTargets(action, context) : []);
 
@@ -1097,8 +1098,7 @@ export class EffectEngine {
 
       // ============ DRAW EFFECTS ============
       case EffectType.DRAW_CARDS:
-        // Check for DisableEffectDraws restriction on player's leader
-        if (sourcePlayer.leaderCard?.temporaryKeywords?.includes(KW_DISABLE_EFFECT_DRAWS)) {
+        if (this.hasActivePlayerRestriction(sourcePlayer, KW_DISABLE_EFFECT_DRAWS, gameState.turn)) {
           console.log('[resolveAction] Draw blocked by DisableEffectDraws restriction');
           break;
         }
@@ -2650,14 +2650,7 @@ export class EffectEngine {
       case EffectType.NO_ON_PLAYS_NEXT_TURN: {
         const opponent = this.getOpponent(gameState, sourcePlayer.id);
         if (opponent?.leaderCard) {
-          // Set on player.restrictions for GameStateManager checks
-          if (!opponent.restrictions) opponent.restrictions = [];
-          if (!opponent.restrictions.includes(KW_NO_ON_PLAYS)) {
-            opponent.restrictions.push(KW_NO_ON_PLAYS);
-          }
-          if (!opponent.leaderCard.temporaryKeywords) opponent.leaderCard.temporaryKeywords = [];
-          // Use a marker that persists through opponent's next turn
-          opponent.leaderCard.temporaryKeywords.push(KW_NO_ON_PLAYS);
+          this.addPlayerRestriction(opponent, KW_NO_ON_PLAYS, 'END_OF_OPPONENT_TURN', gameState.turn);
           // Also store in grantedEffects with proper duration for cleanup
           if (!opponent.leaderCard.grantedEffects) opponent.leaderCard.grantedEffects = [];
           opponent.leaderCard.grantedEffects.push({
@@ -2687,16 +2680,22 @@ export class EffectEngine {
           const target = this.findCard(gameState, targetId);
           if (target) {
             if (!target.restrictions) target.restrictions = [];
-            target.restrictions.push({
-              type: 'CONFUSION_TAX',
-              until: action.duration === EffectDuration.UNTIL_END_OF_OPPONENT_TURN
-                ? 'END_OF_OPPONENT_TURN'
-                : action.duration === EffectDuration.UNTIL_END_OF_TURN
-                  ? 'END_OF_TURN'
-                  : 'PERMANENT',
-              turnApplied: gameState.turn,
-              value: taxAmount,
-            });
+            const until = this.getPlayerRestrictionUntil(action.duration);
+            const alreadyApplied = target.restrictions.some(
+              restriction =>
+                restriction.type === 'CONFUSION_TAX' &&
+                restriction.until === until &&
+                restriction.turnApplied === gameState.turn &&
+                restriction.value === taxAmount
+            );
+            if (!alreadyApplied) {
+              target.restrictions.push({
+                type: 'CONFUSION_TAX',
+                until,
+                turnApplied: gameState.turn,
+                value: taxAmount,
+              });
+            }
             changes.push({
               type: 'EFFECT_APPLIED',
               cardId: targetId,
@@ -2713,15 +2712,7 @@ export class EffectEngine {
       // ============================================
       case EffectType.DON_EQUALIZATION: {
         if (sourcePlayer.leaderCard) {
-          // Set on player.restrictions for GameStateManager checks
-          if (!sourcePlayer.restrictions) sourcePlayer.restrictions = [];
-          if (!sourcePlayer.restrictions.includes(KW_DON_EQUALIZATION)) {
-            sourcePlayer.restrictions.push(KW_DON_EQUALIZATION);
-          }
-          if (!sourcePlayer.leaderCard.temporaryKeywords) sourcePlayer.leaderCard.temporaryKeywords = [];
-          if (!sourcePlayer.leaderCard.temporaryKeywords.includes(KW_DON_EQUALIZATION)) {
-            sourcePlayer.leaderCard.temporaryKeywords.push(KW_DON_EQUALIZATION);
-          }
+          this.addPlayerRestriction(sourcePlayer, KW_DON_EQUALIZATION, 'END_OF_TURN', gameState.turn);
           changes.push({
             type: 'EFFECT_APPLIED',
             playerId: sourcePlayer.id,
@@ -2736,16 +2727,18 @@ export class EffectEngine {
       // FLIP_LIFE_FACE_UP - Turn top life card face-up
       // ============================================
       case EffectType.FLIP_LIFE_FACE_UP: {
-        if (sourcePlayer.lifeCards.length > 0) {
-          sourcePlayer.lifeCards[0].faceUp = true;
+        const revealCount = Math.max(1, action.value || 1);
+        const cardsToReveal = sourcePlayer.lifeCards.slice(-revealCount);
+        for (const lifeCard of cardsToReveal) {
+          lifeCard.faceUp = true;
           changes.push({
             type: 'LIFE_CHANGED',
-            cardId: sourcePlayer.lifeCards[0].id,
+            cardId: lifeCard.id,
             playerId: sourcePlayer.id,
             value: 'FACE_UP',
           });
-          console.log('[FLIP_LIFE_FACE_UP] Top life card', sourcePlayer.lifeCards[0].id, 'turned face-up');
         }
+        console.log('[FLIP_LIFE_FACE_UP] Turned face-up life cards:', cardsToReveal.map(card => card.id));
         break;
       }
 
@@ -2753,16 +2746,18 @@ export class EffectEngine {
       // FLIP_LIFE_FACE_DOWN - Turn top life card face-down
       // ============================================
       case EffectType.FLIP_LIFE_FACE_DOWN: {
-        if (sourcePlayer.lifeCards.length > 0) {
-          sourcePlayer.lifeCards[0].faceUp = false;
+        const concealCount = Math.max(1, action.value || 1);
+        const cardsToConceal = sourcePlayer.lifeCards.slice(-concealCount);
+        for (const lifeCard of cardsToConceal) {
+          lifeCard.faceUp = false;
           changes.push({
             type: 'LIFE_CHANGED',
-            cardId: sourcePlayer.lifeCards[0].id,
+            cardId: lifeCard.id,
             playerId: sourcePlayer.id,
             value: 'FACE_DOWN',
           });
-          console.log('[FLIP_LIFE_FACE_DOWN] Top life card', sourcePlayer.lifeCards[0].id, 'turned face-down');
         }
+        console.log('[FLIP_LIFE_FACE_DOWN] Turned face-down life cards:', cardsToConceal.map(card => card.id));
         break;
       }
 
@@ -3170,6 +3165,101 @@ export class EffectEngine {
     });
   }
 
+  private normalizePlayerRestriction(
+    restriction: PlayerRestriction | string,
+    currentTurn: number
+  ): PlayerRestriction {
+    if (typeof restriction !== 'string') {
+      return restriction;
+    }
+    return {
+      keyword: restriction,
+      until: 'END_OF_TURN',
+      turnApplied: currentTurn,
+    };
+  }
+
+  private isPlayerRestrictionActive(
+    restriction: PlayerRestriction | string,
+    currentTurn: number
+  ): boolean {
+    const normalized = this.normalizePlayerRestriction(restriction, currentTurn);
+    if (normalized.until === 'PERMANENT') return true;
+    if (normalized.until === 'END_OF_OPPONENT_TURN') {
+      return currentTurn <= normalized.turnApplied + 1;
+    }
+    return currentTurn === normalized.turnApplied;
+  }
+
+  private hasActivePlayerRestriction(
+    player: PlayerState,
+    keyword: string,
+    currentTurn: number
+  ): boolean {
+    return (player.restrictions ?? []).some(restriction => {
+      const normalized = this.normalizePlayerRestriction(restriction, currentTurn);
+      return normalized.keyword === keyword && this.isPlayerRestrictionActive(normalized, currentTurn);
+    });
+  }
+
+  private getPlayerRestrictionUntil(duration?: EffectDuration): PlayerRestriction['until'] {
+    if (duration === EffectDuration.UNTIL_END_OF_OPPONENT_TURN) {
+      return 'END_OF_OPPONENT_TURN';
+    }
+    if (duration === EffectDuration.UNTIL_END_OF_TURN || duration === undefined) {
+      return 'END_OF_TURN';
+    }
+    return 'PERMANENT';
+  }
+
+  private samePlayerRestrictionFilters(
+    left?: PlayerRestriction['filters'],
+    right?: TargetFilter[],
+  ): boolean {
+    return JSON.stringify(left ?? []) === JSON.stringify(right ?? []);
+  }
+
+  private addPlayerRestriction(
+    player: PlayerState,
+    keyword: string,
+    until: PlayerRestriction['until'],
+    turnApplied: number,
+    filters?: TargetFilter[],
+  ): void {
+    if (!player.restrictions) {
+      player.restrictions = [];
+    }
+
+    const alreadyApplied = player.restrictions.some(restriction => {
+      const normalized = this.normalizePlayerRestriction(restriction, turnApplied);
+      return normalized.keyword === keyword &&
+        normalized.until === until &&
+        normalized.turnApplied === turnApplied &&
+        this.samePlayerRestrictionFilters(normalized.filters, filters);
+    });
+
+    if (!alreadyApplied) {
+      const playerRestriction: PlayerRestriction = {
+        keyword,
+        until,
+        turnApplied,
+      };
+      if (filters?.length) {
+        playerRestriction.filters = filters.map(filter => ({ ...filter }));
+      }
+      player.restrictions.push(playerRestriction);
+    }
+
+    if (player.leaderCard) {
+      if (!player.leaderCard.temporaryKeywords) {
+        player.leaderCard.temporaryKeywords = [];
+      }
+      if (!player.leaderCard.temporaryKeywords.includes(keyword)) {
+        player.leaderCard.temporaryKeywords.push(keyword);
+      }
+    }
+  }
+
   /** Resolve a card's effective cost, preferring runtime-modified cost over definition cost. */
   /** Apply a turn-based restriction to a player (stored on both player.restrictions and leaderCard.temporaryKeywords). */
   private applyPlayerRestriction(
@@ -3180,23 +3270,28 @@ export class EffectEngine {
     changeValue: string,
     changes: StateChange[],
   ): void {
-    const targetPlayer = action.target?.type === TargetType.OPPONENT_CHARACTER
-      || action.target?.type === TargetType.OPPONENT_LEADER
+    const opponentTargetTypes = new Set<TargetType>([
+      TargetType.OPPONENT_CHARACTER,
+      TargetType.OPPONENT_LEADER,
+      TargetType.OPPONENT_LEADER_OR_CHARACTER,
+      TargetType.OPPONENT_FIELD,
+      TargetType.OPPONENT_HAND,
+      TargetType.OPPONENT_TRASH,
+      TargetType.OPPONENT_LIFE,
+      TargetType.OPPONENT_DON,
+      TargetType.OPPONENT_STAGE,
+    ]);
+    const targetPlayer = action.target?.type && opponentTargetTypes.has(action.target.type)
       ? this.getOpponent(gameState, sourcePlayer.id)
       : sourcePlayer;
     if (targetPlayer) {
-      // Set on player.restrictions for GameStateManager checks
-      if (!targetPlayer.restrictions) targetPlayer.restrictions = [];
-      if (!targetPlayer.restrictions.includes(keyword)) {
-        targetPlayer.restrictions.push(keyword);
-      }
-      // Also set on leaderCard.temporaryKeywords for effect-level checks (e.g., DisableEffectDraws)
-      if (targetPlayer.leaderCard) {
-        if (!targetPlayer.leaderCard.temporaryKeywords) targetPlayer.leaderCard.temporaryKeywords = [];
-        if (!targetPlayer.leaderCard.temporaryKeywords.includes(keyword)) {
-          targetPlayer.leaderCard.temporaryKeywords.push(keyword);
-        }
-      }
+      this.addPlayerRestriction(
+        targetPlayer,
+        keyword,
+        this.getPlayerRestrictionUntil(action.duration),
+        gameState.turn,
+        action.target?.filters,
+      );
       changes.push({ type: 'EFFECT_APPLIED', playerId: targetPlayer.id, value: changeValue });
       console.log(`[${changeValue}] Player`, targetPlayer.id, 'restriction applied');
     }

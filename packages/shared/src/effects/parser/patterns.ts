@@ -844,8 +844,20 @@ export const TARGET_PATTERNS: TargetPattern[] = [
 
   // Combined targets
   {
-    pattern: /(?:your )?(?:Leader or )?Character cards?/i,
+    pattern: /your opponent'?s?\s*Leader or Character cards?/i,
+    targetType: TargetType.OPPONENT_LEADER_OR_CHARACTER
+  },
+  {
+    pattern: /your opponent'?s?\s*Character cards?/i,
+    targetType: TargetType.OPPONENT_CHARACTER
+  },
+  {
+    pattern: /(?:your )?Leader or Character cards?/i,
     targetType: TargetType.YOUR_LEADER_OR_CHARACTER
+  },
+  {
+    pattern: /(?:your )?Character cards?/i,
+    targetType: TargetType.YOUR_CHARACTER
   },
 
   // Zone targets

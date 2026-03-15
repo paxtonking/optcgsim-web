@@ -18,6 +18,7 @@ import {
   PendingPlayEffect,
   ChoiceOption,
   CardRestriction,
+  PlayerRestriction,
   PowerBuff,
 } from '../types/game';
 
@@ -56,6 +57,12 @@ function clearKeywordPrefix(card: GameCard, prefix: string): void {
   }
 }
 
+function isStructuredPlayerRestriction(
+  restriction: PlayerRestriction | string
+): restriction is PlayerRestriction {
+  return typeof restriction !== 'string';
+}
+
 export interface GameStateManagerOptions {
   isTutorial?: boolean;
 }
@@ -84,6 +91,106 @@ export class GameStateManager {
 
   public getEffectEngine(): EffectEngine {
     return this.effectEngine;
+  }
+
+  private normalizePlayerRestriction(restriction: PlayerRestriction | string): PlayerRestriction {
+    if (isStructuredPlayerRestriction(restriction)) {
+      return restriction;
+    }
+    return {
+      keyword: restriction,
+      until: 'END_OF_TURN',
+      turnApplied: this.state.turn,
+    };
+  }
+
+  private isPlayerRestrictionActive(restriction: PlayerRestriction | string): boolean {
+    const normalized = this.normalizePlayerRestriction(restriction);
+    if (normalized.until === 'PERMANENT') return true;
+    if (normalized.until === 'END_OF_OPPONENT_TURN') {
+      return this.state.turn <= normalized.turnApplied + 1;
+    }
+    return normalized.turnApplied === this.state.turn;
+  }
+
+  private isPlayerRestrictionExpiredAtEndOfTurn(restriction: PlayerRestriction | string): boolean {
+    const normalized = this.normalizePlayerRestriction(restriction);
+    if (normalized.until === 'PERMANENT') return false;
+    if (normalized.until === 'END_OF_OPPONENT_TURN') {
+      return this.state.turn >= normalized.turnApplied + 1;
+    }
+    return this.state.turn >= normalized.turnApplied;
+  }
+
+  private getActivePlayerRestrictions(player: PlayerState, keyword?: string): PlayerRestriction[] {
+    return (player.restrictions ?? [])
+      .map(restriction => this.normalizePlayerRestriction(restriction))
+      .filter(restriction => this.isPlayerRestrictionActive(restriction))
+      .filter(restriction => !keyword || restriction.keyword === keyword);
+  }
+
+  private restrictionMatchesCard(
+    restriction: PlayerRestriction,
+    cardDef: CardDefinition | undefined
+  ): boolean {
+    if (!restriction.filters?.length) return true;
+    if (!cardDef) return false;
+    return this.matchesFilters(cardDef, restriction.filters as TargetFilter[]);
+  }
+
+  private hasPlayerRestriction(
+    player: PlayerState,
+    keyword: string,
+    cardDef?: CardDefinition
+  ): boolean {
+    return this.getActivePlayerRestrictions(player, keyword)
+      .some(restriction => this.restrictionMatchesCard(restriction, cardDef));
+  }
+
+  private syncPlayerRestrictionKeywords(player: PlayerState): void {
+    if (!player.leaderCard) return;
+
+    const managedKeywords = new Set<string>([...TURN_BASED_RESTRICTIONS, KW_DON_EQUALIZATION]);
+    const retainedKeywords = (player.leaderCard.temporaryKeywords ?? [])
+      .filter(keyword => !managedKeywords.has(keyword));
+    const activeRestrictionKeywords = new Set(
+      this.getActivePlayerRestrictions(player)
+        .map(restriction => restriction.keyword)
+        .filter(keyword => managedKeywords.has(keyword))
+    );
+
+    player.leaderCard.temporaryKeywords = [
+      ...retainedKeywords,
+      ...Array.from(activeRestrictionKeywords),
+    ];
+
+    if (player.leaderCard.temporaryKeywords.length === 0) {
+      player.leaderCard.temporaryKeywords = undefined;
+    }
+  }
+
+  private syncAllPlayerRestrictionKeywords(): void {
+    for (const player of Object.values(this.state.players)) {
+      this.syncPlayerRestrictionKeywords(player);
+    }
+  }
+
+  private clearTemporaryKeywordsAfterCombat(): void {
+    for (const player of Object.values(this.state.players)) {
+      for (const card of player.field) {
+        card.temporaryKeywords = [];
+      }
+      if (player.leaderCard) {
+        player.leaderCard.temporaryKeywords = [];
+      }
+      if (player.stage) {
+        player.stage.temporaryKeywords = [];
+      }
+    }
+
+    // Player restrictions are mirrored onto leader temporary keywords.
+    // Restore those after combat cleanup so next-turn restrictions remain visible.
+    this.syncAllPlayerRestrictionKeywords();
   }
 
   private initializeGameState(gameId: string, player1Id: string, player2Id: string): GameState {
@@ -565,8 +672,7 @@ export class GameStateManager {
     if (!player) return false;
 
     // Check player restrictions
-    const playerRestrictions = player.restrictions;
-    if (playerRestrictions?.includes(KW_CANT_PLAY_CARDS)) {
+    if (this.hasPlayerRestriction(player, KW_CANT_PLAY_CARDS)) {
       console.log('[playCard] Blocked: player has CantPlayCards restriction');
       return false;
     }
@@ -581,11 +687,9 @@ export class GameStateManager {
     const cardCost = card.modifiedCost ?? cardDef?.cost ?? 0;
 
     // Check CantPlayCharacters restriction
-    if (playerRestrictions?.includes(KW_CANT_PLAY_CHARACTERS)) {
-      if (cardDef?.type === 'CHARACTER') {
-        console.log('[playCard] Blocked: player has CantPlayCharacters restriction');
-        return false;
-      }
+    if (cardDef?.type === 'CHARACTER' && this.hasPlayerRestriction(player, KW_CANT_PLAY_CHARACTERS, cardDef)) {
+      console.log('[playCard] Blocked: player has CantPlayCharacters restriction');
+      return false;
     }
 
     // Check field character limit (max 5 characters on field)
@@ -640,7 +744,7 @@ export class GameStateManager {
       this.reapplyContinuousEffects();
 
       // Check if player has NoOnPlays restriction (opponent may have suppressed On Play effects)
-      const onPlaySuppressed = playerRestrictions?.includes(KW_NO_ON_PLAYS);
+      const onPlaySuppressed = this.hasPlayerRestriction(player, KW_NO_ON_PLAYS);
       let pendingEffects: PendingEffect[] = [];
 
       if (onPlaySuppressed) {
@@ -1585,12 +1689,20 @@ export class GameStateManager {
           if (!this.matchesNumericFilter(cardDef.cost ?? 0, filter.value as number, filter.operator, cardDef.cost)) return false;
           break;
         }
+        case 'BASE_COST': {
+          if (!this.matchesNumericFilter(cardDef.cost ?? 0, filter.value as number, filter.operator, cardDef.cost)) return false;
+          break;
+        }
         case 'POWER': {
           if (!this.matchesNumericFilter(cardDef.power ?? 0, filter.value as number, filter.operator, cardDef.power)) return false;
           break;
         }
+        case 'BASE_POWER': {
+          if (!this.matchesNumericFilter(cardDef.power ?? 0, filter.value as number, filter.operator, cardDef.power)) return false;
+          break;
+        }
         case 'NAME': {
-          const names = filter.value as string[];
+          const names = Array.isArray(filter.value) ? filter.value as string[] : [String(filter.value)];
           if (!names.some(n => cardDef.name?.includes(n.replace(/[.\[\]]/g, '')))) return false;
           break;
         }
@@ -2188,6 +2300,42 @@ export class GameStateManager {
     return restricted;
   }
 
+  private getActiveConfusionTax(card: GameCard): number | undefined {
+    let taxAmount: number | undefined;
+
+    if (card.restrictions?.length) {
+      card.restrictions = card.restrictions.filter(restriction => {
+        if (restriction.type !== 'CONFUSION_TAX') {
+          return true;
+        }
+
+        const isActive = this.isAttackRestrictionActive(restriction);
+        if (isActive) {
+          taxAmount = Math.max(taxAmount ?? 0, restriction.value ?? 1);
+        }
+        return isActive;
+      });
+
+      if (card.restrictions.length === 0) {
+        card.restrictions = undefined;
+      }
+    }
+
+    if (taxAmount !== undefined) {
+      return taxAmount;
+    }
+
+    const confusionTaxKeyword = (card.keywords ?? []).find(k => k.startsWith(KW_PREFIX_CONFUSION_TAX)) ||
+      (card.temporaryKeywords ?? []).find(k => k.startsWith(KW_PREFIX_CONFUSION_TAX)) ||
+      (card.continuousKeywords ?? []).find(k => k.startsWith(KW_PREFIX_CONFUSION_TAX));
+
+    if (!confusionTaxKeyword) {
+      return undefined;
+    }
+
+    return parseInt(confusionTaxKeyword.split(':')[1]) || 1;
+  }
+
   // Helper: Check if a single cost can be paid
   private canPaySingleCost(cost: EffectCost, player: PlayerState): boolean {
     const count = cost.count || 1;
@@ -2299,14 +2447,11 @@ export class GameStateManager {
       return false;
     }
 
-    // Check for ConfusionTax restriction on the attacking card
-    // ConfusionTax is stored as a keyword string (e.g., "ConfusionTax:1") on the card
-    // When present, the attacker must trash cards from hand to attack
-    const confusionTaxKeyword = (attacker.keywords ?? []).find(k => k.startsWith(KW_PREFIX_CONFUSION_TAX)) ||
-      (attacker.temporaryKeywords ?? []).find(k => k.startsWith(KW_PREFIX_CONFUSION_TAX)) ||
-      (attacker.continuousKeywords ?? []).find(k => k.startsWith(KW_PREFIX_CONFUSION_TAX));
-    if (confusionTaxKeyword) {
-      const taxAmount = parseInt(confusionTaxKeyword.split(':')[1]) || 1;
+    // Check for ConfusionTax restriction on the attacking card.
+    // New effects store this on card.restrictions, but keep keyword fallback for legacy states.
+    const confusionTaxAmount = this.getActiveConfusionTax(attacker);
+    if (confusionTaxAmount !== undefined) {
+      const taxAmount = confusionTaxAmount;
       const attackingPlayer = this.state.players[attacker.owner];
       if (attackingPlayer && attackingPlayer.hand.length < taxAmount) {
         console.log(`[declareAttack] Can't attack: ConfusionTax requires ${taxAmount} cards but hand has ${attackingPlayer.hand.length}`);
@@ -3166,17 +3311,7 @@ export class GameStateManager {
 
     // Clear temporary keywords granted during combat for ALL cards (Bug 5 fix)
     // Previously only cleared attacker, but defender/blocker may also have temp keywords
-    for (const player of Object.values(this.state.players)) {
-      for (const card of player.field) {
-        card.temporaryKeywords = [];
-      }
-      if (player.leaderCard) {
-        player.leaderCard.temporaryKeywords = [];
-      }
-      if (player.stage) {
-        player.stage.temporaryKeywords = [];
-      }
-    }
+    this.clearTemporaryKeywordsAfterCombat();
 
     // Clear THIS_BATTLE power buffs from all cards
     this.clearBattleBuffs();
@@ -3230,10 +3365,9 @@ export class GameStateManager {
         player.life--;
 
         if (hasBanish) {
-          // Banish: card goes to bottom of deck (per OPTCG rules)
-          lifeCard.zone = CardZone.DECK;
-          lifeCard.faceUp = false;
-          player.deck.push(lifeCard); // push = bottom of deck (deck.pop() draws from top)
+          // Banish: trash the life card instead of adding it to hand, and do not activate Trigger.
+          lifeCard.zone = CardZone.TRASH;
+          player.trash.push(lifeCard);
         } else {
           // Normal: card goes to hand
           lifeCard.zone = CardZone.HAND;
@@ -3339,18 +3473,7 @@ export class GameStateManager {
     };
     this.processTriggers(afterBattleTrigger);
 
-    // Clear temporary keywords
-    for (const player of Object.values(this.state.players)) {
-      for (const card of player.field) {
-        card.temporaryKeywords = [];
-      }
-      if (player.leaderCard) {
-        player.leaderCard.temporaryKeywords = [];
-      }
-      if (player.stage) {
-        player.stage.temporaryKeywords = [];
-      }
-    }
+    this.clearTemporaryKeywordsAfterCombat();
 
     this.clearBattleBuffs();
     this.state.currentCombat = undefined;
@@ -3434,6 +3557,7 @@ export class GameStateManager {
     // Cleanup expired effects from previous turn
     this.effectEngine.cleanupExpiredEffects(this.state);
     this.effectEngine.cleanupExpiredGrantedEffects(this.state);
+    this.syncAllPlayerRestrictionKeywords();
 
     // Recalculate hand costs based on stage effects (your turn only)
     this.applyStageEffects(playerId);
@@ -3510,8 +3634,7 @@ export class GameStateManager {
     this.processTriggers(endTurnEvent);
 
     // Check for DON equalization restriction
-    const activePlayerRestrictions = player.restrictions;
-    if (activePlayerRestrictions?.includes(KW_DON_EQUALIZATION)) {
+    if (this.hasPlayerRestriction(player, KW_DON_EQUALIZATION)) {
       const opponentId = Object.keys(this.state.players).find(id => id !== playerId);
       const opponent = opponentId ? this.state.players[opponentId] : undefined;
       if (opponent) {
@@ -3527,8 +3650,6 @@ export class GameStateManager {
           }
         }
       }
-      // Remove the restriction after applying
-      player.restrictions = activePlayerRestrictions.filter(r => r !== KW_DON_EQUALIZATION);
     }
 
     // Clear THIS_TURN power buffs from all cards (for both players)
@@ -3655,15 +3776,16 @@ export class GameStateManager {
         }
       }
 
-      // Clear turn-based player restrictions
+      // Clear player restrictions whose duration ends with this end step.
       if (player.restrictions) {
         player.restrictions = player.restrictions.filter(
-          r => !(TURN_BASED_RESTRICTIONS as readonly string[]).includes(r)
+          restriction => !this.isPlayerRestrictionExpiredAtEndOfTurn(restriction)
         );
         if (player.restrictions.length === 0) {
           player.restrictions = undefined;
         }
       }
+      this.syncPlayerRestrictionKeywords(player);
 
       // Clear card-level ConfusionTax keywords from field characters and leader
       const cardsToClean = player.leaderCard ? [...player.field, player.leaderCard] : player.field;

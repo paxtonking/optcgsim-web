@@ -1040,28 +1040,35 @@ export class AIGameManager {
 
     let skipped = false;
     let state = game.stateManager.getState();
+    const aiId = game.aiPlayer.getPlayerId();
     const maxIterations = 20; // Guard against infinite loops
 
     for (let i = 0; i < maxIterations; i++) {
       if (state.phase === GamePhase.ATTACK_EFFECT_STEP && state.pendingAttackEffects?.length) {
         const currentEffect = state.pendingAttackEffects[0];
+        if (currentEffect.playerId !== aiId) {
+          break;
+        }
         console.log('[AIGameManager] Tutorial: auto-advancing ATTACK_EFFECT_STEP');
         if (currentEffect.isOptional) {
-          game.stateManager.skipAttackEffect(currentEffect.id);
+          game.stateManager.skipAttackEffect(currentEffect.id, aiId);
         } else {
           const targets = currentEffect.requiresChoice ? (currentEffect.validTargets?.slice(0, 1) || []) : [];
-          game.stateManager.resolveAttackEffect(currentEffect.id, targets);
+          game.stateManager.resolveAttackEffect(currentEffect.id, targets, aiId);
         }
         skipped = true;
         state = game.stateManager.getState();
       } else if (state.phase === GamePhase.PLAY_EFFECT_STEP && state.pendingPlayEffects?.length) {
         const currentEffect = state.pendingPlayEffects[0];
+        if (currentEffect.playerId !== aiId) {
+          break;
+        }
         console.log('[AIGameManager] Tutorial: auto-advancing PLAY_EFFECT_STEP');
         if (currentEffect.isOptional) {
-          game.stateManager.skipPlayEffect(currentEffect.id);
+          game.stateManager.skipPlayEffect(currentEffect.id, aiId);
         } else {
           const targets = currentEffect.requiresChoice ? (currentEffect.validTargets?.slice(0, 1) || []) : [];
-          game.stateManager.resolvePlayEffect(currentEffect.id, targets);
+          game.stateManager.resolvePlayEffect(currentEffect.id, targets, aiId);
         }
         skipped = true;
         state = game.stateManager.getState();

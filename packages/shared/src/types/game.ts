@@ -117,6 +117,19 @@ export interface CardRestriction {
   value?: number;        // For CONFUSION_TAX: number of cards to trash to attack
 }
 
+export interface PlayerRestrictionFilter {
+  property: 'COST' | 'POWER' | 'COLOR' | 'TRAIT' | 'TYPE' | 'NAME' | 'STATE' | 'BASE_COST' | 'BASE_POWER';
+  operator: 'EQUALS' | 'OR_MORE' | 'OR_LESS' | 'LESS_THAN_OR_EQUAL' | 'CONTAINS' | 'NOT_CONTAINS' | 'NOT_EQUALS' | 'NOT' | 'IN';
+  value: string | number | string[];
+}
+
+export interface PlayerRestriction {
+  keyword: string;
+  until: 'END_OF_TURN' | 'END_OF_OPPONENT_TURN' | 'PERMANENT';
+  turnApplied: number;
+  filters?: PlayerRestrictionFilter[];
+}
+
 // Card immunity (e.g., IMMUNE_KO)
 export interface CardImmunity {
   type: 'KO' | 'EFFECTS' | 'COMBAT';
@@ -144,7 +157,7 @@ export interface PlayerState {
   isActive: boolean;   // Is it this player's turn?
   turnCount: number;   // Number of turns this player has taken
   extraTurns?: number; // Queued extra turns from TAKE_ANOTHER_TURN effects
-  restrictions?: string[]; // Turn-based player restrictions (e.g., CantPlayCards)
+  restrictions?: Array<PlayerRestriction | string>; // Turn-based player restrictions (legacy string entries are still tolerated)
 }
 
 export interface CombatInfo {

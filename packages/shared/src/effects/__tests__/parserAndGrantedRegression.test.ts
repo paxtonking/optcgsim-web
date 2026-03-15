@@ -68,6 +68,69 @@ describe('Effect parser regressions', () => {
     );
     expect(powerFilters).toHaveLength(0);
   });
+
+  it('retains base-cost qualifiers on character play restrictions', () => {
+    const definitions = effectTextParser.parse(
+      '[Main] You cannot play Character cards with a base cost of 5 or more during this turn.',
+      'TEST-CARD'
+    );
+
+    expect(definitions[0]?.effects[0]).toEqual(
+      expect.objectContaining({
+        type: EffectType.CANT_PLAY_CHARACTERS,
+        target: expect.objectContaining({
+          type: TargetType.YOUR_CHARACTER,
+          filters: expect.arrayContaining([
+            expect.objectContaining({
+              property: 'BASE_COST',
+              operator: 'OR_MORE',
+              value: 5,
+            }),
+          ]),
+        }),
+      })
+    );
+  });
+
+  it('retains opponent-targeted base-cost qualifiers on character play restrictions', () => {
+    const definitions = effectTextParser.parse(
+      '[Main] Your opponent cannot play Character cards with a base cost of 5 or more during this turn.',
+      'TEST-CARD'
+    );
+
+    expect(definitions[0]?.effects[0]).toEqual(
+      expect.objectContaining({
+        type: EffectType.CANT_PLAY_CHARACTERS,
+        target: expect.objectContaining({
+          type: TargetType.OPPONENT_CHARACTER,
+          filters: expect.arrayContaining([
+            expect.objectContaining({
+              property: 'BASE_COST',
+              operator: 'OR_MORE',
+              value: 5,
+            }),
+          ]),
+        }),
+      })
+    );
+  });
+
+  it('keeps blanket character play restrictions unfiltered', () => {
+    const definitions = effectTextParser.parse(
+      '[Main] You cannot play Character cards during this turn.',
+      'TEST-CARD'
+    );
+
+    expect(definitions[0]?.effects[0]).toEqual(
+      expect.objectContaining({
+        type: EffectType.CANT_PLAY_CHARACTERS,
+        target: expect.objectContaining({
+          type: TargetType.YOUR_CHARACTER,
+          filters: [],
+        }),
+      })
+    );
+  });
 });
 
 describe('Granted effect regressions', () => {

@@ -28,6 +28,7 @@ import {
   extractKeywords,
   extractAction,
   extractTarget,
+  extractFilters,
   extractDuration,
   extractConditions,
   extractCosts,
@@ -343,13 +344,19 @@ export class EffectTextParser {
       return null;
     }
 
-    // Extract target
-    const target = extractTarget(text);
-    if (target) {
-      action.target = target;
-    } else {
-      // Try to infer target from action type
+    // CANT_PLAY_CHARACTERS restrictions need subject-aware inference so
+    // "Your opponent cannot play Character cards..." applies to the opponent,
+    // while still preserving any parsed cost/base-cost filters.
+    if (action.type === EffectType.CANT_PLAY_CHARACTERS) {
       action.target = this.inferTarget(action.type, text);
+    } else {
+      const target = extractTarget(text);
+      if (target) {
+        action.target = target;
+      } else {
+        // Try to infer target from action type
+        action.target = this.inferTarget(action.type, text);
+      }
     }
 
     // Extract duration
@@ -365,6 +372,14 @@ export class EffectTextParser {
    * Infer target based on action type and text context
    */
   private inferTarget(actionType: EffectType, text: string): ParsedTarget | undefined {
+    if (actionType === EffectType.CANT_PLAY_CHARACTERS) {
+      return {
+        type: /your opponent/i.test(text) ? TargetType.OPPONENT_CHARACTER : TargetType.YOUR_CHARACTER,
+        optional: false,
+        filters: extractFilters(text),
+      };
+    }
+
     // Self-buff patterns
     if (
       actionType === EffectType.BUFF_POWER ||
