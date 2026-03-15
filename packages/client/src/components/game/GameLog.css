@@ -1,0 +1,267 @@
+/* ===================================
+   GAME LOG - Action Log Panel
+   Dark theme matching game board
+   =================================== */
+
+/* Root Container */
+.game-log {
+  background: rgba(0, 0, 0, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+/* Header - Sticky toggle bar */
+.game-log__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+
+.game-log__header:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.game-log__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #F6EFE3;
+  letter-spacing: 0.3px;
+}
+
+.game-log__chevron {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+  transition: transform 0.2s ease;
+  line-height: 1;
+}
+
+.game-log__chevron--collapsed {
+  transform: rotate(-90deg);
+}
+
+.game-log__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.game-log__clear-btn {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+}
+
+.game-log__clear-btn:hover {
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Scrollable entries container */
+.game-log__entries {
+  max-height: 300px;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  padding: 4px 0;
+}
+
+/* Thin scrollbar styling */
+.game-log__entries::-webkit-scrollbar {
+  width: 4px;
+}
+
+.game-log__entries::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.game-log__entries::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+
+.game-log__entries::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Firefox scrollbar */
+.game-log__entries {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+/* Empty state */
+.game-log__empty {
+  padding: 16px 10px;
+  text-align: center;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+  font-style: italic;
+}
+
+/* Turn separator */
+.game-log__turn-separator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  margin: 2px 0;
+}
+
+.game-log__turn-separator-line {
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 215, 0, 0.2);
+}
+
+.game-log__turn-separator-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 215, 0, 0.5);
+  white-space: nowrap;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+/* Individual entry */
+.game-log__entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 3px 8px;
+  animation: game-log-entry-fade 0.2s ease forwards;
+  opacity: 0;
+}
+
+@keyframes game-log-entry-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Turn badge - small circle */
+.game-log__turn-badge {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 1px;
+}
+
+/* Type icon */
+.game-log__type-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: 700;
+  color: #000;
+  margin-top: 1px;
+}
+
+/* Action type icon colors */
+.game-log__type-icon--draw {
+  background: #3498db;
+}
+
+.game-log__type-icon--play {
+  background: #2ecc71;
+}
+
+.game-log__type-icon--attack {
+  background: #e74c3c;
+}
+
+.game-log__type-icon--ko {
+  background: #9b59b6;
+}
+
+.game-log__type-icon--don {
+  background: #f1c40f;
+}
+
+.game-log__type-icon--counter {
+  background: #1abc9c;
+}
+
+.game-log__type-icon--block {
+  background: #2980b9;
+}
+
+.game-log__type-icon--trigger {
+  background: #e67e22;
+}
+
+.game-log__type-icon--effect {
+  background: #8e44ad;
+}
+
+.game-log__type-icon--phase {
+  background: rgba(255, 215, 0, 0.6);
+}
+
+.game-log__type-icon--damage {
+  background: #e74c3c;
+}
+
+.game-log__type-icon--system {
+  background: #95a5a6;
+}
+
+/* Action text */
+.game-log__action-text {
+  flex: 1;
+  font-size: 11px;
+  line-height: 1.35;
+  min-width: 0;
+  word-break: break-word;
+}
+
+/* Player-based text coloring */
+.game-log__action-text--you {
+  color: #fff;
+}
+
+.game-log__action-text--opponent {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.game-log__action-text--system {
+  color: rgba(255, 215, 0, 0.6);
+  font-style: italic;
+}
+
+/* Scroll anchor (invisible element at bottom for auto-scroll) */
+.game-log__scroll-anchor {
+  height: 0;
+  overflow: hidden;
+}

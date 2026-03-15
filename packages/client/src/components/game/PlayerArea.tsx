@@ -7,6 +7,45 @@ import './GameBoard.css';
 
 const EMPTY_SET: ReadonlySet<string> = new Set<string>();
 
+const PLAYMAT_TINT_MAP: Record<string, string> = {
+  'red': 'linear-gradient(135deg, rgba(192,57,43,0.6), rgba(231,76,60,0.3))',
+  'blue': 'linear-gradient(135deg, rgba(41,128,185,0.6), rgba(52,152,219,0.3))',
+  'green': 'linear-gradient(135deg, rgba(39,174,96,0.6), rgba(46,204,113,0.3))',
+  'purple': 'linear-gradient(135deg, rgba(142,68,173,0.6), rgba(155,89,182,0.3))',
+  'black': 'linear-gradient(135deg, rgba(44,62,80,0.6), rgba(52,73,94,0.3))',
+  'yellow': 'linear-gradient(135deg, rgba(243,156,18,0.6), rgba(241,196,15,0.3))',
+};
+
+function getPlaymatTint(color: string): string {
+  // Handle multi-color strings like "RED GREEN" — use first color
+  const firstColor = color.split(/[\s\/]+/)[0].toLowerCase();
+  return PLAYMAT_TINT_MAP[firstColor] || 'none';
+}
+
+const PLAYMAT_TINT_BASE: React.CSSProperties = {
+  position: 'absolute', inset: 0, zIndex: 0,
+  pointerEvents: 'none', mixBlendMode: 'overlay',
+  opacity: 0.3, borderRadius: 'inherit',
+};
+
+const DECK_BADGE_BASE: React.CSSProperties = {
+  position: 'absolute', top: -8, right: -8,
+  color: 'white', fontSize: '10px', fontWeight: 'bold',
+  padding: '2px 5px', borderRadius: '8px',
+  zIndex: 5, minWidth: '20px', textAlign: 'center',
+};
+
+const COUNT_BADGE_BASE: React.CSSProperties = {
+  position: 'absolute', top: 2, right: 8,
+  fontSize: '10px', zIndex: 5,
+};
+
+const DON_COUNT_STYLE: React.CSSProperties = {
+  ...COUNT_BADGE_BASE,
+  color: 'rgba(241, 196, 15, 0.8)',
+  fontWeight: 'bold',
+};
+
 // Create a fake DON deck card for the pile display
 const createDonDeckCard = (): GameCardType => ({
   id: 'don-deck',
@@ -61,6 +100,7 @@ interface PlayerAreaProps {
   fieldSelectSelectedTargets?: ReadonlySet<string>;  // Currently selected character IDs
   onFieldSelectClick?: (cardId: string) => void;  // Called when a field card is clicked during selection
   combatTargetId?: string | null;  // Card ID being attacked during combat (for persistent highlight)
+  leaderColor?: string;  // Leader card's color for playmat tinting (e.g., 'Red', 'Blue', etc.)
 }
 
 export const PlayerArea: React.FC<PlayerAreaProps> = ({
@@ -101,7 +141,8 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
   fieldSelectValidTargets = EMPTY_SET,
   fieldSelectSelectedTargets = EMPTY_SET,
   onFieldSelectClick,
-  combatTargetId
+  combatTargetId,
+  leaderColor
 }) => {
   // DON attached to cards are inactive (dimmed) when it's not the card owner's turn
   // For player's cards: inactive when it's opponent's turn
@@ -147,8 +188,8 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
     ? allUnattachedDon.slice(0, visibleDonCount)
     : allUnattachedDon;
 
-  // Count active DON in cost area (reserved for future use)
-  void unattachedDon.filter(d => d.state === 'ACTIVE').length;
+  // Count active DON in cost area
+  const activeDonCount = unattachedDon.filter(d => d.state === 'ACTIVE').length;
 
   // Helper to calculate buff total from a card's powerBuffs
   const getBuffTotal = (card: GameCardType): number => {
@@ -178,6 +219,10 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
           backgroundImage: `url('${playmatImage || '/assets/playmats/playmatt.jpg'}')`
         }}
       />
+      {/* Leader color tint overlay */}
+      {leaderColor && (
+        <div style={{ ...PLAYMAT_TINT_BASE, background: getPlaymatTint(leaderColor) }} />
+      )}
 
       {/* Game over result banner */}
       {gameOverResult && (
@@ -317,7 +362,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
         </div>
 
         {/* Deck Zone */}
-        <div className="zone zone--deck">
+        <div className="zone zone--deck" style={{ position: 'relative' }}>
           <span className="zone__label zone__label--bottom">Deck</span>
           <CardPile
             cards={player.deck}
@@ -326,6 +371,13 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
             faceUp={false}
             onClick={onDeckClick}
           />
+          <div style={{
+            ...DECK_BADGE_BASE,
+            backgroundColor: player.deck.length <= 5 ? 'rgba(231, 76, 60, 0.9)' : 'rgba(0, 0, 0, 0.8)',
+            border: player.deck.length <= 5 ? '1px solid #e74c3c' : '1px solid rgba(255,255,255,0.2)',
+          }}>
+            {player.deck.length}
+          </div>
         </div>
       </div>
 
@@ -335,9 +387,17 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
         <div
           className={`zone zone--characters ${!isOpponent && pendingPlayCard ? 'zone--drop-target' : ''}`}
           {...(!isOpponent ? { 'data-zone': 'character-field' } : {})}
+          style={{ position: 'relative' }}
           onClick={!isOpponent && pendingPlayCard && onCharacterZoneClick ? onCharacterZoneClick : undefined}
         >
           <span className="zone__label zone__label--inside">Characters</span>
+          <span style={{
+            ...COUNT_BADGE_BASE,
+            color: characters.length >= 5 ? '#e74c3c' : 'rgba(255,255,255,0.5)',
+            fontWeight: characters.length >= 5 ? 'bold' : 'normal',
+          }}>
+            {characters.length}/5
+          </span>
           {characters.map(card => {
             const cardDef = cardDefinitions.get(card.cardId);
             const isRested = card.state === CardState.RESTED;
@@ -411,8 +471,11 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
         {/* Bottom row: Cost Area | Trash */}
         <div className="player-area__bottom-row">
           {/* Cost Area (DON cards in play) */}
-          <div className="zone zone--cost-area" {...(!isOpponent ? { 'data-zone': 'don-field' } : {})}>
+          <div className="zone zone--cost-area" {...(!isOpponent ? { 'data-zone': 'don-field' } : {})} style={{ position: 'relative' }}>
             <span className="zone__label zone__label--inside">Cost Area</span>
+            <span style={DON_COUNT_STYLE}>
+              {activeDonCount}/{unattachedDon.length}
+            </span>
             <div className="cost-area-cards">
               {unattachedDon.map((don) => (
                 <GameCard

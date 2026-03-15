@@ -508,10 +508,23 @@ export interface EffectResolutionResult {
   error?: string;
 }
 
+export enum StateChangeType {
+  CARD_MOVED = 'CARD_MOVED',
+  POWER_CHANGED = 'POWER_CHANGED',
+  COST_CHANGED = 'COST_CHANGED',
+  KEYWORD_ADDED = 'KEYWORD_ADDED',
+  KEYWORD_REMOVED = 'KEYWORD_REMOVED',
+  DON_CHANGED = 'DON_CHANGED',
+  LIFE_CHANGED = 'LIFE_CHANGED',
+  CARD_CREATED = 'CARD_CREATED',
+  CARD_DESTROYED = 'CARD_DESTROYED',
+  PLAYER_DREW = 'PLAYER_DREW',
+  EFFECT_APPLIED = 'EFFECT_APPLIED',
+  EFFECT_REMOVED = 'EFFECT_REMOVED',
+}
+
 export interface StateChange {
-  type: 'CARD_MOVED' | 'POWER_CHANGED' | 'COST_CHANGED' | 'KEYWORD_ADDED' |
-        'KEYWORD_REMOVED' | 'DON_CHANGED' | 'LIFE_CHANGED' | 'CARD_CREATED' |
-        'CARD_DESTROYED' | 'PLAYER_DREW' | 'EFFECT_APPLIED' | 'EFFECT_REMOVED';
+  type: StateChangeType;
   cardId?: string;
   playerId?: string;
   from?: string;

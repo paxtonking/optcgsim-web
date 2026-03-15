@@ -9,6 +9,48 @@ const KEYWORD_CONFIG: Record<string, { abbr: string; className: string }> = {
   'Blocker': { abbr: 'B', className: 'game-card__keyword-badge--blocker' },
   'Double Attack': { abbr: 'DA', className: 'game-card__keyword-badge--double-attack' },
   'Banish': { abbr: 'BN', className: 'game-card__keyword-badge--banish' },
+  'Unblockable': { abbr: 'UB', className: 'game-card__keyword-badge--unblockable' },
+};
+
+interface StatusBadgeConfig {
+  abbr: string;
+  label: string;
+  color: string;
+}
+
+const STATUS_CONFIG: Record<string, StatusBadgeConfig> = {
+  'CantPlayCards': { abbr: '\u2298', label: "Can't Play", color: 'rgba(231, 76, 60, 0.9)' },
+  'CantPlayCharacters': { abbr: '\u2298C', label: "Can't Play Characters", color: 'rgba(231, 76, 60, 0.9)' },
+  'DisableEffectDraws': { abbr: '\u2298D', label: 'Draws Disabled', color: 'rgba(149, 165, 166, 0.9)' },
+  'NoOnPlays': { abbr: '\u2298P', label: 'No On Play', color: 'rgba(149, 165, 166, 0.9)' },
+  'ImmuneEffects': { abbr: '\uD83D\uDEE1', label: 'Immune', color: 'rgba(46, 204, 113, 0.9)' },
+  'DonEqualization': { abbr: 'EQ', label: 'DON Equalize', color: 'rgba(241, 196, 15, 0.9)' },
+};
+
+const DYNAMIC_BADGE_COLORS: Record<string, string> = {
+  confusion: 'rgba(230, 126, 34, 0.9)',
+  attribute: 'rgba(52, 152, 219, 0.9)',
+  lostKeyword: 'rgba(192, 57, 43, 0.9)',
+};
+
+const STATUS_BADGE_BASE: React.CSSProperties = {
+  fontSize: 8,
+  padding: '1px 3px',
+  borderRadius: 2,
+  color: 'white',
+  fontWeight: 'bold',
+  lineHeight: 1,
+  textAlign: 'center',
+};
+
+const STATUS_BADGES_CONTAINER: React.CSSProperties = {
+  position: 'absolute',
+  bottom: 2,
+  left: 2,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 1,
+  zIndex: 10,
 };
 
 interface GameCardProps {
@@ -195,6 +237,43 @@ export const GameCard: React.FC<GameCardProps> = ({
     return Array.from(activeKeywords);
   }, [card.zone, card.keywords, card.temporaryKeywords, card.continuousKeywords, card.grantedEffects]);
 
+  // Compute status effect badges for field/leader cards
+  const statusBadges = useMemo(() => {
+    if (card.zone !== CardZone.FIELD && card.zone !== CardZone.LEADER) return null;
+    const activeStatuses: Array<{ key: string; abbr: string; label: string; color: string }> = [];
+
+    // Check temporaryKeywords for status effects
+    for (const kw of (card.temporaryKeywords || [])) {
+      if (kw in STATUS_CONFIG) {
+        const cfg = STATUS_CONFIG[kw];
+        activeStatuses.push({ key: kw, ...cfg });
+      }
+      // Check for ConfusionTax pattern: "ConfusionTax:N"
+      if (kw.startsWith('ConfusionTax:')) {
+        const taxVal = kw.split(':')[1];
+        activeStatuses.push({ key: kw, abbr: `T${taxVal}`, label: `Tax: Trash ${taxVal}`, color: DYNAMIC_BADGE_COLORS.confusion });
+      }
+      // Check for Attribute grants: "Attribute:Slash"
+      if (kw.startsWith('Attribute:')) {
+        const attr = kw.split(':')[1];
+        activeStatuses.push({ key: kw, abbr: attr.charAt(0), label: attr, color: DYNAMIC_BADGE_COLORS.attribute });
+      }
+    }
+
+    // Check restrictions array
+    for (const r of (card.restrictions || [])) {
+      if (r.type === 'LOSE_KEYWORD') {
+        activeStatuses.push({ key: `lose-${r.keyword}`, abbr: `\u2715${(r.keyword || '')[0]}`, label: `Lost ${r.keyword}`, color: DYNAMIC_BADGE_COLORS.lostKeyword });
+      }
+      if (r.type === 'CONFUSION_TAX') {
+        activeStatuses.push({ key: 'confusion-tax', abbr: `T${r.value || '?'}`, label: `Tax: ${r.value}`, color: DYNAMIC_BADGE_COLORS.confusion });
+      }
+    }
+
+    if (activeStatuses.length === 0) return null;
+    return activeStatuses;
+  }, [card.zone, card.temporaryKeywords, card.restrictions]);
+
   return (
     <div
       className={classes}
@@ -287,6 +366,22 @@ export const GameCard: React.FC<GameCardProps> = ({
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Status effect badges for field/leader cards */}
+          {statusBadges && (
+            <div className="game-card__status-badges" style={STATUS_BADGES_CONTAINER}>
+              {statusBadges.map(status => (
+                <div
+                  key={status.key}
+                  className="game-card__status-badge"
+                  style={{ ...STATUS_BADGE_BASE, background: status.color }}
+                  title={status.label}
+                >
+                  {status.abbr}
+                </div>
+              ))}
             </div>
           )}
         </>

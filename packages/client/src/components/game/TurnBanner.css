@@ -1,0 +1,181 @@
+/* ===================================
+   TURN BANNER - Turn & Phase Announcements
+   =================================== */
+
+/* --- Keyframes --- */
+
+@keyframes turn-banner-enter {
+  from {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes turn-banner-exit {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.1);
+    opacity: 0;
+  }
+}
+
+@keyframes phase-banner-enter {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes phase-banner-exit {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+}
+
+/* --- Turn Banner (full-screen overlay) --- */
+
+.turn-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1500;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  contain: layout paint;
+  will-change: transform, opacity;
+}
+
+.turn-banner--entering {
+  animation: turn-banner-enter 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.turn-banner--visible {
+  transform: scale(1);
+  opacity: 1;
+}
+
+.turn-banner--exiting {
+  animation: turn-banner-exit 0.3s ease-in forwards;
+}
+
+/* --- Your Turn variant --- */
+
+.turn-banner--your-turn {
+  border-top: 2px solid rgba(39, 174, 96, 0.6);
+  border-bottom: 2px solid rgba(39, 174, 96, 0.6);
+}
+
+.turn-banner--your-turn .turn-banner__text {
+  color: #fff;
+  text-shadow:
+    0 0 20px rgba(39, 174, 96, 0.8),
+    0 0 40px rgba(39, 174, 96, 0.4);
+}
+
+/* --- Opponent Turn variant --- */
+
+.turn-banner--opponent-turn {
+  border-top: 2px solid rgba(231, 76, 60, 0.6);
+  border-bottom: 2px solid rgba(231, 76, 60, 0.6);
+}
+
+.turn-banner--opponent-turn .turn-banner__text {
+  color: #fff;
+  text-shadow:
+    0 0 20px rgba(231, 76, 60, 0.8),
+    0 0 40px rgba(231, 76, 60, 0.4);
+}
+
+/* --- Turn Banner Text --- */
+
+.turn-banner__text {
+  font-size: 48px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 8px;
+  margin: 0;
+  padding: 0;
+  line-height: 1.2;
+  user-select: none;
+}
+
+.turn-banner__subtext {
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-top: 12px;
+  font-weight: 400;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+/* --- Phase Banner (non-blocking top overlay) --- */
+
+.turn-banner--phase {
+  position: fixed;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: auto;
+  height: auto;
+  z-index: 1500;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.8);
+  padding: 8px 24px;
+  border-radius: 4px;
+  pointer-events: none;
+  contain: layout paint;
+  will-change: transform, opacity;
+}
+
+.turn-banner--phase.turn-banner--entering {
+  animation: phase-banner-enter 0.3s ease-out forwards;
+}
+
+.turn-banner--phase.turn-banner--visible {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
+.turn-banner--phase.turn-banner--exiting {
+  animation: phase-banner-exit 0.3s ease-in forwards;
+}
+
+.turn-banner--phase .turn-banner__text {
+  font-size: 24px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  color: #ffd700;
+  text-shadow: none;
+}
+
+.turn-banner--phase .turn-banner__subtext {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 4px;
+}

@@ -30,6 +30,7 @@ import {
   EffectTrigger,
   PendingEffect,
   StateChange,
+  StateChangeType,
   EffectType,
   CardEffectDefinition,
   EffectAction,
@@ -42,7 +43,7 @@ import {
 
 import { normalizeColors } from './cardHelpers';
 import { TURN_BASED_RESTRICTIONS } from '../constants/index.js';
-import { KW_CANT_PLAY_CARDS, KW_CANT_PLAY_CHARACTERS, KW_NO_ON_PLAYS, KW_DON_EQUALIZATION, KW_KO_PROTECTOR, KW_PREFIX_CONFUSION_TAX } from '../constants/keywords.js';
+import { KW_CANT_PLAY_CARDS, KW_CANT_PLAY_CHARACTERS, KW_NO_ON_PLAYS, KW_DON_EQUALIZATION, KW_KO_PROTECTOR, KW_PREFIX_CONFUSION_TAX, KW_CAN_ATTACK_ACTIVE } from '../constants/keywords.js';
 
 /** Remove all keywords starting with `prefix` from a card's keyword arrays. */
 function clearKeywordPrefix(card: GameCard, prefix: string): void {
@@ -574,7 +575,7 @@ export class GameStateManager {
     for (let i = 0; i < count; i++) {
       // Deck-out: if deck is empty when a draw is required, that player loses
       if (player.deck.length === 0) {
-        const opponentId = Object.keys(this.state.players).find(id => id !== playerId);
+        const opponentId = this.getOpponentId(playerId);
         if (opponentId) {
           this.state.winner = opponentId;
           this.state.phase = GamePhase.GAME_OVER;
@@ -1129,7 +1130,7 @@ export class GameStateManager {
    */
   private firePlayTriggersFromChanges(changes: StateChange[], playerId: string): void {
     for (const change of changes) {
-      if (change.type !== 'CARD_MOVED') continue;
+      if (change.type !== StateChangeType.CARD_MOVED) continue;
       if (change.to !== CardZone.FIELD && change.to !== CardZone.STAGE) continue;
 
       const cardId = change.cardId;
@@ -1413,7 +1414,7 @@ export class GameStateManager {
 
     // Determine if it's this player's turn
     const isMyTurn = this.state.activePlayerId === playerId;
-    const opponentId = Object.keys(this.state.players).find(id => id !== playerId);
+    const opponentId = this.getOpponentId(playerId);
     const opponent = opponentId ? this.state.players[opponentId] : undefined;
 
     // Always recalculate continuous effects from a clean baseline for both players.
@@ -1587,7 +1588,7 @@ export class GameStateManager {
         case EffectType.INCREASE_COST:
           // For OPPONENT_HAND target, apply to opponent
           if (action.target?.type === TargetType.OPPONENT_HAND) {
-            const opponentId = Object.keys(this.state.players).find(id => id !== player.id);
+            const opponentId = this.getOpponentId(player.id);
             if (opponentId) {
               const opponent = this.state.players[opponentId];
               hadEffect = this.applyHandCostModification(opponent, action, action.value || 0) || hadEffect;
@@ -1615,7 +1616,7 @@ export class GameStateManager {
           if (action.target?.type === TargetType.OPPONENT_FIELD ||
               action.target?.type === TargetType.OPPONENT_CHARACTER ||
               action.target?.type === TargetType.ALL_CHARACTERS) {
-            const opponentId = Object.keys(this.state.players).find(id => id !== player.id);
+            const opponentId = this.getOpponentId(player.id);
             if (opponentId) {
               const opponent = this.state.players[opponentId];
               hadEffect = this.applyFieldCostDebuff(opponent, action, sourceCardId) || hadEffect;
@@ -1630,7 +1631,7 @@ export class GameStateManager {
           if (action.target?.type === TargetType.OPPONENT_FIELD ||
               action.target?.type === TargetType.OPPONENT_CHARACTER ||
               action.target?.type === TargetType.ALL_CHARACTERS) {
-            const opponentId = Object.keys(this.state.players).find(id => id !== player.id);
+            const opponentId = this.getOpponentId(player.id);
             if (opponentId) {
               const opponent = this.state.players[opponentId];
               hadEffect = this.applyFieldPowerDebuff(opponent, action, sourceCardId) || hadEffect;
@@ -1963,7 +1964,7 @@ export class GameStateManager {
       }
     };
 
-    const opponentId = Object.keys(this.state.players).find(id => id !== player.id);
+    const opponentId = this.getOpponentId(player.id);
     const opponent = opponentId ? this.state.players[opponentId] : undefined;
 
     if (targetType === TargetType.SELF) {
@@ -2417,33 +2418,41 @@ export class GameStateManager {
 
   // Combat methods
   public declareAttack(attackerId: string, targetId: string, targetType: 'leader' | 'character'): boolean {
-    console.log('[DEBUG ATTACK GSM] declareAttack called:', { attackerId, targetId, targetType });
+    console.log('[declareAttack] called:', { attackerId, targetId, targetType });
 
     // Validate phase - can only attack during MAIN_PHASE
     if (this.state.phase !== GamePhase.MAIN_PHASE) {
-      console.log('[DEBUG ATTACK GSM] Not in MAIN_PHASE');
+      console.log('[declareAttack] Not in MAIN_PHASE');
       return false;
     }
 
     const attacker = this.findCard(attackerId);
-    if (!attacker) {
-      console.log('[DEBUG ATTACK GSM] Attacker not found');
+    if (!attacker || (attacker.zone !== CardZone.FIELD && attacker.zone !== CardZone.LEADER)) {
+      console.log('[declareAttack] Attacker not on field or not leader');
       return false;
     }
 
     // Validate that attacker belongs to the active player
     if (attacker.owner !== this.state.activePlayerId) {
-      console.log('[DEBUG ATTACK GSM] Attacker does not belong to active player');
+      console.log('[declareAttack] Attacker does not belong to active player');
+      return false;
+    }
+
+    // Defense-in-depth: normally redundant with the ACTIVE check below (attacking
+    // sets state=RESTED), but guards against effects that re-activate without
+    // clearing hasAttacked.
+    if (attacker.hasAttacked) {
+      console.log('[declareAttack] Attacker has already attacked this turn');
       return false;
     }
 
     if (attacker.state !== CardState.ACTIVE) {
-      console.log('[DEBUG ATTACK GSM] Attacker not ACTIVE:', attacker.state);
+      console.log('[declareAttack] Attacker not ACTIVE:', attacker.state);
       return false;
     }
 
     if (this.hasActiveCantAttackRestriction(attacker)) {
-      console.log('[DEBUG ATTACK GSM] Attacker has active CANT_ATTACK restriction');
+      console.log('[declareAttack] Attacker has active CANT_ATTACK restriction');
       return false;
     }
 
@@ -2474,8 +2483,18 @@ export class GameStateManager {
     // The second player CAN attack on their first turn
     const attackerPlayer = this.state.players[attacker.owner];
     if (attackerPlayer && attackerPlayer.turnCount === 1 && attacker.owner === this.state.firstPlayerId) {
-      console.log('[DEBUG ATTACK GSM] First player cannot attack on turn 1');
+      console.log('[declareAttack] First player cannot attack on turn 1');
       return false;
+    }
+
+    // Validate leader target matches opponent's actual leader
+    if (targetType === 'leader') {
+      const opponentId = this.getOpponentId(attacker.owner);
+      const opponent = opponentId ? this.state.players[opponentId] : undefined;
+      if (!opponent || !opponent.leaderCard || opponent.leaderCard.id !== targetId) {
+        console.log('[declareAttack] Target is not opponent leader');
+        return false;
+      }
     }
 
     // Check if card can attack (Rush check for cards played this turn)
@@ -2494,11 +2513,18 @@ export class GameStateManager {
       }
     }
 
-    // If attacking a character, verify target is RESTED (cannot attack active characters)
+    // If attacking a character, verify target is valid
     if (targetType === 'character') {
       const target = this.findCard(targetId);
-      if (!target || target.state !== CardState.RESTED) {
-        return false; // Can only attack rested characters
+      if (!target || target.zone !== CardZone.FIELD) {
+        console.log('[declareAttack] Target not on field');
+        return false;
+      }
+      // Check if target must be rested (unless attacker has CAN_ATTACK_ACTIVE)
+      const canAttackActive = this.effectEngine.hasKeyword(attacker, KW_CAN_ATTACK_ACTIVE, this.state);
+      if (target.state !== CardState.RESTED && !canAttackActive) {
+        console.log('[declareAttack] Target is not rested and attacker lacks CanAttackActive');
+        return false;
       }
     }
 
@@ -2541,7 +2567,7 @@ export class GameStateManager {
     // Combat order: Attack → Block → Counter → Damage
     if (this.advanceCombatPhaseAfterAttack(attacker)) return true;
 
-    console.log('[DEBUG ATTACK GSM] Combat state:', {
+    console.log('[declareAttack] Combat state:', {
       attackerId: this.state.currentCombat.attackerId,
       targetId: this.state.currentCombat.targetId,
       attackPower: this.state.currentCombat.attackPower,
@@ -2890,7 +2916,11 @@ export class GameStateManager {
     }
 
     const blocker = this.findCard(blockerId);
-    if (!blocker || blocker.state !== CardState.ACTIVE) return false;
+    if (!blocker || blocker.zone !== CardZone.FIELD) {
+      console.log('[declareBlocker] Blocker not on field');
+      return false;
+    }
+    if (blocker.state !== CardState.ACTIVE) return false;
 
     // Validate that the blocker belongs to the player declaring the block
     if (blocker.owner !== playerId) {
@@ -3051,8 +3081,14 @@ export class GameStateManager {
         continue;
       }
 
-      const primaryAction = counterEffect.effects[0];
-      const validTargets = this.getValidTargetsForEventEffect(counterEffect, playerId, removedCard);
+      // Flatten childEffects into the top-level effects array so that
+      // "Then" chain actions (draw, KO, bounce, etc.) are resolved by
+      // resolveEffect directly instead of going through processChildEffects
+      // which has incomplete handling for effects needing player choice.
+      const flattenedEffect = this.flattenCounterEffect(counterEffect);
+
+      const primaryAction = flattenedEffect.effects[0];
+      const validTargets = this.getValidTargetsForEventEffect(flattenedEffect, playerId, removedCard);
       const hasTargetSelection = Boolean(primaryAction?.target);
       const maxTargets = hasTargetSelection
         ? (primaryAction?.target?.maxCount || primaryAction?.target?.count || 1)
@@ -3061,7 +3097,9 @@ export class GameStateManager {
         ? (primaryAction?.target?.optional ? 0 : 1)
         : 0;
 
-      const powerBoostAction = counterEffect.effects.find(e => e.type === EffectType.BUFF_POWER);
+      const powerBoostAction = flattenedEffect.effects.find(
+        e => e.type === EffectType.BUFF_POWER || e.type === EffectType.BUFF_ANY
+      );
       const powerBoost = powerBoostAction?.value || 0;
 
       if (hasTargetSelection && validTargets.length > 0) {
@@ -3069,7 +3107,7 @@ export class GameStateManager {
           id: `counter-${removedCard.id}-${Date.now()}`,
           sourceCardId: removedCard.id,
           playerId: playerId,
-          description: counterEffect.description || `Resolve ${primaryAction?.type || 'counter'} effect`,
+          description: flattenedEffect.description || `Resolve ${primaryAction?.type || 'counter'} effect`,
           validTargets,
           effectType: primaryAction?.type?.toString() || 'UNKNOWN',
           powerBoost,
@@ -3080,7 +3118,7 @@ export class GameStateManager {
         });
       } else {
         // No target selection needed (or no valid targets). Resolve immediately.
-        this.resolveEffectWithEngine(counterEffect, removedCard, player, [], true);
+        this.resolveEffectWithEngine(flattenedEffect, removedCard, player, [], true);
       }
     }
 
@@ -3119,6 +3157,52 @@ export class GameStateManager {
     this.resolveCombat();
 
     return true;
+  }
+
+  /**
+   * Flatten a counter effect definition by pulling childEffects from each
+   * action into the top-level effects array.  This ensures "Then" chain
+   * actions (draw, KO, bounce, rest, etc.) are resolved directly by
+   * resolveEffect instead of being routed through processChildEffects which
+   * has incomplete handling for effects that need player choice.
+   */
+  private flattenCounterEffect(effect: CardEffectDefinition): CardEffectDefinition {
+    const flatEffects: EffectAction[] = [];
+    for (const action of effect.effects) {
+      // Push the action itself (without childEffects so resolveAction won't
+      // re-emit them as PendingEffects that end up in processChildEffects).
+      const { childEffects, ...actionWithoutChildren } = action as EffectAction & { childEffects?: EffectAction[] };
+      flatEffects.push(actionWithoutChildren);
+
+      // Recursively pull nested childEffects into the flat list
+      if (childEffects && childEffects.length > 0) {
+        const queue = [...childEffects];
+        while (queue.length > 0) {
+          const child = queue.shift()!;
+          const { childEffects: nested, ...childWithoutNested } = child as EffectAction & { childEffects?: EffectAction[] };
+          flatEffects.push(childWithoutNested);
+          if (nested && nested.length > 0) {
+            queue.push(...nested);
+          }
+        }
+      }
+    }
+
+    // Only create a new object if we actually flattened something
+    if (flatEffects.length === effect.effects.length) {
+      // Check if any action had childEffects that were stripped
+      const hadChildEffects = effect.effects.some(
+        (a: EffectAction & { childEffects?: EffectAction[] }) => a.childEffects && a.childEffects.length > 0
+      );
+      if (!hadChildEffects) {
+        return effect; // No flattening needed
+      }
+    }
+
+    return {
+      ...effect,
+      effects: flatEffects,
+    };
   }
 
   public passBlocker(playerId: string): boolean {
@@ -3346,7 +3430,7 @@ export class GameStateManager {
         // Double Attack CAN win from any life total -- no protection rule in OPTCG
         // If life is 0 and damage is dealt, the player loses regardless of Double Attack
 
-        const opponentId = Object.keys(this.state.players).find(id => id !== playerId);
+        const opponentId = this.getOpponentId(playerId);
         this.state.winner = opponentId;
         this.state.phase = GamePhase.GAME_OVER;
 
@@ -3586,7 +3670,7 @@ export class GameStateManager {
     // Move to draw phase. In OPTCG, deck-out only happens when a required draw cannot be performed.
     this.state.phase = GamePhase.DRAW_PHASE;
     if (player.deck.length === 0) {
-      const opponentId = Object.keys(this.state.players).find(id => id !== playerId);
+      const opponentId = this.getOpponentId(playerId);
       this.state.winner = opponentId;
       this.state.phase = GamePhase.GAME_OVER;
       return;
@@ -3635,7 +3719,7 @@ export class GameStateManager {
 
     // Check for DON equalization restriction
     if (this.hasPlayerRestriction(player, KW_DON_EQUALIZATION)) {
-      const opponentId = Object.keys(this.state.players).find(id => id !== playerId);
+      const opponentId = this.getOpponentId(playerId);
       const opponent = opponentId ? this.state.players[opponentId] : undefined;
       if (opponent) {
         const opponentDonCount = opponent.donField.length;
@@ -3666,7 +3750,7 @@ export class GameStateManager {
     }
 
     // Find next player (normal turn transition)
-    const nextPlayerId = Object.keys(this.state.players).find(id => id !== playerId);
+    const nextPlayerId = this.getOpponentId(playerId);
     if (nextPlayerId) {
       this.startTurn(nextPlayerId);
     }
@@ -3943,6 +4027,11 @@ export class GameStateManager {
       }
     }
     return undefined;
+  }
+
+  /** Get the opponent's player ID in a 2-player game. */
+  private getOpponentId(playerId: string): string | undefined {
+    return Object.keys(this.state.players).find(id => id !== playerId);
   }
 
   private getAttachedDon(cardId: string): GameCard[] {
@@ -4976,7 +5065,29 @@ export class GameStateManager {
       : cardDef?.effects.find(e => e.trigger === EffectTrigger.COUNTER);
 
     if (sourceCard && player && counterEffect) {
-      this.resolveEffectWithEngine(counterEffect, sourceCard, player, selectedTargets, true);
+      // Flatten childEffects so that "Then" chain actions (draw, KO, bounce,
+      // rest, etc.) are resolved directly instead of going through
+      // processChildEffects which has incomplete handling.
+      const flattenedEffect = this.flattenCounterEffect(counterEffect);
+
+      if (flattenedEffect.effects.length <= 1) {
+        // Single effect — resolve normally with selected targets
+        this.resolveEffectWithEngine(flattenedEffect, sourceCard, player, selectedTargets, true);
+      } else {
+        // Multiple effects — resolve each action individually so that secondary
+        // effects (KO, bounce, rest) get their own auto-targeting instead of
+        // reusing the primary action's selectedTargets.
+        for (let i = 0; i < flattenedEffect.effects.length; i++) {
+          const singleActionEffect: CardEffectDefinition = {
+            ...flattenedEffect,
+            effects: [flattenedEffect.effects[i]],
+          };
+          // First action uses player-selected targets; subsequent actions use
+          // empty targets so the EffectEngine auto-selects via getValidTargets.
+          const targets = i === 0 ? selectedTargets : [];
+          this.resolveEffectWithEngine(singleActionEffect, sourceCard, player, targets, true);
+        }
+      }
     }
 
     this.state.pendingCounterEffects = pendingEffects.filter(e => e.id !== effectId);

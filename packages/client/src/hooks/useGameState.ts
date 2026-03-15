@@ -10,6 +10,7 @@ const KEYWORD_PATTERNS: { pattern: RegExp; keyword: string }[] = [
   { pattern: /\[Blocker\]/i, keyword: 'Blocker' },
   { pattern: /\[Banish\]/i, keyword: 'Banish' },
   { pattern: /\[Double Attack\]/i, keyword: 'Double Attack' },
+  { pattern: /\[Unblockable\]/i, keyword: 'Unblockable' },
 ];
 
 // Detect keywords from effect text
