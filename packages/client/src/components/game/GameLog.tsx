@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './GameLog.css';
 
 export interface GameLogEntry {
@@ -40,7 +40,7 @@ export const GameLog: React.FC<GameLogProps> = ({
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const entriesContainerRef = useRef<HTMLDivElement>(null);
 
-  const visibleEntries = entries.slice(-maxVisible);
+  const visibleEntries = useMemo(() => entries.slice(-maxVisible), [entries, maxVisible]);
 
   // Auto-scroll to bottom when new entries arrive
   useEffect(() => {
@@ -50,7 +50,7 @@ export const GameLog: React.FC<GameLogProps> = ({
   }, [entries.length, collapsed]);
 
   // Group entries by turn to insert separators
-  const renderEntries = () => {
+  const renderedEntries = useMemo(() => {
     if (visibleEntries.length === 0) {
       return <div className="game-log__empty">No actions yet</div>;
     }
@@ -85,7 +85,7 @@ export const GameLog: React.FC<GameLogProps> = ({
     }
 
     return elements;
-  };
+  }, [visibleEntries]);
 
   const handleHeaderClick = () => {
     setCollapsed((prev) => !prev);
@@ -117,7 +117,7 @@ export const GameLog: React.FC<GameLogProps> = ({
       </div>
       {!collapsed && (
         <div className="game-log__entries" ref={entriesContainerRef}>
-          {renderEntries()}
+          {renderedEntries}
           <div className="game-log__scroll-anchor" ref={scrollAnchorRef} />
         </div>
       )}
