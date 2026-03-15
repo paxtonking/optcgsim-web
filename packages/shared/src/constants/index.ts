@@ -41,6 +41,19 @@ export const COLORS: Record<CardColor, { name: string; hex: string }> = {
   YELLOW: { name: 'Yellow', hex: '#EAB308' },
 };
 
+// Canonical phase display names (title-case).
+// Use as-is for logs; call .toUpperCase() for banners.
+export const PHASE_DISPLAY_NAMES: Partial<Record<GamePhase, string>> = {
+  [GamePhase.REFRESH_PHASE]: 'Refresh Phase',
+  [GamePhase.DRAW_PHASE]: 'Draw Phase',
+  [GamePhase.DON_PHASE]: 'DON Phase',
+  [GamePhase.MAIN_PHASE]: 'Main Phase',
+  [GamePhase.END_PHASE]: 'End Phase',
+  [GamePhase.BLOCKER_STEP]: 'Blocker Step',
+  [GamePhase.COUNTER_STEP]: 'Counter Step',
+  [GamePhase.TRIGGER_STEP]: 'Trigger Step',
+};
+
 // Phase Order
 export const PHASE_ORDER: LegacyGamePhase[] = [
   'REFRESH',

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { GameState, GameCard as GameCardType, GamePhase, CardZone, CardState, RPSChoice, RPSState, PendingActivateEffect, PendingDeckRevealEffect, PendingHandSelectEffect } from '@optcgsim/shared';
+import { GameState, GameCard as GameCardType, GamePhase, CardZone, CardState, RPSChoice, RPSState, PendingActivateEffect, PendingDeckRevealEffect, PendingHandSelectEffect, normalizeColors, PHASE_DISPLAY_NAMES } from '@optcgsim/shared';
 import { useGameSocket } from '../../hooks/useGameSocket';
 import { useGameState } from '../../hooks/useGameState';
 import { useSoundEffects } from '../../hooks/useSoundEffects';
@@ -39,40 +39,7 @@ import './ChatPopup.css';
 
 const RELATIVE_STYLE = { position: 'relative' } as const;
 
-// Phase display names for banners (uppercase)
-const PHASE_BANNER_NAMES: Partial<Record<GamePhase, string>> = {
-  [GamePhase.REFRESH_PHASE]: 'REFRESH PHASE',
-  [GamePhase.DRAW_PHASE]: 'DRAW PHASE',
-  [GamePhase.DON_PHASE]: 'DON PHASE',
-  [GamePhase.MAIN_PHASE]: 'MAIN PHASE',
-  [GamePhase.END_PHASE]: 'END PHASE',
-};
 
-
-// Concede modal styles (hoisted to avoid per-render allocation)
-const CONCEDE_OVERLAY_STYLE: React.CSSProperties = {
-  position: 'fixed', inset: 0, zIndex: 2000,
-  display: 'flex', alignItems: 'center', justifyContent: 'center',
-  backgroundColor: 'rgba(0,0,0,0.7)',
-};
-const CONCEDE_MODAL_STYLE: React.CSSProperties = {
-  background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
-  border: '1px solid rgba(255,255,255,0.2)',
-  borderRadius: 12, padding: '24px 32px',
-  textAlign: 'center', color: 'white', maxWidth: 360,
-};
-const CONCEDE_TITLE_STYLE: React.CSSProperties = { margin: '0 0 12px', fontSize: 18 };
-const CONCEDE_DESC_STYLE: React.CSSProperties = { margin: '0 0 20px', fontSize: 14, color: 'rgba(255,255,255,0.7)' };
-const CONCEDE_BTNS_STYLE: React.CSSProperties = { display: 'flex', gap: 12, justifyContent: 'center' };
-const CONCEDE_CANCEL_STYLE: React.CSSProperties = {
-  padding: '8px 20px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.3)',
-  background: 'rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer', fontSize: 14,
-};
-const CONCEDE_CONFIRM_STYLE: React.CSSProperties = {
-  padding: '8px 20px', borderRadius: 6, border: 'none',
-  background: 'linear-gradient(135deg, #e74c3c, #c0392b)', color: 'white',
-  cursor: 'pointer', fontSize: 14, fontWeight: 'bold',
-};
 // Animation types
 type DealingPhase = 'idle' | 'dealing-hand' | 'waiting-mulligan' | 'dealing-life' | 'complete';
 
@@ -172,7 +139,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   // Concede confirmation
   const [showConcedeConfirm, setShowConcedeConfirm] = useState(false);
 
-  // Track previous turn for turn start sound
+  // Track previous turn for turn start sound and banner
   const previousTurnRef = useRef<number | null>(null);
   const previousIsMyTurnRef = useRef<boolean | null>(null);
 
@@ -344,10 +311,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     previousIsMyTurnRef.current = isMyTurn;
   }, [turn, isMyTurn, playSound]);
 
-  // Turn announcement banner
-  const prevIsMyTurnBannerRef = useRef<boolean | null>(null);
+  // Turn announcement banner (uses previousIsMyTurnRef from sound effect above)
   useEffect(() => {
-    if (gameState && prevIsMyTurnBannerRef.current !== null && prevIsMyTurnBannerRef.current !== isMyTurn) {
+    if (gameState && previousIsMyTurnRef.current !== null && previousIsMyTurnRef.current !== isMyTurn) {
       // Don't show during initial setup phases
       if (phase && ![GamePhase.START_WAITING, GamePhase.RPS_PHASE, GamePhase.FIRST_CHOICE, GamePhase.START_MULLIGAN, GamePhase.START_SETUP, GamePhase.PRE_GAME_SETUP].includes(phase)) {
         setTurnBanner({
@@ -357,20 +323,23 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         });
       }
     }
-    prevIsMyTurnBannerRef.current = isMyTurn;
   }, [isMyTurn, gameState?.turn, phase]);
 
   // Phase transition banners
-  const prevPhaseRef2 = useRef<string | null>(null);
+  const prevPhaseBannerRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!phase || phase === prevPhaseRef2.current) return;
-    prevPhaseRef2.current = phase;
+    if (!phase || phase === prevPhaseBannerRef.current) return;
+    prevPhaseBannerRef.current = phase;
 
-    const phaseName = PHASE_BANNER_NAMES[phase as GamePhase];
+    const phaseName = PHASE_DISPLAY_NAMES[phase as GamePhase];
     if (phaseName && isMyTurn) {
-      setPhaseBanner({ text: phaseName });
+      setPhaseBanner({ text: phaseName.toUpperCase() });
     }
   }, [phase, isMyTurn]);
+
+  // Banner dismiss handlers
+  const dismissTurnBanner = useCallback(() => setTurnBanner(null), []);
+  const dismissPhaseBanner = useCallback(() => setPhaseBanner(null), []);
 
   // Concede confirmation handlers
   const handleSurrender = useCallback(() => {
@@ -2474,10 +2443,20 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
     if (!myPlayer || !isMyTurn || phase !== GamePhase.MAIN_PHASE) return playable;
 
+    const leaderDef = myPlayer.leaderCard ? cardDefinitions.get(myPlayer.leaderCard.cardId) : undefined;
+    const leaderColors = leaderDef?.colors ? normalizeColors(leaderDef.colors).map(c => c.toUpperCase()) : [];
+
     myPlayer.hand.forEach(card => {
       const def = cardDefinitions.get(card.cardId);
       const effectiveCost = card.modifiedCost ?? def?.cost;
       if (effectiveCost != null && activeDonCount >= effectiveCost) {
+        // Color matching: card must share at least one color with the leader
+        if (def?.colors && leaderColors.length > 0) {
+          const cardColors = normalizeColors(def.colors).map(c => c.toUpperCase());
+          if (!cardColors.some(c => leaderColors.includes(c))) {
+            return; // Skip - no matching color
+          }
+        }
         playable.add(card.id);
       }
     });
@@ -3316,7 +3295,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   const getLeaderColor = useCallback((cardId: string | undefined): string | undefined => {
     if (!cardId) return undefined;
     const def = cardDefinitions.get(cardId);
-    return def?.color ?? def?.colors?.[0];
+    return def?.colors?.[0];
   }, [cardDefinitions]);
 
   // Get phase display name
@@ -3401,7 +3380,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           text={turnBanner.text}
           subtext={turnBanner.subtext}
           duration={2000}
-          onDismiss={() => setTurnBanner(null)}
+          onDismiss={dismissTurnBanner}
         />
       )}
       {phaseBanner && (
@@ -3409,7 +3388,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           type="phase"
           text={phaseBanner.text}
           duration={1200}
-          onDismiss={() => setPhaseBanner(null)}
+          onDismiss={dismissPhaseBanner}
         />
       )}
 
@@ -4226,17 +4205,17 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
       {/* Concede confirmation modal */}
       {showConcedeConfirm && (
-        <div style={CONCEDE_OVERLAY_STYLE}>
-          <div style={CONCEDE_MODAL_STYLE}>
-            <h3 style={CONCEDE_TITLE_STYLE}>Concede Match?</h3>
-            <p style={CONCEDE_DESC_STYLE}>
+        <div className="concede-overlay">
+          <div className="concede-modal">
+            <h3 className="concede-title">Concede Match?</h3>
+            <p className="concede-description">
               Are you sure you want to surrender? This cannot be undone.
             </p>
-            <div style={CONCEDE_BTNS_STYLE}>
-              <button onClick={() => setShowConcedeConfirm(false)} style={CONCEDE_CANCEL_STYLE}>
+            <div className="concede-buttons">
+              <button onClick={() => setShowConcedeConfirm(false)} className="concede-cancel-btn">
                 Cancel
               </button>
-              <button onClick={confirmSurrender} style={CONCEDE_CONFIRM_STYLE}>
+              <button onClick={confirmSurrender} className="concede-confirm-btn">
                 Surrender
               </button>
             </div>

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { GameCard as GameCardType, CardState, CardZone } from '@optcgsim/shared';
+import { GameCard as GameCardType, CardState, CardZone, KW_CANT_PLAY_CARDS, KW_CANT_PLAY_CHARACTERS, KW_DISABLE_EFFECT_DRAWS, KW_NO_ON_PLAYS, KW_IMMUNE_EFFECTS, KW_DON_EQUALIZATION, KW_PREFIX_CONFUSION_TAX, KW_PREFIX_ATTRIBUTE } from '@optcgsim/shared';
 import { ClientCardDefinition } from '../../types/card';
 import { resolveCardImageUrl } from '../../utils/cardImage';
 import './GameBoard.css';
@@ -19,12 +19,12 @@ interface StatusBadgeConfig {
 }
 
 const STATUS_CONFIG: Record<string, StatusBadgeConfig> = {
-  'CantPlayCards': { abbr: '\u2298', label: "Can't Play", color: 'rgba(231, 76, 60, 0.9)' },
-  'CantPlayCharacters': { abbr: '\u2298C', label: "Can't Play Characters", color: 'rgba(231, 76, 60, 0.9)' },
-  'DisableEffectDraws': { abbr: '\u2298D', label: 'Draws Disabled', color: 'rgba(149, 165, 166, 0.9)' },
-  'NoOnPlays': { abbr: '\u2298P', label: 'No On Play', color: 'rgba(149, 165, 166, 0.9)' },
-  'ImmuneEffects': { abbr: '\uD83D\uDEE1', label: 'Immune', color: 'rgba(46, 204, 113, 0.9)' },
-  'DonEqualization': { abbr: 'EQ', label: 'DON Equalize', color: 'rgba(241, 196, 15, 0.9)' },
+  [KW_CANT_PLAY_CARDS]: { abbr: '\u2298', label: "Can't Play", color: 'rgba(231, 76, 60, 0.9)' },
+  [KW_CANT_PLAY_CHARACTERS]: { abbr: '\u2298C', label: "Can't Play Characters", color: 'rgba(231, 76, 60, 0.9)' },
+  [KW_DISABLE_EFFECT_DRAWS]: { abbr: '\u2298D', label: 'Draws Disabled', color: 'rgba(149, 165, 166, 0.9)' },
+  [KW_NO_ON_PLAYS]: { abbr: '\u2298P', label: 'No On Play', color: 'rgba(149, 165, 166, 0.9)' },
+  [KW_IMMUNE_EFFECTS]: { abbr: '\uD83D\uDEE1', label: 'Immune', color: 'rgba(46, 204, 113, 0.9)' },
+  [KW_DON_EQUALIZATION]: { abbr: 'EQ', label: 'DON Equalize', color: 'rgba(241, 196, 15, 0.9)' },
 };
 
 const DYNAMIC_BADGE_COLORS: Record<string, string> = {
@@ -249,24 +249,21 @@ export const GameCard: React.FC<GameCardProps> = ({
         activeStatuses.push({ key: kw, ...cfg });
       }
       // Check for ConfusionTax pattern: "ConfusionTax:N"
-      if (kw.startsWith('ConfusionTax:')) {
+      if (kw.startsWith(KW_PREFIX_CONFUSION_TAX)) {
         const taxVal = kw.split(':')[1];
         activeStatuses.push({ key: kw, abbr: `T${taxVal}`, label: `Tax: Trash ${taxVal}`, color: DYNAMIC_BADGE_COLORS.confusion });
       }
       // Check for Attribute grants: "Attribute:Slash"
-      if (kw.startsWith('Attribute:')) {
+      if (kw.startsWith(KW_PREFIX_ATTRIBUTE)) {
         const attr = kw.split(':')[1];
         activeStatuses.push({ key: kw, abbr: attr.charAt(0), label: attr, color: DYNAMIC_BADGE_COLORS.attribute });
       }
     }
 
-    // Check restrictions array
+    // Check restrictions array (skip CONFUSION_TAX here — already covered by temporaryKeywords above)
     for (const r of (card.restrictions || [])) {
       if (r.type === 'LOSE_KEYWORD') {
         activeStatuses.push({ key: `lose-${r.keyword}`, abbr: `\u2715${(r.keyword || '')[0]}`, label: `Lost ${r.keyword}`, color: DYNAMIC_BADGE_COLORS.lostKeyword });
-      }
-      if (r.type === 'CONFUSION_TAX') {
-        activeStatuses.push({ key: 'confusion-tax', abbr: `T${r.value || '?'}`, label: `Tax: ${r.value}`, color: DYNAMIC_BADGE_COLORS.confusion });
       }
     }
 
