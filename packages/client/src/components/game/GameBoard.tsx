@@ -34,6 +34,8 @@ import './EffectToast.css';
 import './EffectAnimation.css';
 import './ChatPopup.css';
 
+const RELATIVE_STYLE = { position: 'relative' } as const;
+
 // Animation types
 type DealingPhase = 'idle' | 'dealing-hand' | 'waiting-mulligan' | 'dealing-life' | 'complete';
 
@@ -1487,21 +1489,21 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         ...playerKOs.map(card => ({ card, isOpponent: false })),
         ...opponentKOs.map(card => ({ card, isOpponent: true })),
       ];
-      allKOs.forEach(({ card }, i) => {
-        // Find the card's DOM element by data-card-id to get its position
+      // Pre-collect positions before cards are removed from DOM
+      const positions = allKOs.map(({ card, isOpponent }) => {
+        const el = document.querySelector(`[data-card-id="${card.id}"]`);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        }
+        return getTrashPosition(isOpponent);
+      });
+
+      // Schedule staggered visual effects using pre-computed positions
+      allKOs.forEach((_, i) => {
         setTimeout(() => {
-          const el = document.querySelector(`[data-card-id="${card.id}"]`);
-          if (el) {
-            const rect = el.getBoundingClientRect();
-            const pos = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-            effectAnimationRef.current?.playShatter(pos);
-            effectAnimationRef.current?.playFloatText('ko', pos, 'KO');
-          } else {
-            // Card already removed from DOM, use trash position as fallback
-            const trashPos = getTrashPosition(allKOs[i]?.isOpponent ?? false);
-            effectAnimationRef.current?.playShatter(trashPos);
-            effectAnimationRef.current?.playFloatText('ko', trashPos, 'KO');
-          }
+          effectAnimationRef.current?.playShatter(positions[i]);
+          effectAnimationRef.current?.playFloatText('ko', positions[i], 'KO');
         }, i * 150);
       });
     }
@@ -3480,17 +3482,20 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       <div className="game-board__main">
         {/* Opponent hand indicator */}
         {opponent && (
-          <HandZone
-            cards={dealingPhase === 'dealing-hand'
-              ? opponent.hand.slice(0, visibleHandCount.opponent)
-              : (animatingLifeDamage.some(a => a.isOpponent) || animatingHandDraw.some(a => a.isOpponent))
+          <div style={RELATIVE_STYLE}>
+            <span className="hand-count-badge">Hand: {opponent.hand.length}</span>
+            <HandZone
+              cards={dealingPhase === 'dealing-hand'
                 ? opponent.hand.slice(0, visibleHandCount.opponent)
-                : opponent.hand}
-            isOpponent={true}
-            cardDefinitions={cardDefinitions}
-            onCardHover={handleCardHover}
-            onCardClick={handleCardClick}
-          />
+                : (animatingLifeDamage.some(a => a.isOpponent) || animatingHandDraw.some(a => a.isOpponent))
+                  ? opponent.hand.slice(0, visibleHandCount.opponent)
+                  : opponent.hand}
+              isOpponent={true}
+              cardDefinitions={cardDefinitions}
+              onCardHover={handleCardHover}
+              onCardClick={handleCardClick}
+            />
+          </div>
         )}
 
         {/* Opponent area */}
@@ -3561,28 +3566,31 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         {/* Player hand - hide during mulligan overlay and hand dealing */}
         {/* During BLOCKER_STEP, show field cards instead of hand cards */}
         {myPlayer && !showMulligan && dealingPhase !== 'dealing-hand' && (
-          <HandZone
-            cards={
-              phase === GamePhase.BLOCKER_STEP && isDefender
-                // Show field cards during blocker step, excluding the card being attacked
-                ? myPlayer.field.filter(c => c.id !== gameState?.currentCombat?.targetId)
-                : (animatingLifeDamage.some(a => !a.isOpponent) || animatingHandDraw.some(a => !a.isOpponent))
-                  ? myPlayer.hand.slice(0, visibleHandCount.player)
-                  : myPlayer.hand
-            }
-            isOpponent={false}
-            cardDefinitions={cardDefinitions}
-            playableCards={playableCards}
-            selectedCard={selectedCard}
-            pinnedCard={pinnedCard}
-            pendingPlayCard={pendingPlayCard}
-            activateEffectSelectedTargets={activateEffectSelectedTargets}
-            handSelectMode={phase === GamePhase.HAND_SELECT_STEP && currentHandSelectEffect?.playerId === playerId}
-            handSelectSelectedCards={handSelectSelectedCards}
-            onCardHover={handleCardHover}
-            onCardClick={handleCardClick}
-            onHandSelectCardClick={handleHandSelectCardClick}
-          />
+          <div style={RELATIVE_STYLE}>
+            <span className="hand-count-badge">Hand: {myPlayer.hand.length}</span>
+            <HandZone
+              cards={
+                phase === GamePhase.BLOCKER_STEP && isDefender
+                  // Show field cards during blocker step, excluding the card being attacked
+                  ? myPlayer.field.filter(c => c.id !== gameState?.currentCombat?.targetId)
+                  : (animatingLifeDamage.some(a => !a.isOpponent) || animatingHandDraw.some(a => !a.isOpponent))
+                    ? myPlayer.hand.slice(0, visibleHandCount.player)
+                    : myPlayer.hand
+              }
+              isOpponent={false}
+              cardDefinitions={cardDefinitions}
+              playableCards={playableCards}
+              selectedCard={selectedCard}
+              pinnedCard={pinnedCard}
+              pendingPlayCard={pendingPlayCard}
+              activateEffectSelectedTargets={activateEffectSelectedTargets}
+              handSelectMode={phase === GamePhase.HAND_SELECT_STEP && currentHandSelectEffect?.playerId === playerId}
+              handSelectSelectedCards={handSelectSelectedCards}
+              onCardHover={handleCardHover}
+              onCardClick={handleCardClick}
+              onHandSelectCardClick={handleHandSelectCardClick}
+            />
+          </div>
         )}
       </div>
 
@@ -3781,7 +3789,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             : 'No targets needed — confirm to activate'}
           confirmLabel="Use"
           confirmDisabled={currentAttackEffect.requiresChoice && attackEffectSelectedTargets.length === 0}
-          showSkip
+          showSkip={currentAttackEffect.isOptional}
           onConfirm={handleUseAttackEffect}
           onSkip={handleSkipAttackEffect}
         />
@@ -3803,7 +3811,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             : 'No targets needed — confirm to activate'}
           confirmLabel="Use"
           confirmDisabled={currentPlayEffect.requiresChoice && playEffectSelectedTargets.length === 0}
-          showSkip={currentPlayEffect.minTargets === 0 || !currentPlayEffect.minTargets}
+          showSkip={currentPlayEffect.isOptional}
           onConfirm={handleUsePlayEffect}
           onSkip={handleSkipPlayEffect}
         />

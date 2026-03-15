@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { GameCard as GameCardType, CardState, CardZone } from '@optcgsim/shared';
 import { ClientCardDefinition } from '../../types/card';
 import { resolveCardImageUrl } from '../../utils/cardImage';
@@ -118,6 +118,10 @@ export const GameCard: React.FC<GameCardProps> = ({
   }, [card, onDragStart]);
 
 
+  // Determine card color for border accent
+  const cardColor = cardDef?.color || cardDef?.colors?.[0] || '';
+  const colorClass = cardColor ? `game-card--color-${cardColor.toLowerCase().split(' ')[0]}` : '';
+
   // Build class names
   const classes = [
     'game-card',
@@ -141,6 +145,7 @@ export const GameCard: React.FC<GameCardProps> = ({
     hasCostModified && 'game-card--cost-modified',
     hasActiveEffect && 'game-card--active-effect',
     !faceUp && 'game-card--face-down',
+    faceUp && colorClass,
     className
   ].filter(Boolean).join(' ');
 
@@ -167,6 +172,28 @@ export const GameCard: React.FC<GameCardProps> = ({
     const firstColor = color.split(' ')[0];
     return colorMap[firstColor] || '#444';
   };
+
+  // Memoize keyword badge computation
+  const keywordBadges = useMemo(() => {
+    if (card.zone !== CardZone.FIELD && card.zone !== CardZone.LEADER) return null;
+    const activeKeywords = new Set<string>();
+    for (const kw of (card.keywords || [])) {
+      if (kw in KEYWORD_CONFIG) activeKeywords.add(kw);
+    }
+    for (const kw of (card.temporaryKeywords || [])) {
+      if (kw in KEYWORD_CONFIG) activeKeywords.add(kw);
+    }
+    for (const kw of (card.continuousKeywords || [])) {
+      if (kw in KEYWORD_CONFIG) activeKeywords.add(kw);
+    }
+    for (const eff of (card.grantedEffects || [])) {
+      if (eff.effectType === 'GRANT_KEYWORD' && eff.keyword && eff.keyword in KEYWORD_CONFIG) {
+        activeKeywords.add(eff.keyword);
+      }
+    }
+    if (activeKeywords.size === 0) return null;
+    return Array.from(activeKeywords);
+  }, [card.zone, card.keywords, card.temporaryKeywords, card.continuousKeywords, card.grantedEffects]);
 
   return (
     <div
@@ -246,41 +273,22 @@ export const GameCard: React.FC<GameCardProps> = ({
           )}
 
           {/* Keyword badges for field/leader cards */}
-          {(card.zone === CardZone.FIELD || card.zone === CardZone.LEADER) && (() => {
-            const activeKeywords = new Set<string>();
-            for (const kw of (card.keywords || [])) {
-              if (kw in KEYWORD_CONFIG) activeKeywords.add(kw);
-            }
-            for (const kw of (card.temporaryKeywords || [])) {
-              if (kw in KEYWORD_CONFIG) activeKeywords.add(kw);
-            }
-            for (const kw of (card.continuousKeywords || [])) {
-              if (kw in KEYWORD_CONFIG) activeKeywords.add(kw);
-            }
-            for (const eff of (card.grantedEffects || [])) {
-              if (eff.effectType === 'GRANT_KEYWORD' && eff.keyword && eff.keyword in KEYWORD_CONFIG) {
-                activeKeywords.add(eff.keyword);
-              }
-            }
-            if (activeKeywords.size === 0) return null;
-            const startTop = attachedDonCount > 0 ? 18 : 2;
-            return (
-              <div className="game-card__keyword-badges" style={{ top: startTop }}>
-                {Array.from(activeKeywords).map(kw => {
-                  const cfg = KEYWORD_CONFIG[kw];
-                  return (
-                    <div
-                      key={kw}
-                      className={`game-card__keyword-badge ${cfg.className}`}
-                      title={kw}
-                    >
-                      {cfg.abbr}
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
+          {keywordBadges && (
+            <div className="game-card__keyword-badges" style={{ top: attachedDonCount > 0 ? 18 : 2 }}>
+              {keywordBadges.map(kw => {
+                const cfg = KEYWORD_CONFIG[kw];
+                return (
+                  <div
+                    key={kw}
+                    className={`game-card__keyword-badge ${cfg.className}`}
+                    title={kw}
+                  >
+                    {cfg.abbr}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </>
       ) : (
         // Card back

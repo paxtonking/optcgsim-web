@@ -29,6 +29,7 @@ export type {
 export * from './constants/index.js';
 export * from './constants/emotes.js';
 export * from './constants/profile.js';
+export * from './constants/keywords.js';
 
 // Re-export new game types and classes (these override the old ones)
 export * from './types/game.js';

@@ -691,8 +691,8 @@ describe('Continuous and gameplay regression fixes', () => {
     const success = manager.resolveHandSelect('player1', [handCard.id]);
 
     expect(success).toBe(true);
-    expect(state.phase).toBe(GamePhase.PLAY_EFFECT_STEP);
-    expect(state.pendingPlayEffects?.length).toBe(1);
+    expect(state.phase).toBe(GamePhase.MAIN_PHASE);
+    expect(state.pendingPlayEffects).toBeUndefined();
   });
 
   it('detaches DON when TRASH is selected in FIELD_SELECT_STEP', () => {

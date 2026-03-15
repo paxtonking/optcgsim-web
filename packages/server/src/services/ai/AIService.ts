@@ -126,6 +126,24 @@ export class AIService {
    * Returns an action if there's a pending effect to handle, null otherwise
    */
   private handlePendingEffects(gameState: GameState, player: PlayerState): AIDecision | null {
+    // Check for pending ON_PLAY effects
+    if (gameState.pendingPlayEffects?.length) {
+      const currentEffect = gameState.pendingPlayEffects[0];
+      if (currentEffect?.playerId === this.playerId) {
+        return this.getPlayEffectAction(gameState, player);
+      }
+      return null;
+    }
+
+    // Check for pending ON_ATTACK / OPPONENT_ATTACK effects
+    if (gameState.pendingAttackEffects?.length) {
+      const currentEffect = gameState.pendingAttackEffects[0];
+      if (currentEffect?.playerId === this.playerId) {
+        return this.getAttackEffectAction(gameState, player);
+      }
+      return null;
+    }
+
     // Check for pending ACTIVATE_MAIN effects (stage abilities, etc.)
     if (gameState.pendingActivateEffects?.length) {
       const myEffect = gameState.pendingActivateEffects.find(e => e.playerId === this.playerId);
@@ -590,6 +608,13 @@ export class AIService {
 
     const validTargets = pendingEffect.validTargets || [];
 
+    if (!pendingEffect.requiresChoice) {
+      return {
+        action: ActionType.RESOLVE_ATTACK_EFFECT,
+        data: { effectId: pendingEffect.id, selectedTargets: [] },
+      };
+    }
+
     if (validTargets.length > 0) {
       const selectedTargets = this.strategy.selectEffectTargets(validTargets, gameState, pendingEffect.description);
       return {
@@ -598,7 +623,10 @@ export class AIService {
       };
     }
 
-    // Non-choice effects: auto-confirm (resolve with no targets)
+    if (pendingEffect.minTargets === 0) {
+      return { action: ActionType.SKIP_ATTACK_EFFECT, data: { effectId: pendingEffect.id } };
+    }
+
     return {
       action: ActionType.RESOLVE_ATTACK_EFFECT,
       data: { effectId: pendingEffect.id, selectedTargets: [] },

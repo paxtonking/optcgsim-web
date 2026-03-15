@@ -40,6 +40,21 @@ import {
 } from '../effects';
 
 import { normalizeColors } from './cardHelpers';
+import { TURN_BASED_RESTRICTIONS } from '../constants/index.js';
+import { KW_CANT_PLAY_CARDS, KW_CANT_PLAY_CHARACTERS, KW_NO_ON_PLAYS, KW_DON_EQUALIZATION, KW_KO_PROTECTOR, KW_PREFIX_CONFUSION_TAX } from '../constants/keywords.js';
+
+/** Remove all keywords starting with `prefix` from a card's keyword arrays. */
+function clearKeywordPrefix(card: GameCard, prefix: string): void {
+  if (card.keywords) {
+    card.keywords = card.keywords.filter(k => !k.startsWith(prefix));
+  }
+  if (card.temporaryKeywords) {
+    card.temporaryKeywords = card.temporaryKeywords.filter(k => !k.startsWith(prefix));
+  }
+  if (card.continuousKeywords) {
+    card.continuousKeywords = card.continuousKeywords.filter(k => !k.startsWith(prefix));
+  }
+}
 
 export interface GameStateManagerOptions {
   isTutorial?: boolean;
@@ -549,6 +564,13 @@ export class GameStateManager {
     const player = this.state.players[playerId];
     if (!player) return false;
 
+    // Check player restrictions
+    const playerRestrictions = player.restrictions;
+    if (playerRestrictions?.includes(KW_CANT_PLAY_CARDS)) {
+      console.log('[playCard] Blocked: player has CantPlayCards restriction');
+      return false;
+    }
+
     const cardIndex = player.hand.findIndex(c => c.id === cardId);
     if (cardIndex === -1) return false;
 
@@ -558,7 +580,18 @@ export class GameStateManager {
     const cardDef = this.effectEngine.getCardDefinition(card.cardId);
     const cardCost = card.modifiedCost ?? cardDef?.cost ?? 0;
 
+    // Check CantPlayCharacters restriction
+    if (playerRestrictions?.includes(KW_CANT_PLAY_CHARACTERS)) {
+      if (cardDef?.type === 'CHARACTER') {
+        console.log('[playCard] Blocked: player has CantPlayCharacters restriction');
+        return false;
+      }
+    }
+
     // Check field character limit (max 5 characters on field)
+    // TODO: DEPLOY_SWAP - When a card effect allows swap-on-full-field, this check
+    // should be bypassed and a pending FIELD_SELECT_STEP created to let the player
+    // choose which existing character to return/trash. Requires UI support.
     if (targetZone === CardZone.FIELD && cardDef?.type === 'CHARACTER') {
       if (player.field.length >= DEFAULT_GAME_CONFIG.maxFieldCharacters) {
         return false; // Field is full
@@ -606,14 +639,22 @@ export class GameStateManager {
       // Re-evaluate continuous effects so new character gets stage/continuous buffs
       this.reapplyContinuousEffects();
 
-      // Trigger ON_PLAY effects
-      const triggerEvent: TriggerEvent = {
-        type: EffectTrigger.ON_PLAY,
-        cardId: card.id,
-        playerId: playerId,
-      };
+      // Check if player has NoOnPlays restriction (opponent may have suppressed On Play effects)
+      const onPlaySuppressed = playerRestrictions?.includes(KW_NO_ON_PLAYS);
+      let pendingEffects: PendingEffect[] = [];
 
-      const pendingEffects = this.processTriggers(triggerEvent);
+      if (onPlaySuppressed) {
+        console.log('[playCard] On Play effects suppressed by NoOnPlays restriction');
+      } else {
+        // Trigger ON_PLAY effects
+        const triggerEvent: TriggerEvent = {
+          type: EffectTrigger.ON_PLAY,
+          cardId: card.id,
+          playerId: playerId,
+        };
+
+        pendingEffects = this.processTriggers(triggerEvent);
+      }
 
       // Trigger DEPLOYED_FROM_HAND for card owner
       const deployedTrigger: TriggerEvent = {
@@ -802,69 +843,10 @@ export class GameStateManager {
           }
         }
 
-        // Build pending play effects with valid targets (no cost or cost already handled)
-        // Include ALL effects (choice and non-choice) so player can confirm/skip them
-        const currentPendingIds = new Set(this.effectEngine.getPendingEffects().map(pe => pe.id));
-        const allEffectsToShow = pendingEffects.filter(e =>
-          // Only include effects still in the engine (costs may have removed some)
-          currentPendingIds.has(e.id)
-        );
-        const pendingPlayEffects = allEffectsToShow.map(e => {
-          // Get valid targets for the effect
-          const validTargets = this.getValidTargetsForEffect(e.id);
-
-          // Determine effect type and max targets from effect definition
-          const effectAction = e.effect.effects[0];
-          const effectType = effectAction?.type || 'UNKNOWN';
-
-          // ATTACH_DON only needs 1 selection: the target (leader/character)
-          // System auto-selects DON cards based on target type
-          let maxTargets = effectAction?.target?.count || 1;
-          if (effectAction?.type === EffectType.ATTACH_DON) {
-            maxTargets = 1; // Just the target, DON is auto-selected
-          }
-
-          return {
-            id: e.id,
-            sourceCardId: e.sourceCardId,
-            playerId: e.playerId,
-            description: e.effect.description || 'Activate ON PLAY ability',
-            validTargets,
-            requiresChoice: e.requiresChoice,
-            effectType: effectType.toString(),
-            maxTargets,
-            minTargets: e.effect.isOptional ? 0 : 1
-          };
-        });
-
-        // Filter out ATTACH_DON effects with 0 valid targets (auto-skip them)
-        const actionableEffects = pendingPlayEffects.filter(e => {
-          if (e.effectType === 'ATTACH_DON' && (!e.validTargets || e.validTargets.length === 0)) {
-            // No valid targets (not enough rested DON) - auto-skip this effect
-            console.log('[playCard] ATTACH_DON has no valid targets, auto-skipping');
-            this.effectEngine.removePendingEffect(e.id);
-            return false;
-          }
-          return true;
-        });
-
-        if (actionableEffects.length > 0) {
-          // Pause at PLAY_EFFECT_STEP to let player confirm/select targets
-          this.state.phase = GamePhase.PLAY_EFFECT_STEP;
-          this.state.pendingPlayEffects = actionableEffects;
-        }
       }
 
-      // Also show non-choice effects even when there are no choice effects
-      if (effectsRequiringChoice.length === 0 && pendingEffects.length > 0) {
-        const currentPending = this.effectEngine.getPendingEffects();
-        const pendingIds = new Set(currentPending.map(pe => pe.id));
-        const nonChoiceEffects = pendingEffects.filter(e => pendingIds.has(e.id));
-        if (nonChoiceEffects.length > 0) {
-          const pendingPlayEffects = this.buildPendingPlayEffects(nonChoiceEffects);
-          this.state.phase = GamePhase.PLAY_EFFECT_STEP;
-          this.state.pendingPlayEffects = pendingPlayEffects;
-        }
+      if (pendingEffects.length > 0 && this.advancePlayEffectStep()) {
+        return true;
       }
     } else if (targetZone === CardZone.STAGE) {
       // Stage card handling - only 1 stage per player
@@ -2317,6 +2299,32 @@ export class GameStateManager {
       return false;
     }
 
+    // Check for ConfusionTax restriction on the attacking card
+    // ConfusionTax is stored as a keyword string (e.g., "ConfusionTax:1") on the card
+    // When present, the attacker must trash cards from hand to attack
+    const confusionTaxKeyword = (attacker.keywords ?? []).find(k => k.startsWith(KW_PREFIX_CONFUSION_TAX)) ||
+      (attacker.temporaryKeywords ?? []).find(k => k.startsWith(KW_PREFIX_CONFUSION_TAX)) ||
+      (attacker.continuousKeywords ?? []).find(k => k.startsWith(KW_PREFIX_CONFUSION_TAX));
+    if (confusionTaxKeyword) {
+      const taxAmount = parseInt(confusionTaxKeyword.split(':')[1]) || 1;
+      const attackingPlayer = this.state.players[attacker.owner];
+      if (attackingPlayer && attackingPlayer.hand.length < taxAmount) {
+        console.log(`[declareAttack] Can't attack: ConfusionTax requires ${taxAmount} cards but hand has ${attackingPlayer.hand.length}`);
+        return false;
+      }
+      // TODO: Implement proper card selection UI for ConfusionTax
+      // For now, auto-trash random cards from hand as a simplified version
+      if (attackingPlayer) {
+        for (let i = 0; i < taxAmount && attackingPlayer.hand.length > 0; i++) {
+          const trashIdx = Math.floor(Math.random() * attackingPlayer.hand.length);
+          const trashed = attackingPlayer.hand.splice(trashIdx, 1)[0];
+          trashed.zone = CardZone.TRASH;
+          attackingPlayer.trash.push(trashed);
+          console.log(`[declareAttack] ConfusionTax: trashed ${trashed.id} from hand`);
+        }
+      }
+    }
+
     // Only the FIRST player cannot attack on their first personal turn (OPTCG rules)
     // The second player CAN attack on their first turn
     const attackerPlayer = this.state.players[attacker.owner];
@@ -2381,17 +2389,8 @@ export class GameStateManager {
       targetId: targetId,
     };
     const defenderPendingEffects = this.processTriggers(opponentAttackTrigger);
-
-    const pendingEffects = [...attackerPendingEffects, ...defenderPendingEffects]
-      .sort((a, b) => b.priority - a.priority);
-
-    // Show all ON_ATTACK effects to the player for confirmation (choice and non-choice)
-    if (pendingEffects.length > 0) {
-      // Pause at ATTACK_EFFECT_STEP to let player confirm/select targets
-      this.state.phase = GamePhase.ATTACK_EFFECT_STEP;
-      this.state.pendingAttackEffects = this.buildPendingAttackEffects(pendingEffects);
-
-      return true;
+    if (attackerPendingEffects.length > 0 || defenderPendingEffects.length > 0) {
+      return this.advanceAttackEffectStep();
     }
 
     // Combat order: Attack → Block → Counter → Damage
@@ -2408,64 +2407,30 @@ export class GameStateManager {
   }
 
   // Resolve an ON_ATTACK effect (with or without target selection)
-  public resolveAttackEffect(effectId: string, selectedTargets: string[]): boolean {
+  public resolveAttackEffect(effectId: string, selectedTargets?: string[], playerId?: string): boolean {
     if (this.state.phase !== GamePhase.ATTACK_EFFECT_STEP) return false;
     if (!this.state.currentCombat) return false;
+    if (this.state.pendingAttackEffects?.[0]?.id !== effectId) return false;
+    if (playerId && this.state.pendingAttackEffects?.[0]?.playerId !== playerId) return false;
 
     // Resolve the effect with selected targets
     this.resolveEffect(effectId, selectedTargets);
-
-    // Check if there are more pending ON_ATTACK effects (choice or non-choice)
-    const remainingEffects = this.effectEngine.getPendingEffects().filter(e =>
-      this.isAttackStepPendingEffect(e)
-    );
-
-    if (remainingEffects.length > 0) {
-      this.state.pendingAttackEffects = this.buildPendingAttackEffects(remainingEffects);
-      return true;
-    }
-
-    // All effects resolved, proceed to next combat phase
-    return this.proceedFromAttackEffectStep();
+    return this.advanceAttackEffectStep();
   }
 
   // Skip an ON_ATTACK effect (player chooses not to use it)
-  public skipAttackEffect(effectId: string): boolean {
+  public skipAttackEffect(effectId: string, playerId?: string): boolean {
     if (this.state.phase !== GamePhase.ATTACK_EFFECT_STEP) return false;
     if (!this.state.currentCombat) return false;
+    if (this.state.pendingAttackEffects?.[0]?.id !== effectId) return false;
+    if (playerId && this.state.pendingAttackEffects?.[0]?.playerId !== playerId) return false;
+
+    const pendingEffect = this.effectEngine.getPendingEffects().find(e => e.id === effectId);
+    if (!pendingEffect || !this.canSkipPendingEffect(pendingEffect)) return false;
 
     // Remove the effect from pending without resolving
     this.effectEngine.removePendingEffect(effectId);
-
-    // Check if there are more pending ON_ATTACK effects (choice or non-choice)
-    const remainingEffects = this.effectEngine.getPendingEffects().filter(e =>
-      this.isAttackStepPendingEffect(e)
-    );
-
-    if (remainingEffects.length > 0) {
-      this.state.pendingAttackEffects = this.buildPendingAttackEffects(remainingEffects);
-      return true;
-    }
-
-    // All effects handled, proceed to next combat phase
-    return this.proceedFromAttackEffectStep();
-  }
-
-  /** Build the pendingAttackEffects client payload from remaining attack-step effects. */
-  private buildPendingAttackEffects(effects: PendingEffect[]) {
-    return effects.map(e => {
-      const validTargets = this.getValidTargetsForEffect(e.id);
-      const effectAction = e.effect.effects[0];
-      return {
-        id: e.id,
-        sourceCardId: e.sourceCardId,
-        playerId: e.playerId,
-        description: e.effect.description || 'Activate ability',
-        validTargets,
-        requiresChoice: e.requiresChoice,
-        maxTargets: effectAction?.target?.count || 1
-      };
-    });
+    return this.advanceAttackEffectStep();
   }
 
   private isAttackStepPendingEffect(effect: PendingEffect): boolean {
@@ -2473,29 +2438,127 @@ export class GameStateManager {
       effect.trigger === EffectTrigger.OPPONENT_ATTACK;
   }
 
-  /** Build the pendingPlayEffects client payload from remaining ON_PLAY effects. */
-  private buildPendingPlayEffects(effects: PendingEffect[]) {
+  private getSortedPendingEffects(filter: (effect: PendingEffect) => boolean): PendingEffect[] {
+    return this.effectEngine.getPendingEffects()
+      .filter(filter)
+      .sort((a, b) => b.priority - a.priority);
+  }
+
+  private getPendingEffectMinTargets(effect: PendingEffect): number {
+    return effect.effect.isOptional || effect.effect.effects[0]?.target?.optional ? 0 : 1;
+  }
+
+  private shouldAutoResolvePendingEffect(effect: PendingEffect, validTargetCount?: number): boolean {
+    if (effect.effect.isOptional) return false;
+    if (!effect.requiresChoice) return true;
+    const count = validTargetCount ?? this.getValidTargetsForEffect(effect.id).length;
+    return count === 0;
+  }
+
+  private canSkipPendingEffect(effect: PendingEffect): boolean {
+    return this.getPendingEffectMinTargets(effect) === 0 ||
+      (effect.requiresChoice && this.getValidTargetsForEffect(effect.id).length === 0);
+  }
+
+  /** Build the pending effects client payload. */
+  private buildPendingEffects(
+    effects: PendingEffect[],
+    defaultDescription: string,
+    options?: { includeEffectType?: boolean; maxTargetsOverride?: (action: EffectAction) => number | null },
+  ) {
     return effects.map(e => {
       const validTargets = this.getValidTargetsForEffect(e.id);
       const effectAction = e.effect.effects[0];
-      const effectType = effectAction?.type || 'UNKNOWN';
-
-      let maxTargets = effectAction?.target?.count || 1;
-      if (effectAction?.type === EffectType.ATTACH_DON) {
-        maxTargets = 2; // DON card + target
+      let maxTargets = effectAction?.target?.maxCount || effectAction?.target?.count || 1;
+      if (options?.maxTargetsOverride) {
+        const override = options.maxTargetsOverride(effectAction);
+        if (override !== null) maxTargets = override;
       }
-
-      return {
+      const result: Record<string, any> = {
         id: e.id,
         sourceCardId: e.sourceCardId,
         playerId: e.playerId,
-        description: e.effect.description || 'Activate ON PLAY ability',
+        description: e.effect.description || defaultDescription,
         validTargets,
         requiresChoice: e.requiresChoice,
-        effectType: effectType.toString(),
+        isOptional: this.getPendingEffectMinTargets(e) === 0,
         maxTargets,
-        minTargets: e.effect.isOptional ? 0 : 1
+        minTargets: this.getPendingEffectMinTargets(e),
       };
+      if (options?.includeEffectType) {
+        result.effectType = (effectAction?.type || 'UNKNOWN').toString();
+      }
+      return result;
+    });
+  }
+
+  /** Core effect step advancement loop — shared by attack and play effect steps. */
+  private advanceEffectStep(config: {
+    filter: (effect: PendingEffect) => boolean;
+    phase: GamePhase;
+    setPayload: (payload: any[] | undefined) => void;
+    buildOptions: { defaultDescription: string; includeEffectType?: boolean; maxTargetsOverride?: (action: EffectAction) => number | null };
+    onComplete: () => boolean;
+  }): boolean {
+    const maxIterations = 50;
+    for (let iter = 0; iter < maxIterations; iter++) {
+      const remainingEffects = this.getSortedPendingEffects(config.filter);
+      if (remainingEffects.length === 0) {
+        return config.onComplete();
+      }
+
+      const currentEffect = remainingEffects[0];
+      const validTargetCount = currentEffect.requiresChoice
+        ? this.getValidTargetsForEffect(currentEffect.id).length
+        : -1;
+
+      if (currentEffect.requiresChoice && validTargetCount === 0) {
+        if (this.getPendingEffectMinTargets(currentEffect) === 0) {
+          this.effectEngine.removePendingEffect(currentEffect.id);
+        } else {
+          this.resolveEffect(currentEffect.id, []);
+        }
+        continue;
+      }
+
+      if (this.shouldAutoResolvePendingEffect(currentEffect, validTargetCount >= 0 ? validTargetCount : undefined)) {
+        this.resolveEffect(currentEffect.id);
+        continue;
+      }
+
+      this.state.phase = config.phase;
+      config.setPayload(this.buildPendingEffects(remainingEffects, config.buildOptions.defaultDescription, config.buildOptions));
+      return true;
+    }
+    console.warn(`[advanceEffectStep] Hit iteration limit for ${config.phase}`);
+    return config.onComplete();
+  }
+
+  private advanceAttackEffectStep(): boolean {
+    return this.advanceEffectStep({
+      filter: effect => this.isAttackStepPendingEffect(effect),
+      phase: GamePhase.ATTACK_EFFECT_STEP,
+      setPayload: payload => { this.state.pendingAttackEffects = payload; },
+      buildOptions: { defaultDescription: 'Activate ability' },
+      onComplete: () => this.proceedFromAttackEffectStep(),
+    });
+  }
+
+  private advancePlayEffectStep(): boolean {
+    return this.advanceEffectStep({
+      filter: effect => effect.trigger === EffectTrigger.ON_PLAY,
+      phase: GamePhase.PLAY_EFFECT_STEP,
+      setPayload: payload => { this.state.pendingPlayEffects = payload; },
+      buildOptions: {
+        defaultDescription: 'Activate ON PLAY ability',
+        includeEffectType: true,
+        maxTargetsOverride: action => action?.type === EffectType.ATTACH_DON ? 2 : null,
+      },
+      onComplete: () => {
+        this.state.pendingPlayEffects = undefined;
+        this.state.phase = GamePhase.MAIN_PHASE;
+        return false;
+      },
     });
   }
 
@@ -2516,16 +2579,11 @@ export class GameStateManager {
 
   /**
    * Advance the combat phase after an attack is declared.
-   * Returns true if combat was resolved immediately (unblockable character attack).
+   * Returns true if combat was resolved immediately.
    */
   private advanceCombatPhaseAfterAttack(attacker: GameCard): boolean {
-    if (this.effectEngine.isUnblockable(attacker)) {
-      if (this.state.currentCombat!.targetType === 'leader') {
-        this.state.phase = GamePhase.COUNTER_STEP;
-      } else {
-        this.resolveCombat();
-        return true;
-      }
+    if (this.effectEngine.isUnblockable(attacker, this.state)) {
+      this.state.phase = GamePhase.COUNTER_STEP;
     } else {
       this.state.phase = GamePhase.BLOCKER_STEP;
     }
@@ -2533,54 +2591,33 @@ export class GameStateManager {
   }
 
   // Resolve an ON_PLAY effect (with or without target selection)
-  public resolvePlayEffect(effectId: string, selectedTargets: string[]): boolean {
+  public resolvePlayEffect(effectId: string, selectedTargets?: string[], playerId?: string): boolean {
     if (this.state.phase !== GamePhase.PLAY_EFFECT_STEP) return false;
+    if (this.state.pendingPlayEffects?.[0]?.id !== effectId) return false;
+    if (playerId && this.state.pendingPlayEffects?.[0]?.playerId !== playerId) return false;
 
     console.log('[resolvePlayEffect] Called with effectId:', effectId, 'targets:', selectedTargets);
 
     // Resolve the effect with selected targets
     this.resolveEffect(effectId, selectedTargets);
-
-    // Check if there are more pending ON_PLAY effects (choice or non-choice)
-    const remainingEffects = this.effectEngine.getPendingEffects().filter(e =>
-      e.trigger === EffectTrigger.ON_PLAY
-    );
-
-    if (remainingEffects.length > 0) {
-      this.state.pendingPlayEffects = this.buildPendingPlayEffects(remainingEffects);
-      return true;
-    }
-
-    // All effects resolved, return to MAIN_PHASE
-    this.state.pendingPlayEffects = undefined;
-    this.state.phase = GamePhase.MAIN_PHASE;
-
+    this.advancePlayEffectStep();
     return true;
   }
 
   // Skip an ON_PLAY effect (player chooses not to use it)
-  public skipPlayEffect(effectId: string): boolean {
+  public skipPlayEffect(effectId: string, playerId?: string): boolean {
     if (this.state.phase !== GamePhase.PLAY_EFFECT_STEP) return false;
+    if (this.state.pendingPlayEffects?.[0]?.id !== effectId) return false;
+    if (playerId && this.state.pendingPlayEffects?.[0]?.playerId !== playerId) return false;
 
     console.log('[skipPlayEffect] Called with effectId:', effectId);
 
+    const pendingEffect = this.effectEngine.getPendingEffects().find(e => e.id === effectId);
+    if (!pendingEffect || !this.canSkipPendingEffect(pendingEffect)) return false;
+
     // Remove the effect from pending without resolving
     this.effectEngine.removePendingEffect(effectId);
-
-    // Check if there are more pending ON_PLAY effects (choice or non-choice)
-    const remainingEffects = this.effectEngine.getPendingEffects().filter(e =>
-      e.trigger === EffectTrigger.ON_PLAY
-    );
-
-    if (remainingEffects.length > 0) {
-      this.state.pendingPlayEffects = this.buildPendingPlayEffects(remainingEffects);
-      return true;
-    }
-
-    // All effects handled, return to MAIN_PHASE
-    this.state.pendingPlayEffects = undefined;
-    this.state.phase = GamePhase.MAIN_PHASE;
-
+    this.advancePlayEffectStep();
     return true;
   }
 
@@ -2720,9 +2757,6 @@ export class GameStateManager {
 
     // Check if attacker is unblockable
     if (this.effectEngine.isUnblockable(attacker, this.state)) return false;
-
-    // Blocker can only redirect attacks targeting the leader (OPTCG rules)
-    if (this.state.currentCombat.targetType !== 'leader') return false;
 
     blocker.state = CardState.RESTED;
     this.state.currentCombat.isBlocked = true;
@@ -2950,13 +2984,7 @@ export class GameStateManager {
     const attacker = this.findCard(this.state.currentCombat.attackerId);
     if (!attacker || attacker.owner === playerId) return false;
 
-    // Counter step only happens when attacking the leader (OPTCG rules)
-    if (this.state.currentCombat.targetType === 'leader') {
-      this.state.phase = GamePhase.COUNTER_STEP;
-    } else {
-      // Character attack: skip counter step, go directly to damage
-      this.resolveCombat();
-    }
+    this.state.phase = GamePhase.COUNTER_STEP;
 
     return true;
   }
@@ -3054,11 +3082,10 @@ export class GameStateManager {
       // Battle with character
       const target = this.findCard(targetId!);
       if (target) {
-        // getEffectivePower includes base, buffs, DON, and THIS_BATTLE buffs from counter events
-        // Counter power applies to blocker combat (counter step happens after block step)
+        // getEffectivePower includes base, buffs, DON, and THIS_BATTLE buffs from counter events.
+        // Hand counters can protect the original target or a blocker that became the new target.
         const targetPower = this.getEffectivePower(target);
-        const blockerCounterPower = this.state.currentCombat?.isBlocked ? counterPower : 0;
-        if (attackPower >= targetPower + blockerCounterPower) {
+        if (attackPower >= targetPower + counterPower) {
           // Trigger PRE_KO before the KO happens (allows prevention effects)
           const preKoTrigger: TriggerEvent = {
             type: EffectTrigger.PRE_KO,
@@ -3103,7 +3130,7 @@ export class GameStateManager {
             const targetOwner = this.state.players[target.owner];
             if (targetOwner) {
               const protectorIndex = targetOwner.field.findIndex(
-                c => c.temporaryKeywords?.includes('KOProtector')
+                c => c.temporaryKeywords?.includes(KW_KO_PROTECTOR)
               );
               if (protectorIndex !== -1) {
                 const protector = targetOwner.field[protectorIndex];
@@ -3114,7 +3141,7 @@ export class GameStateManager {
               // Clean up KOProtector keyword from all cards
               for (const card of targetOwner.field) {
                 if (card.temporaryKeywords) {
-                  card.temporaryKeywords = card.temporaryKeywords.filter(k => k !== 'KOProtector');
+                  card.temporaryKeywords = card.temporaryKeywords.filter(k => k !== KW_KO_PROTECTOR);
                 }
               }
             }
@@ -3203,9 +3230,10 @@ export class GameStateManager {
         player.life--;
 
         if (hasBanish) {
-          // Banish: card goes to trash (no LIFE_ADDED_TO_HAND trigger - Bug 1 fix)
-          lifeCard.zone = CardZone.TRASH;
-          player.trash.push(lifeCard);
+          // Banish: card goes to bottom of deck (per OPTCG rules)
+          lifeCard.zone = CardZone.DECK;
+          lifeCard.faceUp = false;
+          player.deck.push(lifeCard); // push = bottom of deck (deck.pop() draws from top)
         } else {
           // Normal: card goes to hand
           lifeCard.zone = CardZone.HAND;
@@ -3360,6 +3388,22 @@ export class GameStateManager {
       };
       this.processTriggers(trashAllyTrigger);
 
+      // Trigger KO_ALLY for other cards owned by the same player
+      const koAllyTrigger: TriggerEvent = {
+        type: EffectTrigger.KO_ALLY,
+        cardId: cardId,
+        playerId: card.owner,
+      };
+      this.processTriggers(koAllyTrigger);
+
+      // Trigger OPPONENT_CHARACTER_KOD for cards owned by the opponent
+      const opponentKoTrigger: TriggerEvent = {
+        type: EffectTrigger.OPPONENT_CHARACTER_KOD,
+        cardId: cardId,
+        playerId: card.owner,
+      };
+      this.processTriggers(opponentKoTrigger);
+
       this.detachDonFromCard(cardId, player.id);
     }
   }
@@ -3464,6 +3508,28 @@ export class GameStateManager {
       playerId: playerId,
     };
     this.processTriggers(endTurnEvent);
+
+    // Check for DON equalization restriction
+    const activePlayerRestrictions = player.restrictions;
+    if (activePlayerRestrictions?.includes(KW_DON_EQUALIZATION)) {
+      const opponentId = Object.keys(this.state.players).find(id => id !== playerId);
+      const opponent = opponentId ? this.state.players[opponentId] : undefined;
+      if (opponent) {
+        const opponentDonCount = opponent.donField.length;
+        while (player.donField.length > opponentDonCount) {
+          // Return excess DON to DON deck
+          const excessDon = player.donField.pop();
+          if (excessDon) {
+            excessDon.attachedTo = undefined;
+            excessDon.state = CardState.ACTIVE;
+            player.donDeck++;
+            console.log(`[endTurn] DonEqualization: returned DON ${excessDon.id} to DON deck`);
+          }
+        }
+      }
+      // Remove the restriction after applying
+      player.restrictions = activePlayerRestrictions.filter(r => r !== KW_DON_EQUALIZATION);
+    }
 
     // Clear THIS_TURN power buffs from all cards (for both players)
     this.clearTurnBuffs();
@@ -3587,6 +3653,22 @@ export class GameStateManager {
             effect => keepGrantedEffect(effect)
           );
         }
+      }
+
+      // Clear turn-based player restrictions
+      if (player.restrictions) {
+        player.restrictions = player.restrictions.filter(
+          r => !(TURN_BASED_RESTRICTIONS as readonly string[]).includes(r)
+        );
+        if (player.restrictions.length === 0) {
+          player.restrictions = undefined;
+        }
+      }
+
+      // Clear card-level ConfusionTax keywords from field characters and leader
+      const cardsToClean = player.leaderCard ? [...player.field, player.leaderCard] : player.field;
+      for (const card of cardsToClean) {
+        clearKeywordPrefix(card, KW_PREFIX_CONFUSION_TAX);
       }
     }
   }
@@ -3822,16 +3904,16 @@ export class GameStateManager {
         return this.declareAttack(actionData.attackerId, actionData.targetId, actionData.targetType);
 
       case ActionType.RESOLVE_ATTACK_EFFECT:
-        return this.resolveAttackEffect(actionData.effectId, actionData.selectedTargets || []);
+        return this.resolveAttackEffect(actionData.effectId, actionData.selectedTargets || [], action.playerId);
 
       case ActionType.SKIP_ATTACK_EFFECT:
-        return this.skipAttackEffect(actionData.effectId);
+        return this.skipAttackEffect(actionData.effectId, action.playerId);
 
       case ActionType.RESOLVE_PLAY_EFFECT:
-        return this.resolvePlayEffect(actionData.effectId, actionData.selectedTargets || []);
+        return this.resolvePlayEffect(actionData.effectId, actionData.selectedTargets || [], action.playerId);
 
       case ActionType.SKIP_PLAY_EFFECT:
-        return this.skipPlayEffect(actionData.effectId);
+        return this.skipPlayEffect(actionData.effectId, action.playerId);
 
       case ActionType.RESOLVE_ACTIVATE_EFFECT:
         return this.resolveActivateEffect(actionData.effectId, actionData.selectedTargets || []);
@@ -5120,13 +5202,13 @@ export class GameStateManager {
    * Returns true when we transition into PLAY_EFFECT_STEP.
    */
   private continuePendingEffectAfterCost(pendingEffect: PendingEffect, playerId: string): boolean {
-    if (pendingEffect.requiresChoice) {
+    if (pendingEffect.requiresChoice && !this.shouldAutoResolvePendingEffect(pendingEffect)) {
       console.log('[continuePendingEffectAfterCost] Effect requires target selection, entering PLAY_EFFECT_STEP');
 
       const validTargets = this.getValidTargetsForEffect(pendingEffect.id);
       const effectAction = pendingEffect.effect.effects[0];
       const effectType = effectAction?.type || 'UNKNOWN';
-      const maxTargets = effectAction?.target?.count || 1;
+      const maxTargets = effectAction?.target?.maxCount || effectAction?.target?.count || 1;
 
       const playEffect: PendingPlayEffect = {
         id: pendingEffect.id,
@@ -5135,9 +5217,10 @@ export class GameStateManager {
         description: pendingEffect.effect.description || 'Activate ON PLAY ability',
         validTargets,
         requiresChoice: true,
+        isOptional: this.getPendingEffectMinTargets(pendingEffect) === 0,
         effectType: effectType.toString(),
         maxTargets,
-        minTargets: pendingEffect.effect.isOptional ? 0 : 1
+        minTargets: this.getPendingEffectMinTargets(pendingEffect)
       };
 
       this.state.pendingPlayEffects = [playEffect];
@@ -5793,10 +5876,20 @@ export class GameStateManager {
       case EffectType.BUFF_SELF: {
         const card = this.findCard(sourceCardId);
         if (card) {
-          // Add power buff
+          // Add power buff with proper tracking
           const buffValue = effect.value || 0;
-          card.power = (card.power || 0) + buffValue;
-          console.log('[executeChildEffectImmediately] Buffed self by', buffValue);
+          if (!card.powerBuffs) {
+            card.powerBuffs = [];
+          }
+          const buff: PowerBuff = {
+            id: `child-buff-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+            sourceCardId: card.cardId || sourceCardId,
+            value: buffValue,
+            duration: 'THIS_TURN',
+            appliedTurn: this.state.turn,
+          };
+          card.powerBuffs.push(buff);
+          console.log('[executeChildEffectImmediately] Buffed self by', buffValue, 'with tracking');
         }
         break;
       }

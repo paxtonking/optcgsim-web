@@ -179,6 +179,20 @@ export enum EffectType {
   GRANT_KEYWORD = 'GRANT_KEYWORD',
   GRANT_EFFECT = 'GRANT_EFFECT',
   GRANT_RUSH_VS_CHARACTERS = 'GRANT_RUSH_VS_CHARACTERS',
+
+  // Missing mechanics from Unity reference
+  LOSE_KEYWORD = 'LOSE_KEYWORD',                    // Remove a keyword (e.g., Blocker) from target
+  CANT_PLAY_CARDS = 'CANT_PLAY_CARDS',              // Target player can't play cards from hand
+  CANT_PLAY_CHARACTERS = 'CANT_PLAY_CHARACTERS',    // Target player can't play characters
+  DISABLE_EFFECT_DRAWS = 'DISABLE_EFFECT_DRAWS',    // Target player can't draw via effects this turn
+  GRANT_ATTRIBUTE = 'GRANT_ATTRIBUTE',              // Give a card an attribute (e.g., Slash)
+  FIELD_EFFECT_IMMUNITY = 'FIELD_EFFECT_IMMUNITY',  // All current field characters immune to effects until next turn
+  NO_ON_PLAYS_NEXT_TURN = 'NO_ON_PLAYS_NEXT_TURN',  // Opponent can't activate On Play abilities next turn
+  CONFUSION_TAX = 'CONFUSION_TAX',                  // Target must trash X cards from hand to attack
+  DON_EQUALIZATION = 'DON_EQUALIZATION',            // Return DON to match opponent's count at end of turn
+  FLIP_LIFE_FACE_UP = 'FLIP_LIFE_FACE_UP',          // Turn top life card face-up
+  FLIP_LIFE_FACE_DOWN = 'FLIP_LIFE_FACE_DOWN',      // Turn top life card face-down
+  DEPLOY_SWAP = 'DEPLOY_SWAP',                      // Replace a character when field is at max (5)
 }
 
 // ============================================

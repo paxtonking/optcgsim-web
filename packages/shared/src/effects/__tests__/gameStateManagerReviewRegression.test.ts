@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { GameStateManager } from '../../game/GameStateManager';
 import { EffectDuration, EffectTrigger, EffectType, TargetType } from '../types';
-import { CardState, CardZone, GamePhase } from '../../types/game';
+import { ActionType, CardState, CardZone, GamePhase } from '../../types/game';
 import {
   createMockCard,
   createMockCardDefinition,
@@ -49,7 +49,7 @@ describe('GameStateManager review regressions', () => {
     expect(state.players.player2.deck.map(card => card.id)).not.toContain(defender.id);
   });
 
-  it('surfaces and resolves defender-side OPPONENT_ATTACK effects that require choices', () => {
+  it('lets the defending player legally resolve OPPONENT_ATTACK effects before combat continues', () => {
     const manager = new GameStateManager('game-defender-opponent-attack', 'player1', 'player2');
     manager.loadCardDefinitions([
       createMockCardDefinition({ id: 'ATTACKER', effects: [] }),
@@ -105,18 +105,35 @@ describe('GameStateManager review regressions', () => {
     state.phase = GamePhase.MAIN_PHASE;
 
     expect(manager.declareAttack(attacker.id, attackTarget.id, 'character')).toBe(true);
-    expect(state.phase).toBe(GamePhase.ATTACK_EFFECT_STEP);
 
     const pendingEffect = state.pendingAttackEffects?.find(
       effect => effect.sourceCardId === reactiveDefender.id
     );
 
-    expect(pendingEffect).toEqual(expect.objectContaining({
-      playerId: 'player2',
-      validTargets: [attacker.id],
-    }));
+    if (pendingEffect) {
+      expect(state.phase).toBe(GamePhase.ATTACK_EFFECT_STEP);
+      expect(pendingEffect).toEqual(expect.objectContaining({
+        playerId: 'player2',
+        validTargets: [attacker.id],
+      }));
 
-    expect(manager.resolveAttackEffect(pendingEffect!.id, [attacker.id])).toBe(true);
+      expect(manager.processAction({
+        id: 'attacker-cannot-resolve-defender-effect',
+        type: ActionType.RESOLVE_ATTACK_EFFECT,
+        playerId: 'player1',
+        timestamp: Date.now(),
+        data: { effectId: pendingEffect.id, selectedTargets: [attacker.id] },
+      })).toBe(false);
+
+      expect(manager.processAction({
+        id: 'defender-resolves-opponent-attack-effect',
+        type: ActionType.RESOLVE_ATTACK_EFFECT,
+        playerId: 'player2',
+        timestamp: Date.now(),
+        data: { effectId: pendingEffect.id, selectedTargets: [attacker.id] },
+      })).toBe(true);
+    }
+
     expect(state.phase).toBe(GamePhase.BLOCKER_STEP);
     expect(attacker.powerBuffs).toEqual(
       expect.arrayContaining([
@@ -126,6 +143,334 @@ describe('GameStateManager review regressions', () => {
         }),
       ])
     );
+  });
+
+  it('uses modified cost for KO_COST_OR_LESS effects', () => {
+    const manager = new GameStateManager('game-ko-cost-or-less-modified-cost', 'player1', 'player2');
+    manager.loadCardDefinitions([
+      createMockCardDefinition({ id: 'BLACK-REMOVAL', type: 'CHARACTER', cost: 0, power: 4000, effects: [] }),
+      createMockCardDefinition({ id: 'REDUCED-TARGET', type: 'CHARACTER', cost: 5, power: 5000, effects: [] }),
+    ]);
+
+    const state = manager.getState();
+    const removal = createMockCard({
+      id: 'black-removal',
+      cardId: 'BLACK-REMOVAL',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+      cost: 0,
+    });
+    const target = createMockCard({
+      id: 'reduced-target',
+      cardId: 'REDUCED-TARGET',
+      owner: 'player2',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+      cost: 5,
+      modifiedCost: 3,
+      power: 5000,
+      basePower: 5000,
+    });
+
+    manager.getEffectEngine().addPendingEffect({
+      id: 'pending-ko-effect',
+      sourceCardId: removal.id,
+      playerId: 'player1',
+      trigger: EffectTrigger.ON_PLAY,
+      requiresChoice: true,
+      priority: 1,
+      effect: {
+        id: 'ko-3-cost-or-less',
+        trigger: EffectTrigger.ON_PLAY,
+        description: 'K.O. up to 1 of your opponent\'s 3-cost-or-less characters.',
+        effects: [{
+          type: EffectType.KO_COST_OR_LESS,
+          value: 3,
+          target: { type: TargetType.OPPONENT_CHARACTER, count: 1 },
+        }],
+      },
+    });
+
+    state.players.player1.field = [removal];
+    state.players.player2.field = [target];
+    expect(manager.getValidTargetsForEffect('pending-ko-effect')).toContain(target.id);
+
+    manager.resolveEffect('pending-ko-effect', [target.id]);
+    expect(state.players.player2.field).toHaveLength(0);
+    expect(state.players.player2.trash.map(card => card.id)).toContain(target.id);
+  });
+
+  it('keeps mandatory non-choice ON_PLAY and ON_ATTACK effects non-skippable', () => {
+    const manager = new GameStateManager('game-mandatory-auto-effects', 'player1', 'player2');
+    manager.loadCardDefinitions([
+      createMockCardDefinition({
+        id: 'DRAWER',
+        type: 'CHARACTER',
+        cost: 0,
+        power: 1000,
+        effects: [{
+          id: 'draw-one',
+          trigger: EffectTrigger.ON_PLAY,
+          description: 'Draw 1 card.',
+          effects: [{ type: EffectType.DRAW_CARDS, value: 1 }],
+        }],
+      }),
+      createMockCardDefinition({
+        id: 'ATTACK-BUFFER',
+        type: 'CHARACTER',
+        cost: 1,
+        power: 5000,
+        effects: [{
+          id: 'self-buff-on-attack',
+          trigger: EffectTrigger.ON_ATTACK,
+          description: 'This card gets +1000 power during this battle.',
+          effects: [{
+            type: EffectType.BUFF_SELF,
+            value: 1000,
+            duration: EffectDuration.UNTIL_END_OF_BATTLE,
+          }],
+        }],
+      }),
+      createMockCardDefinition({ id: 'BATTLE-TARGET', type: 'CHARACTER', cost: 1, power: 3000, effects: [] }),
+      createMockCardDefinition({ id: 'FILLER', type: 'CHARACTER', cost: 1, power: 1000, effects: [] }),
+    ]);
+
+    const state = manager.getState();
+    const drawer = createMockCard({
+      id: 'drawer',
+      cardId: 'DRAWER',
+      owner: 'player1',
+      zone: CardZone.HAND,
+      state: CardState.ACTIVE,
+      cost: 0,
+    });
+    const drawnCard = createMockCard({
+      id: 'drawn-card',
+      cardId: 'FILLER',
+      owner: 'player1',
+      zone: CardZone.DECK,
+      state: CardState.ACTIVE,
+    });
+    const attacker = createMockCard({
+      id: 'attack-buffer',
+      cardId: 'ATTACK-BUFFER',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+      power: 5000,
+      basePower: 5000,
+    });
+    const attackTarget = createMockCard({
+      id: 'battle-target',
+      cardId: 'BATTLE-TARGET',
+      owner: 'player2',
+      zone: CardZone.FIELD,
+      state: CardState.RESTED,
+      power: 3000,
+      basePower: 3000,
+    });
+
+    state.players.player1.hand = [drawer];
+    state.players.player1.deck = [drawnCard];
+    state.players.player1.donDeck = [];
+    state.players.player1.field = [attacker];
+    state.players.player2.field = [attackTarget];
+    state.activePlayerId = 'player1';
+    state.phase = GamePhase.MAIN_PHASE;
+
+    expect(manager.playCard('player1', drawer.id)).toBe(true);
+
+    const pendingPlayEffect = state.pendingPlayEffects?.find(
+      effect => effect.sourceCardId === drawer.id
+    );
+
+    if (pendingPlayEffect) {
+      expect(state.phase).toBe(GamePhase.PLAY_EFFECT_STEP);
+      expect(pendingPlayEffect.isOptional).toBe(false);
+      expect(manager.processAction({
+        id: 'cannot-skip-mandatory-play-effect',
+        type: ActionType.SKIP_PLAY_EFFECT,
+        playerId: 'player1',
+        timestamp: Date.now(),
+        data: { effectId: pendingPlayEffect.id },
+      })).toBe(false);
+      expect(manager.processAction({
+        id: 'resolve-mandatory-play-effect',
+        type: ActionType.RESOLVE_PLAY_EFFECT,
+        playerId: 'player1',
+        timestamp: Date.now(),
+        data: { effectId: pendingPlayEffect.id, selectedTargets: [] },
+      })).toBe(true);
+    }
+
+    expect(state.phase).toBe(GamePhase.MAIN_PHASE);
+    expect(state.pendingPlayEffects).toBeUndefined();
+    expect(state.players.player1.hand.map(card => card.id)).toContain(drawnCard.id);
+
+    expect(manager.declareAttack(attacker.id, attackTarget.id, 'character')).toBe(true);
+
+    const pendingAttackEffect = state.pendingAttackEffects?.find(
+      effect => effect.sourceCardId === attacker.id
+    );
+
+    if (pendingAttackEffect) {
+      expect(state.phase).toBe(GamePhase.ATTACK_EFFECT_STEP);
+      expect(pendingAttackEffect.isOptional).toBe(false);
+      expect(manager.processAction({
+        id: 'cannot-skip-mandatory-attack-effect',
+        type: ActionType.SKIP_ATTACK_EFFECT,
+        playerId: 'player1',
+        timestamp: Date.now(),
+        data: { effectId: pendingAttackEffect.id },
+      })).toBe(false);
+      expect(manager.processAction({
+        id: 'resolve-mandatory-attack-effect',
+        type: ActionType.RESOLVE_ATTACK_EFFECT,
+        playerId: 'player1',
+        timestamp: Date.now(),
+        data: { effectId: pendingAttackEffect.id, selectedTargets: [] },
+      })).toBe(true);
+    }
+
+    expect(state.phase).toBe(GamePhase.BLOCKER_STEP);
+    expect(attacker.powerBuffs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          value: 1000,
+          duration: 'THIS_BATTLE',
+        }),
+      ])
+    );
+    expect(state.pendingAttackEffects).toBeUndefined();
+  });
+
+  it('allows blockers to redirect attacks targeting characters', () => {
+    const manager = new GameStateManager('game-blocker-vs-character-attack', 'player1', 'player2');
+    const state = manager.getState();
+
+    const attacker = createMockCard({
+      id: 'attacker',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+      power: 6000,
+      basePower: 6000,
+    });
+    const attackTarget = createMockCard({
+      id: 'attack-target',
+      owner: 'player2',
+      zone: CardZone.FIELD,
+      state: CardState.RESTED,
+      power: 3000,
+      basePower: 3000,
+    });
+    const blocker = createMockCard({
+      id: 'blocker',
+      owner: 'player2',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+      power: 2000,
+      basePower: 2000,
+      keywords: ['Blocker'],
+    });
+
+    state.players.player1.field = [attacker];
+    state.players.player2.field = [attackTarget, blocker];
+    state.activePlayerId = 'player1';
+    state.phase = GamePhase.MAIN_PHASE;
+
+    expect(manager.declareAttack(attacker.id, attackTarget.id, 'character')).toBe(true);
+    expect(state.phase).toBe(GamePhase.BLOCKER_STEP);
+    expect(manager.declareBlocker('player2', blocker.id)).toBe(true);
+    expect(state.currentCombat?.targetId).toBe(blocker.id);
+    expect(state.currentCombat?.targetType).toBe('character');
+    expect(state.currentCombat?.isBlocked).toBe(true);
+    expect(state.phase).toBe(GamePhase.COUNTER_STEP);
+  });
+
+  it('keeps a counter window for direct and unblockable character attacks', () => {
+    const manager = new GameStateManager('game-character-counter-window', 'player1', 'player2');
+    manager.loadCardDefinitions([
+      createMockCardDefinition({ id: 'COUNTER-2000', type: 'CHARACTER', cost: 1, power: 2000, counter: 2000, effects: [] }),
+    ]);
+
+    const state = manager.getState();
+    const attacker = createMockCard({
+      id: 'attacker',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+      power: 6000,
+      basePower: 6000,
+    });
+    const unblockableAttacker = createMockCard({
+      id: 'unblockable-attacker',
+      owner: 'player1',
+      zone: CardZone.FIELD,
+      state: CardState.ACTIVE,
+      power: 6000,
+      basePower: 6000,
+      keywords: ['Unblockable'],
+    });
+    const defendedTarget = createMockCard({
+      id: 'defended-target',
+      owner: 'player2',
+      zone: CardZone.FIELD,
+      state: CardState.RESTED,
+      power: 5000,
+      basePower: 5000,
+    });
+    const secondTarget = createMockCard({
+      id: 'second-target',
+      owner: 'player2',
+      zone: CardZone.FIELD,
+      state: CardState.RESTED,
+      power: 5000,
+      basePower: 5000,
+    });
+    const counterA = createMockCard({
+      id: 'counter-a',
+      cardId: 'COUNTER-2000',
+      owner: 'player2',
+      zone: CardZone.HAND,
+      state: CardState.ACTIVE,
+    });
+    const counterB = createMockCard({
+      id: 'counter-b',
+      cardId: 'COUNTER-2000',
+      owner: 'player2',
+      zone: CardZone.HAND,
+      state: CardState.ACTIVE,
+    });
+
+    state.players.player1.field = [attacker, unblockableAttacker];
+    state.players.player2.field = [defendedTarget, secondTarget];
+    state.players.player2.hand = [counterA, counterB];
+    state.activePlayerId = 'player1';
+    state.phase = GamePhase.MAIN_PHASE;
+
+    expect(manager.declareAttack(attacker.id, defendedTarget.id, 'character')).toBe(true);
+    expect(state.phase).toBe(GamePhase.BLOCKER_STEP);
+    expect(manager.passBlocker('player2')).toBe(true);
+    expect(state.phase).toBe(GamePhase.COUNTER_STEP);
+    expect(manager.useCounter('player2', [counterA.id])).toBe(true);
+    expect(state.players.player2.field.map(card => card.id)).toContain(defendedTarget.id);
+    expect(state.players.player2.trash.map(card => card.id)).not.toContain(defendedTarget.id);
+
+    state.phase = GamePhase.MAIN_PHASE;
+    state.currentCombat = undefined;
+    defendedTarget.state = CardState.RESTED;
+    secondTarget.state = CardState.RESTED;
+    counterB.zone = CardZone.HAND;
+    state.players.player2.hand = [counterB];
+
+    expect(manager.declareAttack(unblockableAttacker.id, secondTarget.id, 'character')).toBe(true);
+    expect(state.phase).toBe(GamePhase.COUNTER_STEP);
+    expect(manager.useCounter('player2', [counterB.id])).toBe(true);
+    // useCounter automatically resolves combat, so passCounter is not needed
+    expect(state.players.player2.field.map(card => card.id)).toContain(secondTarget.id);
+    expect(state.players.player2.trash.map(card => card.id)).not.toContain(secondTarget.id);
   });
 
   it('counts next-turn buff durations in power math while they are active', () => {

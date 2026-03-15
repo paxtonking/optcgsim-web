@@ -3788,3 +3788,54 @@
   filter: grayscale(50%) brightness(0.7);
   opacity: 0.5;
 }
+
+/* ===================================
+   CARD COLOR ACCENT BORDERS
+   Subtle colored border based on card color.
+   Uses lower specificity so glow effects
+   (playable, target, selected) override.
+   =================================== */
+
+.game-card--color-red {
+  border: 1px solid #DC2626;
+  box-shadow: 0 0 3px rgba(220, 38, 38, 0.3);
+}
+.game-card--color-green {
+  border: 1px solid #16A34A;
+  box-shadow: 0 0 3px rgba(22, 163, 74, 0.3);
+}
+.game-card--color-blue {
+  border: 1px solid #2563EB;
+  box-shadow: 0 0 3px rgba(37, 99, 235, 0.3);
+}
+.game-card--color-purple {
+  border: 1px solid #9333EA;
+  box-shadow: 0 0 3px rgba(147, 51, 234, 0.3);
+}
+.game-card--color-black {
+  border: 1px solid #4B5563;
+  box-shadow: 0 0 3px rgba(75, 85, 99, 0.3);
+}
+.game-card--color-yellow {
+  border: 1px solid #EAB308;
+  box-shadow: 0 0 3px rgba(234, 179, 8, 0.3);
+}
+
+/* ===================================
+   HAND COUNT BADGE
+   =================================== */
+
+.hand-count-badge {
+  position: absolute;
+  top: -18px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: #e0e0e0;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  z-index: 5;
+  pointer-events: none;
+}
