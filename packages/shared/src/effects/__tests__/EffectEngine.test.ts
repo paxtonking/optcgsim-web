@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { EffectEngine, EffectContext } from '../EffectEngine';
-import { EffectType, EffectTrigger, EffectDuration, TargetType, ConditionType } from '../types';
+import { EffectType, EffectTrigger, EffectDuration, TargetType, ConditionType, StateChangeType } from '../types';
 import { GamePhase, CardState, CardZone } from '../../types/game';
 import {
   createMockGameState,
@@ -654,7 +654,7 @@ describe('EffectEngine.resolveAction', () => {
       const result = engine.resolveEffect(effect, context);
       expect(result.success).toBe(true);
       expect(result.changes.length).toBe(1);
-      expect(result.changes[0].type).toBe('EFFECT_APPLIED');
+      expect(result.changes[0].type).toBe(StateChangeType.EFFECT_APPLIED);
       expect(result.changes[0].value).toBe(3);
       // Cards should still be in deck (not moved)
       expect(player.deck.length).toBe(5);

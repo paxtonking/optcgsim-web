@@ -16,6 +16,11 @@ import {
   ParsedCost,
 } from './types';
 
+/** Normalize shorthand power values (e.g. 5 → 5000, 5000 → 5000). */
+function normalizePower(val: number): number {
+  return val >= 1000 ? val : val * 1000;
+}
+
 // ============================================
 // TRIGGER PATTERNS
 // ============================================
@@ -165,8 +170,7 @@ export const ACTION_PATTERNS: ActionPattern[] = [
     actionType: EffectType.BUFF_POWER,
     extractValue: (m) => {
       // Return the per-unit value; actual scaling happens at resolution time
-      const val = parseInt(m[1]);
-      return val >= 1000 ? val : val * 1000;
+      return normalizePower(parseInt(m[1]));
     },
   },
 
@@ -216,6 +220,20 @@ export const ACTION_PATTERNS: ActionPattern[] = [
     pattern: /gains?\s*\+(\d+)\s*cost/i,
     actionType: EffectType.INCREASE_COST,
     extractValue: (m) => parseInt(m[1])
+  },
+
+  // KO by cost - must be BEFORE generic K.O. patterns
+  {
+    pattern: /K\.?O\.?\s+(?:up\s+to\s+)?(\d+)?\s*(?:of\s+)?(?:your\s+)?opponent'?s?\s+Characters?\s+(?:with\s+)?(?:a\s+)?cost\s+(?:of\s+)?(\d+)\s+or\s+less/i,
+    actionType: EffectType.KO_COST_OR_LESS,
+    extractValue: (m: RegExpMatchArray) => parseInt(m[2]),
+  },
+  // KO by power - must be BEFORE generic K.O. patterns
+  // Matches both "5000 power or less" and "5000 or less power"
+  {
+    pattern: /K\.?O\.?\s+(?:up\s+to\s+)?(\d+)?\s*(?:of\s+)?(?:your\s+)?opponent'?s?\s+Characters?\s+(?:with\s+)?(\d+)\s*(?:000)?\s*(?:power\s+)?or\s+less(?:\s+power)?/i,
+    actionType: EffectType.KO_POWER_OR_LESS,
+    extractValue: (m: RegExpMatchArray) => normalizePower(parseInt(m[2])),
   },
 
   // KO effects
@@ -629,9 +647,9 @@ export const ACTION_PATTERNS: ActionPattern[] = [
 
   // Trash by power - "Trash up to 1 of your opponent's Characters with X power or less"
   {
-    pattern: /[Tt]rash\s+(?:up to\s+)?(\d+)?\s*(?:of\s+)?(?:your\s+)?opponent'?s?\s+Characters?\s+with\s+\d+\s*(?:000)?\s*power\s+or\s+less/i,
+    pattern: /[Tt]rash\s+(?:up to\s+)?(\d+)?\s*(?:of\s+)?(?:your\s+)?opponent'?s?\s+Characters?\s+with\s+(\d+)\s*(?:000)?\s*power\s+or\s+less/i,
     actionType: EffectType.KO_POWER_OR_LESS,
-    extractValue: (m) => m[1] ? parseInt(m[1]) : 1
+    extractValue: (m: RegExpMatchArray) => normalizePower(parseInt(m[2])),
   },
 
   // Do not become active (broader) - "do not become active in your and your opponent's Refresh Phases"

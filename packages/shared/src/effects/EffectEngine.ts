@@ -12,6 +12,7 @@ import {
   PendingEffect,
   EffectResolutionResult,
   StateChange,
+  StateChangeType,
   TargetFilter,
 } from './types';
 
@@ -936,7 +937,7 @@ export class EffectEngine {
           context.sourceCard.hasAttacked = false;
         }
         changes.push({
-          type: 'KEYWORD_ADDED',
+          type: StateChangeType.KEYWORD_ADDED,
           cardId: context.sourceCard.id,
           value: 'Rush',
         });
@@ -944,7 +945,7 @@ export class EffectEngine {
 
       case EffectType.BLOCKER:
         changes.push({
-          type: 'KEYWORD_ADDED',
+          type: StateChangeType.KEYWORD_ADDED,
           cardId: context.sourceCard.id,
           value: KW_BLOCKER,
         });
@@ -952,7 +953,7 @@ export class EffectEngine {
 
       case EffectType.DOUBLE_ATTACK:
         changes.push({
-          type: 'KEYWORD_ADDED',
+          type: StateChangeType.KEYWORD_ADDED,
           cardId: context.sourceCard.id,
           value: 'Double Attack',
         });
@@ -960,7 +961,7 @@ export class EffectEngine {
 
       case EffectType.BANISH:
         changes.push({
-          type: 'KEYWORD_ADDED',
+          type: StateChangeType.KEYWORD_ADDED,
           cardId: context.sourceCard.id,
           value: 'Banish',
         });
@@ -977,7 +978,7 @@ export class EffectEngine {
           gameState
         );
         changes.push({
-          type: 'POWER_CHANGED',
+          type: StateChangeType.POWER_CHANGED,
           cardId: context.sourceCard.id,
           value: action.value,
         });
@@ -1003,7 +1004,7 @@ export class EffectEngine {
                 (gameState.currentCombat.effectBuffPower || 0) + (action.value || 0);
             }
             changes.push({
-              type: 'POWER_CHANGED',
+              type: StateChangeType.POWER_CHANGED,
               cardId: targetId,
               value: action.value,
             });
@@ -1032,7 +1033,7 @@ export class EffectEngine {
               gameState
             );
             changes.push({
-              type: 'EFFECT_APPLIED',
+              type: StateChangeType.EFFECT_APPLIED,
               cardId: targetId,
               value: action.value,
             });
@@ -1054,7 +1055,7 @@ export class EffectEngine {
               gameState
             );
             changes.push({
-              type: 'POWER_CHANGED',
+              type: StateChangeType.POWER_CHANGED,
               cardId: targetId,
               value: -(action.value || 0),
             });
@@ -1072,7 +1073,7 @@ export class EffectEngine {
             // Clear all power buffs so effective power is actually 0
             card.powerBuffs = [];
             changes.push({
-              type: 'POWER_CHANGED',
+              type: StateChangeType.POWER_CHANGED,
               cardId: targetId,
               value: 0,
             });
@@ -1088,7 +1089,7 @@ export class EffectEngine {
             const newPower = action.value || 0;
             card.basePower = newPower;
             changes.push({
-              type: 'POWER_CHANGED',
+              type: StateChangeType.POWER_CHANGED,
               cardId: targetId,
               value: newPower,
             });
@@ -1108,13 +1109,13 @@ export class EffectEngine {
             drawnCard.zone = CardZone.HAND;
             sourcePlayer.hand.push(drawnCard);
             changes.push({
-              type: 'CARD_MOVED',
+              type: StateChangeType.CARD_MOVED,
               cardId: drawnCard.id,
               from: 'DECK',
               to: 'HAND',
             });
             changes.push({
-              type: 'PLAYER_DREW',
+              type: StateChangeType.PLAYER_DREW,
               playerId: sourcePlayer.id,
               value: 1,
             });
@@ -1130,7 +1131,7 @@ export class EffectEngine {
             milledCard.zone = CardZone.TRASH;
             sourcePlayer.trash.push(milledCard);
             changes.push({
-              type: 'CARD_MOVED',
+              type: StateChangeType.CARD_MOVED,
               cardId: milledCard.id,
               from: 'DECK',
               to: 'TRASH',
@@ -1151,7 +1152,7 @@ export class EffectEngine {
               card.zone = CardZone.TRASH;
               sourcePlayer.trash.push(card);
               changes.push({
-                type: 'CARD_MOVED',
+                type: StateChangeType.CARD_MOVED,
                 cardId: card.id,
                 from: 'HAND',
                 to: 'TRASH',
@@ -1166,7 +1167,7 @@ export class EffectEngine {
               card.zone = CardZone.TRASH;
               sourcePlayer.trash.push(card);
               changes.push({
-                type: 'CARD_MOVED',
+                type: StateChangeType.CARD_MOVED,
                 cardId: card.id,
                 from: 'HAND',
                 to: 'TRASH',
@@ -1191,7 +1192,7 @@ export class EffectEngine {
         // Store the revealed cards in the game state for the UI to access
         // The client will show these cards to the player
         changes.push({
-          type: 'EFFECT_APPLIED',
+          type: StateChangeType.EFFECT_APPLIED,
           playerId: sourcePlayer.id,
           value: cardsToLook.length,
           cardId: cardsToLook.join(','), // Comma-separated list of revealed card IDs
@@ -1204,7 +1205,7 @@ export class EffectEngine {
         // The EffectEngine just signals that this effect requires UI interaction
         console.log('[EffectEngine] SEARCH_AND_SELECT effect - handled by GameStateManager');
         changes.push({
-          type: 'EFFECT_APPLIED',
+          type: StateChangeType.EFFECT_APPLIED,
           playerId: sourcePlayer.id,
           value: action.value || 3, // lookCount
         });
@@ -1218,7 +1219,7 @@ export class EffectEngine {
         // This is handled by GameStateManager.setupDeckRevealEffect() with different params
         console.log('[EffectEngine] SEARCH_DECK effect - handled by GameStateManager');
         changes.push({
-          type: 'EFFECT_APPLIED',
+          type: StateChangeType.EFFECT_APPLIED,
           playerId: sourcePlayer.id,
           value: action.value || 5, // lookCount (default 5 for search effects)
         });
@@ -1238,7 +1239,7 @@ export class EffectEngine {
             };
             sourcePlayer.donField.push(newDon);
             changes.push({
-              type: 'DON_CHANGED',
+              type: StateChangeType.DON_CHANGED,
               playerId: sourcePlayer.id,
               value: 1,
             });
@@ -1261,7 +1262,7 @@ export class EffectEngine {
             };
             sourcePlayer.donField.push(newDon);
             changes.push({
-              type: 'DON_CHANGED',
+              type: StateChangeType.DON_CHANGED,
               playerId: sourcePlayer.id,
               value: 1,
             });
@@ -1319,7 +1320,7 @@ export class EffectEngine {
             console.log('[ATTACH_DON] Attached DON:', donCard.id, 'to target:', targetCardId);
 
             changes.push({
-              type: 'DON_CHANGED',
+              type: StateChangeType.DON_CHANGED,
               playerId: sourcePlayer.id,
               cardId: donCard.id,
             });
@@ -1397,7 +1398,7 @@ export class EffectEngine {
           if (card && card.state === CardState.ACTIVE) {
             card.state = CardState.RESTED;
             changes.push({
-              type: 'CARD_MOVED', // Using for state change
+              type: StateChangeType.CARD_MOVED, // Using for state change
               cardId: targetId,
               from: 'ACTIVE',
               to: 'RESTED',
@@ -1412,7 +1413,7 @@ export class EffectEngine {
           if (card && card.state === CardState.RESTED) {
             card.state = CardState.ACTIVE;
             changes.push({
-              type: 'CARD_MOVED',
+              type: StateChangeType.CARD_MOVED,
               cardId: targetId,
               from: 'RESTED',
               to: 'ACTIVE',
@@ -1432,7 +1433,7 @@ export class EffectEngine {
             if (!card.keywords) card.keywords = [];
             card.keywords.push('Frozen');
             changes.push({
-              type: 'KEYWORD_ADDED',
+              type: StateChangeType.KEYWORD_ADDED,
               cardId: targetId,
               value: 'Frozen',
             });
@@ -1450,7 +1451,7 @@ export class EffectEngine {
             sourcePlayer.lifeCards.push(card);
             sourcePlayer.life++;
             changes.push({
-              type: 'LIFE_CHANGED',
+              type: StateChangeType.LIFE_CHANGED,
               playerId: sourcePlayer.id,
               value: 1,
             });
@@ -1471,7 +1472,7 @@ export class EffectEngine {
               targetPlayer.hand.push(lifeCard);
               targetPlayer.life--;
               changes.push({
-                type: 'LIFE_CHANGED',
+                type: StateChangeType.LIFE_CHANGED,
                 playerId: targetPlayer.id,
                 value: -1,
               });
@@ -1532,7 +1533,7 @@ export class EffectEngine {
             }
 
             changes.push({
-              type: 'KEYWORD_ADDED',
+              type: StateChangeType.KEYWORD_ADDED,
               cardId: targetId,
               value: action.keyword,
             });
@@ -1550,7 +1551,7 @@ export class EffectEngine {
           -(action.value || 0)
         );
         changes.push({
-          type: 'EFFECT_APPLIED',
+          type: StateChangeType.EFFECT_APPLIED,
           playerId: sourcePlayer.id,
           value: -(action.value || 0),
         });
@@ -1565,7 +1566,7 @@ export class EffectEngine {
           action.value || 0
         );
         changes.push({
-          type: 'EFFECT_APPLIED',
+          type: StateChangeType.EFFECT_APPLIED,
           playerId: sourcePlayer.id,
           value: action.value || 0,
         });
@@ -1576,7 +1577,7 @@ export class EffectEngine {
         // Grant ability to attack characters on the turn played (limited Rush)
         this.applyRushVsCharacters(gameState, action, context);
         changes.push({
-          type: 'EFFECT_APPLIED',
+          type: StateChangeType.EFFECT_APPLIED,
           playerId: sourcePlayer.id,
           value: 0,
         });
@@ -1592,7 +1593,7 @@ export class EffectEngine {
             if (!card.temporaryKeywords) card.temporaryKeywords = [];
             card.temporaryKeywords.push(KW_UNBLOCKABLE);
             changes.push({
-              type: 'EFFECT_APPLIED',
+              type: StateChangeType.EFFECT_APPLIED,
               cardId: targetId,
               value: 0,
             });
@@ -1622,7 +1623,7 @@ export class EffectEngine {
             don.state = CardState.ACTIVE;
             donActivated++;
             changes.push({
-              type: 'DON_CHANGED',
+              type: StateChangeType.DON_CHANGED,
               cardId: don.id,
               playerId: sourcePlayer.id,
               value: 'ACTIVATED',
@@ -1669,7 +1670,7 @@ export class EffectEngine {
               turnApplied: gameState.turn,
             });
             changes.push({
-              type: 'EFFECT_APPLIED',
+              type: StateChangeType.EFFECT_APPLIED,
               cardId: targetId,
               value: 'CANT_ATTACK',
             });
@@ -1694,7 +1695,7 @@ export class EffectEngine {
               condition: action.condition,
             });
             changes.push({
-              type: 'EFFECT_APPLIED',
+              type: StateChangeType.EFFECT_APPLIED,
               cardId: targetId,
               value: 'IMMUNE_KO',
             });
@@ -1718,7 +1719,7 @@ export class EffectEngine {
         }
 
         changes.push({
-          type: 'EFFECT_APPLIED',
+          type: StateChangeType.EFFECT_APPLIED,
           playerId: sourcePlayer.id,
           value: lifeCardsToLook.length,
           cardId: lifeCardsToLook.join(','),
@@ -1743,7 +1744,7 @@ export class EffectEngine {
               sourcePlayer.trash.push(card);
               sourcePlayer.life--;
               changes.push({
-                type: 'CARD_MOVED',
+                type: StateChangeType.CARD_MOVED,
                 cardId: targetId,
                 from: CardZone.LIFE,
                 to: CardZone.TRASH,
@@ -1759,7 +1760,7 @@ export class EffectEngine {
             sourcePlayer.trash.push(card);
             sourcePlayer.life--;
             changes.push({
-              type: 'CARD_MOVED',
+              type: StateChangeType.CARD_MOVED,
               cardId: card.id,
               from: CardZone.LIFE,
               to: CardZone.TRASH,
@@ -1784,7 +1785,7 @@ export class EffectEngine {
             }
             card.modifiedCost = Math.max(0, card.modifiedCost - reduction);
             changes.push({
-              type: 'COST_CHANGED',
+              type: StateChangeType.COST_CHANGED,
               cardId: targetId,
               value: -reduction,
             });
@@ -1805,7 +1806,7 @@ export class EffectEngine {
             context.sourceCard.temporaryKeywords.push(KW_CAN_ATTACK_ACTIVE);
           }
           changes.push({
-            type: 'EFFECT_APPLIED',
+            type: StateChangeType.EFFECT_APPLIED,
             cardId: context.sourceCard.id,
             value: 'CAN_ATTACK_ACTIVE',
           });
@@ -1825,7 +1826,7 @@ export class EffectEngine {
             card.zone = CardZone.HAND;
             sourcePlayer.hand.push(card);
             changes.push({
-              type: 'CARD_MOVED',
+              type: StateChangeType.CARD_MOVED,
               cardId: targetId,
               from: CardZone.TRASH,
               to: CardZone.HAND,
@@ -1853,7 +1854,7 @@ export class EffectEngine {
                 card.zone = CardZone.TRASH;
                 opponentPlayer.trash.push(card);
                 changes.push({
-                  type: 'CARD_MOVED',
+                  type: StateChangeType.CARD_MOVED,
                   cardId: targetId,
                   from: CardZone.HAND,
                   to: CardZone.TRASH,
@@ -1869,7 +1870,7 @@ export class EffectEngine {
               card.zone = CardZone.TRASH;
               opponentPlayer.trash.push(card);
               changes.push({
-                type: 'CARD_MOVED',
+                type: StateChangeType.CARD_MOVED,
                 cardId: card.id,
                 from: CardZone.HAND,
                 to: CardZone.TRASH,
@@ -1901,7 +1902,7 @@ export class EffectEngine {
           }
 
           changes.push({
-            type: 'DON_CHANGED',
+            type: StateChangeType.DON_CHANGED,
             playerId: oppPlayer.id,
             value: -donToReturn,
           });
@@ -1920,7 +1921,7 @@ export class EffectEngine {
             context.sourceCard.temporaryKeywords.push(KW_IMMUNE_EFFECTS);
           }
           changes.push({
-            type: 'EFFECT_APPLIED',
+            type: StateChangeType.EFFECT_APPLIED,
             cardId: context.sourceCard.id,
             value: 'IMMUNE_EFFECTS',
           });
@@ -1938,7 +1939,7 @@ export class EffectEngine {
           // Store which cards should be revealed for UI display
           const revealedCardIds = targets.length > 0 ? targets : revealPlayer.hand.map(c => c.id);
           changes.push({
-            type: 'EFFECT_APPLIED',
+            type: StateChangeType.EFFECT_APPLIED,
             playerId: revealPlayer.id,
             value: `REVEAL_HAND:${revealedCardIds.join(',')}`,
           });
@@ -1959,7 +1960,7 @@ export class EffectEngine {
               card.temporaryKeywords.push(KW_SILENCED);
             }
             changes.push({
-              type: 'EFFECT_APPLIED',
+              type: StateChangeType.EFFECT_APPLIED,
               cardId: targetId,
               value: 'SILENCED',
             });
@@ -1986,7 +1987,7 @@ export class EffectEngine {
           // Store protection info on the card (which cards it protects)
           // The target filter from the effect determines what cards are protected
           changes.push({
-            type: 'EFFECT_APPLIED',
+            type: StateChangeType.EFFECT_APPLIED,
             cardId: context.sourceCard.id,
             value: 'PREVENT_KO',
           });
@@ -2010,12 +2011,12 @@ export class EffectEngine {
             card2.basePower = power1;
             card2.power = power1;
             changes.push({
-              type: 'POWER_CHANGED',
+              type: StateChangeType.POWER_CHANGED,
               cardId: targets[0],
               value: card1.power,
             });
             changes.push({
-              type: 'POWER_CHANGED',
+              type: StateChangeType.POWER_CHANGED,
               cardId: targets[1],
               value: card2.power,
             });
@@ -2032,7 +2033,7 @@ export class EffectEngine {
           const newTarget = targets[0];
           gameState.currentCombat.targetId = newTarget;
           changes.push({
-            type: 'EFFECT_APPLIED',
+            type: StateChangeType.EFFECT_APPLIED,
             value: `REDIRECT_ATTACK:${newTarget}`,
           });
           console.log('[REDIRECT_ATTACK] Attack redirected to', newTarget);
@@ -2052,7 +2053,7 @@ export class EffectEngine {
               don.state = CardState.RESTED;
               rested++;
               changes.push({
-                type: 'DON_CHANGED',
+                type: StateChangeType.DON_CHANGED,
                 cardId: don.id,
                 value: -1,
               });
@@ -2069,7 +2070,7 @@ export class EffectEngine {
         // This requires UI interaction to reorder cards
         // For now, just mark it as a pending selection
         changes.push({
-          type: 'EFFECT_APPLIED',
+          type: StateChangeType.EFFECT_APPLIED,
           playerId: sourcePlayer.id,
           value: 'REORDER_LIFE',
         });
@@ -2084,7 +2085,7 @@ export class EffectEngine {
           if (!context.sourceCard.temporaryKeywords) context.sourceCard.temporaryKeywords = [];
           context.sourceCard.temporaryKeywords.push(KW_PREVENT_LIFE_ADD);
           changes.push({
-            type: 'EFFECT_APPLIED',
+            type: StateChangeType.EFFECT_APPLIED,
             cardId: context.sourceCard.id,
             value: 'PREVENT_LIFE_ADD',
           });
@@ -2104,7 +2105,7 @@ export class EffectEngine {
               card.temporaryKeywords.push(KW_IMMUNE_KO);
             }
             changes.push({
-              type: 'EFFECT_APPLIED',
+              type: StateChangeType.EFFECT_APPLIED,
               cardId: targetId,
               value: 'IMMUNE_KO_UNTIL',
             });
@@ -2125,7 +2126,7 @@ export class EffectEngine {
               card.temporaryKeywords.push(KW_CANT_BE_RESTED);
             }
             changes.push({
-              type: 'EFFECT_APPLIED',
+              type: StateChangeType.EFFECT_APPLIED,
               cardId: targetId,
               value: 'CANT_BE_RESTED',
             });
@@ -2152,7 +2153,7 @@ export class EffectEngine {
               gameState
             );
             changes.push({
-              type: 'POWER_CHANGED',
+              type: StateChangeType.POWER_CHANGED,
               cardId: targetId,
               value: action.value,
             });
@@ -2182,7 +2183,7 @@ export class EffectEngine {
             gameState
           );
           changes.push({
-            type: 'POWER_CHANGED',
+            type: StateChangeType.POWER_CHANGED,
             cardId: card.id,
             value: action.value,
           });
@@ -2216,13 +2217,13 @@ export class EffectEngine {
             drawnCard.zone = CardZone.HAND;
             sourcePlayer.hand.push(drawnCard);
             changes.push({
-              type: 'CARD_MOVED',
+              type: StateChangeType.CARD_MOVED,
               cardId: drawnCard.id,
               from: 'DECK',
               to: 'HAND',
             });
             changes.push({
-              type: 'PLAYER_DREW',
+              type: StateChangeType.PLAYER_DREW,
               playerId: sourcePlayer.id,
               value: 1,
             });
@@ -2238,7 +2239,7 @@ export class EffectEngine {
               card.zone = CardZone.TRASH;
               sourcePlayer.trash.push(card);
               changes.push({
-                type: 'CARD_MOVED',
+                type: StateChangeType.CARD_MOVED,
                 cardId: card.id,
                 from: 'HAND',
                 to: 'TRASH',
@@ -2264,7 +2265,7 @@ export class EffectEngine {
               card.zone = CardZone.TRASH;
               oppPlayer.trash.push(card);
               changes.push({
-                type: 'CARD_MOVED',
+                type: StateChangeType.CARD_MOVED,
                 cardId: targetId,
                 from: CardZone.FIELD,
                 to: CardZone.TRASH,
@@ -2278,7 +2279,7 @@ export class EffectEngine {
               card.zone = CardZone.TRASH;
               oppPlayer.trash.push(card);
               changes.push({
-                type: 'CARD_MOVED',
+                type: StateChangeType.CARD_MOVED,
                 cardId: targetId,
                 from: 'STAGE',
                 to: CardZone.TRASH,
@@ -2307,7 +2308,7 @@ export class EffectEngine {
                 card.zone = CardZone.TRASH;
                 oppPlayer.trash.push(card);
                 changes.push({
-                  type: 'CARD_MOVED',
+                  type: StateChangeType.CARD_MOVED,
                   cardId: targetId,
                   from: CardZone.HAND,
                   to: CardZone.TRASH,
@@ -2322,7 +2323,7 @@ export class EffectEngine {
               card.zone = CardZone.TRASH;
               oppPlayer.trash.push(card);
               changes.push({
-                type: 'CARD_MOVED',
+                type: StateChangeType.CARD_MOVED,
                 cardId: card.id,
                 from: CardZone.HAND,
                 to: CardZone.TRASH,
@@ -2347,7 +2348,7 @@ export class EffectEngine {
               card.temporaryKeywords.push(KW_BLOCKER);
             }
             changes.push({
-              type: 'KEYWORD_ADDED',
+              type: StateChangeType.KEYWORD_ADDED,
               cardId: targetId,
               value: KW_BLOCKER,
             });
@@ -2368,7 +2369,7 @@ export class EffectEngine {
               card.temporaryKeywords.push(KW_UNBLOCKABLE);
             }
             changes.push({
-              type: 'KEYWORD_ADDED',
+              type: StateChangeType.KEYWORD_ADDED,
               cardId: targetId,
               value: KW_UNBLOCKABLE,
             });
@@ -2406,7 +2407,7 @@ export class EffectEngine {
         }
 
         changes.push({
-          type: 'DON_CHANGED',
+          type: StateChangeType.DON_CHANGED,
           playerId: sourcePlayer.id,
           value: -returned,
         });
@@ -2426,7 +2427,7 @@ export class EffectEngine {
               card.temporaryKeywords.push(KW_IMMUNE_COMBAT);
             }
             changes.push({
-              type: 'EFFECT_APPLIED',
+              type: StateChangeType.EFFECT_APPLIED,
               cardId: targetId,
               value: 'IMMUNE_COMBAT',
             });
@@ -2480,7 +2481,7 @@ export class EffectEngine {
             }
 
             changes.push({
-              type: 'EFFECT_APPLIED',
+              type: StateChangeType.EFFECT_APPLIED,
               cardId: targetId,
               value: `GRANT_EFFECT:${grantedEffect.effectType}`,
             });
@@ -2498,7 +2499,7 @@ export class EffectEngine {
         // This avoids accidental removal by temporary keyword cleanup.
         sourcePlayer.extraTurns = (sourcePlayer.extraTurns ?? 0) + 1;
         changes.push({
-          type: 'EFFECT_APPLIED',
+          type: StateChangeType.EFFECT_APPLIED,
           playerId: sourcePlayer.id,
           value: 'EXTRA_TURN',
         });
@@ -2513,7 +2514,7 @@ export class EffectEngine {
         gameState.phase = GamePhase.GAME_OVER;
         gameState.winner = sourcePlayer.id;
         changes.push({
-          type: 'EFFECT_APPLIED',
+          type: StateChangeType.EFFECT_APPLIED,
           playerId: sourcePlayer.id,
           value: 'WIN_GAME',
         });
@@ -2555,7 +2556,7 @@ export class EffectEngine {
               keyword,
             });
             changes.push({
-              type: 'KEYWORD_REMOVED',
+              type: StateChangeType.KEYWORD_REMOVED,
               cardId: targetId,
               value: keyword,
             });
@@ -2604,7 +2605,7 @@ export class EffectEngine {
               target.temporaryKeywords.push(attrTag);
             }
             changes.push({
-              type: 'EFFECT_APPLIED',
+              type: StateChangeType.EFFECT_APPLIED,
               cardId: targetId,
               value: `GRANT_ATTRIBUTE:${attribute}`,
             });
@@ -2636,7 +2637,7 @@ export class EffectEngine {
           }
         }
         changes.push({
-          type: 'EFFECT_APPLIED',
+          type: StateChangeType.EFFECT_APPLIED,
           playerId: sourcePlayer.id,
           value: 'FIELD_EFFECT_IMMUNITY',
         });
@@ -2662,7 +2663,7 @@ export class EffectEngine {
             turnGranted: gameState.turn,
           });
           changes.push({
-            type: 'EFFECT_APPLIED',
+            type: StateChangeType.EFFECT_APPLIED,
             playerId: opponent.id,
             value: 'NO_ON_PLAYS_NEXT_TURN',
           });
@@ -2697,7 +2698,7 @@ export class EffectEngine {
               });
             }
             changes.push({
-              type: 'EFFECT_APPLIED',
+              type: StateChangeType.EFFECT_APPLIED,
               cardId: targetId,
               value: `CONFUSION_TAX:${taxAmount}`,
             });
@@ -2714,7 +2715,7 @@ export class EffectEngine {
         if (sourcePlayer.leaderCard) {
           this.addPlayerRestriction(sourcePlayer, KW_DON_EQUALIZATION, 'END_OF_TURN', gameState.turn);
           changes.push({
-            type: 'EFFECT_APPLIED',
+            type: StateChangeType.EFFECT_APPLIED,
             playerId: sourcePlayer.id,
             value: 'DON_EQUALIZATION',
           });
@@ -2732,7 +2733,7 @@ export class EffectEngine {
         for (const lifeCard of cardsToReveal) {
           lifeCard.faceUp = true;
           changes.push({
-            type: 'LIFE_CHANGED',
+            type: StateChangeType.LIFE_CHANGED,
             cardId: lifeCard.id,
             playerId: sourcePlayer.id,
             value: 'FACE_UP',
@@ -2751,7 +2752,7 @@ export class EffectEngine {
         for (const lifeCard of cardsToConceal) {
           lifeCard.faceUp = false;
           changes.push({
-            type: 'LIFE_CHANGED',
+            type: StateChangeType.LIFE_CHANGED,
             cardId: lifeCard.id,
             playerId: sourcePlayer.id,
             value: 'FACE_DOWN',
@@ -2772,7 +2773,7 @@ export class EffectEngine {
             card.zone = CardZone.TRASH;
             sourcePlayer.trash.push(card);
             changes.push({
-              type: 'CARD_MOVED',
+              type: StateChangeType.CARD_MOVED,
               cardId: targetId,
               from: CardZone.FIELD,
               to: CardZone.TRASH,
@@ -2971,7 +2972,7 @@ export class EffectEngine {
             if (don) {
               don.state = CardState.RESTED;
               changes.push({
-                type: 'DON_CHANGED',
+                type: StateChangeType.DON_CHANGED,
                 playerId: context.sourcePlayer.id,
                 cardId: don.id,
               });
@@ -2988,7 +2989,7 @@ export class EffectEngine {
               context.sourcePlayer.hand.push(lifeCard);
               context.sourcePlayer.life = context.sourcePlayer.lifeCards.length;
               changes.push({
-                type: 'LIFE_CHANGED',
+                type: StateChangeType.LIFE_CHANGED,
                 playerId: context.sourcePlayer.id,
                 value: context.sourcePlayer.life,
               });
@@ -3008,7 +3009,7 @@ export class EffectEngine {
                 context.sourcePlayer.donField.splice(idx, 1);
                 context.sourcePlayer.donDeck++;
                 changes.push({
-                  type: 'DON_CHANGED',
+                  type: StateChangeType.DON_CHANGED,
                   playerId: context.sourcePlayer.id,
                   cardId: don.id,
                 });
@@ -3022,7 +3023,7 @@ export class EffectEngine {
           if (context.sourceCard && context.sourceCard.state === CardState.ACTIVE) {
             context.sourceCard.state = CardState.RESTED;
             changes.push({
-              type: 'CARD_MOVED',
+              type: StateChangeType.CARD_MOVED,
               cardId: context.sourceCard.id,
               from: 'ACTIVE',
               to: 'RESTED',
@@ -3056,7 +3057,7 @@ export class EffectEngine {
             });
 
             changes.push({
-              type: 'CARD_MOVED',
+              type: StateChangeType.CARD_MOVED,
               cardId: card.id,
               from: 'FIELD',
               to: 'TRASH',
@@ -3078,7 +3079,7 @@ export class EffectEngine {
             const card = restableChars[i];
             card.state = CardState.RESTED;
             changes.push({
-              type: 'CARD_MOVED',
+              type: StateChangeType.CARD_MOVED,
               cardId: card.id,
               from: 'ACTIVE',
               to: 'RESTED',
@@ -3157,12 +3158,15 @@ export class EffectEngine {
       sourcePlayer.stage = cardToPlay;
     }
 
+    const destinationZone = cardDef?.type === 'STAGE' ? CardZone.STAGE : CardZone.FIELD;
+
     changes.push({
-      type: 'CARD_MOVED',
+      type: StateChangeType.CARD_MOVED,
       cardId: targetId,
       from: sourceZone,
-      to: cardDef?.type === 'STAGE' ? CardZone.STAGE : CardZone.FIELD,
+      to: destinationZone,
     });
+
   }
 
   private normalizePlayerRestriction(
@@ -3292,7 +3296,7 @@ export class EffectEngine {
         gameState.turn,
         action.target?.filters,
       );
-      changes.push({ type: 'EFFECT_APPLIED', playerId: targetPlayer.id, value: changeValue });
+      changes.push({ type: StateChangeType.EFFECT_APPLIED, playerId: targetPlayer.id, value: changeValue });
       console.log(`[${changeValue}] Player`, targetPlayer.id, 'restriction applied');
     }
   }
@@ -3621,7 +3625,7 @@ export class EffectEngine {
       });
 
       changes.push({
-        type: 'CARD_DESTROYED',
+        type: StateChangeType.CARD_DESTROYED,
         cardId: cardId,
         playerId: owner.id,
       });
@@ -3635,7 +3639,7 @@ export class EffectEngine {
       owner.trash.push(card);
 
       changes.push({
-        type: 'CARD_DESTROYED',
+        type: StateChangeType.CARD_DESTROYED,
         cardId: cardId,
         playerId: owner.id,
       });
@@ -3667,7 +3671,7 @@ export class EffectEngine {
         owner.hand.push(card);
 
         changes.push({
-          type: 'CARD_MOVED',
+          type: StateChangeType.CARD_MOVED,
           cardId: cardId,
           from: zone.name,
           to: 'HAND',
@@ -3683,7 +3687,7 @@ export class EffectEngine {
       card.zone = CardZone.HAND;
       card.state = CardState.ACTIVE;
       owner.hand.push(card);
-      changes.push({ type: 'CARD_MOVED', cardId, from: 'STAGE', to: 'HAND' });
+      changes.push({ type: StateChangeType.CARD_MOVED, cardId, from: 'STAGE', to: 'HAND' });
     }
 
     return changes;
@@ -3710,7 +3714,7 @@ export class EffectEngine {
       owner.deck.push(card);
 
       changes.push({
-        type: 'CARD_MOVED',
+        type: StateChangeType.CARD_MOVED,
         cardId: cardId,
         from: sourceZone,
         to: 'DECK_BOTTOM',
@@ -3723,7 +3727,7 @@ export class EffectEngine {
       owner.stage = null;
       card.zone = CardZone.DECK;
       owner.deck.push(card);
-      changes.push({ type: 'CARD_MOVED', cardId, from: 'STAGE', to: 'DECK_BOTTOM' });
+      changes.push({ type: StateChangeType.CARD_MOVED, cardId, from: 'STAGE', to: 'DECK_BOTTOM' });
     }
 
     return changes;
@@ -3749,7 +3753,7 @@ export class EffectEngine {
         owner.deck.unshift(card); // Add to top of deck
 
         changes.push({
-          type: 'CARD_MOVED',
+          type: StateChangeType.CARD_MOVED,
           cardId: cardId,
           from: zone.name,
           to: 'DECK_TOP',
@@ -3765,7 +3769,7 @@ export class EffectEngine {
       owner.stage = null;
       card.zone = CardZone.DECK;
       owner.deck.unshift(card);
-      changes.push({ type: 'CARD_MOVED', cardId, from: 'STAGE', to: 'DECK_TOP' });
+      changes.push({ type: StateChangeType.CARD_MOVED, cardId, from: 'STAGE', to: 'DECK_TOP' });
     }
 
     return changes;
@@ -3790,7 +3794,7 @@ export class EffectEngine {
         owner.trash.push(card);
 
         changes.push({
-          type: 'CARD_MOVED',
+          type: StateChangeType.CARD_MOVED,
           cardId: cardId,
           from: zone.name,
           to: 'TRASH',
@@ -3807,7 +3811,7 @@ export class EffectEngine {
       owner.trash.push(card);
 
       changes.push({
-        type: 'CARD_MOVED',
+        type: StateChangeType.CARD_MOVED,
         cardId: cardId,
         from: 'STAGE',
         to: 'TRASH',
@@ -4205,7 +4209,7 @@ export class EffectEngine {
       const shouldRemove = this.shouldRemoveEffect(effect, gameState, currentTurn);
       if (shouldRemove) {
         changes.push({
-          type: 'EFFECT_REMOVED',
+          type: StateChangeType.EFFECT_REMOVED,
           cardId: effect.sourceCardId,
           value: effect.id,
         });
