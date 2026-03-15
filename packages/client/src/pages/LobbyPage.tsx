@@ -455,6 +455,7 @@ export default function LobbyPage() {
   const { cards, loadCards } = useCardStore();
   const navigate = useNavigate();
   const [joinCode, setJoinCode] = useState('');
+  const [lastLobbyAction, setLastLobbyAction] = useState<'create' | 'join' | null>(null);
   const [showGuestInput, setShowGuestInput] = useState(false);
   const [guestName, setGuestName] = useState('');
   const [guestLoading, setGuestLoading] = useState(false);
@@ -630,11 +631,11 @@ export default function LobbyPage() {
               <p className="text-gray-400 mb-6">
                 Create a private room and invite a friend to play.
               </p>
-              {lobbyError && lobbyStatus === 'creating' && (
+              {lobbyError && lastLobbyAction === 'create' && (
                 <p className="text-red-400 text-sm mb-4">{lobbyError}</p>
               )}
               <button
-                onClick={() => createLobby(false)}
+                onClick={() => { setLastLobbyAction('create'); createLobby(false); }}
                 disabled={!selectedDeckId || lobbyStatus === 'creating'}
                 className="w-full bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -648,7 +649,7 @@ export default function LobbyPage() {
               <p className="text-gray-400 mb-4">
                 Enter a lobby code to join a friend's game.
               </p>
-              {lobbyError && lobbyStatus === 'joining' && (
+              {lobbyError && lastLobbyAction === 'join' && (
                 <p className="text-red-400 text-sm mb-4">{lobbyError}</p>
               )}
               <div className="flex gap-2">
@@ -661,7 +662,7 @@ export default function LobbyPage() {
                   maxLength={6}
                 />
                 <button
-                  onClick={() => joinLobby(joinCode)}
+                  onClick={() => { setLastLobbyAction('join'); joinLobby(joinCode); }}
                   disabled={joinCode.length !== 6 || !selectedDeckId || lobbyStatus === 'joining'}
                   className="bg-red-600 hover:bg-red-700 text-white px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed"
                 >
