@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { GameState, GameCard as GameCardType, GamePhase, CardZone, CardState, RPSChoice, RPSState, PendingActivateEffect, PendingDeckRevealEffect, PendingHandSelectEffect, normalizeColors, PHASE_DISPLAY_NAMES } from '@optcgsim/shared';
+import { GameState, GameCard as GameCardType, GamePhase, CardZone, CardState, RPSChoice, RPSState, PendingActivateEffect, PendingCounterEffect, PendingDeckRevealEffect, PendingHandSelectEffect, normalizeColors, PHASE_DISPLAY_NAMES } from '@optcgsim/shared';
 import { useGameSocket } from '../../hooks/useGameSocket';
 import { useGameState } from '../../hooks/useGameState';
 import { useSoundEffects } from '../../hooks/useSoundEffects';
@@ -26,7 +26,7 @@ import { useEffectToast } from '../../hooks/useEffectToast';
 import { TutorialOverlay } from './tutorial/TutorialOverlay';
 import { useTutorialStore } from '../../stores/tutorialStore';
 import { useTimedBanner } from '../../hooks/useTimedBanner';
-import { useEffectStep } from '../../hooks/useEffectStep';
+import { useEffectStep, FizzleCheckResult } from '../../hooks/useEffectStep';
 import { resolveCardImageUrl as resolveCardImageUrlBase } from '../../utils/cardImage';
 import { GameLog } from './GameLog';
 import { TurnBanner } from './TurnBanner';
@@ -2064,6 +2064,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     resolveAction: resolveAttackEffect,
     skipAction: skipAttackEffect,
     playSound: useCallback(() => playSound('play'), [playSound]),
+    playerId,
+    showInfoBanner,
   });
   const { currentEffect: currentAttackEffect, validTargets: attackEffectValidTargets,
     selectedTargets: attackEffectSelectedTargets, setSelectedTargets: setAttackEffectSelectedTargets,
@@ -2102,6 +2104,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     resolveAction: resolvePlayEffect,
     skipAction: skipPlayEffect,
     playSound: useCallback(() => playSound('play'), [playSound]),
+    playerId,
+    showInfoBanner,
   });
   const { currentEffect: currentPlayEffect, validTargets: playEffectValidTargets,
     selectedTargets: playEffectSelectedTargets, setSelectedTargets: setPlayEffectSelectedTargets,
@@ -2171,6 +2175,18 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   // =====================================================
   // COUNTER EFFECT STEP - Event counter effect target selection
   // =====================================================
+  const counterFizzleCheck = useCallback(
+    (effect: PendingCounterEffect, _validTargets: Set<string>): FizzleCheckResult => {
+      if (!effect.conditionsMet) {
+        return { shouldFizzle: true, message: 'Leader condition not met - effect fizzles' };
+      }
+      if (effect.validTargets.length === 0 && effect.minTargets > 0) {
+        return { shouldFizzle: true, message: 'No valid targets - effect fizzles' };
+      }
+      return { shouldFizzle: false };
+    },
+    [],
+  );
   const counterStep = useEffectStep({
     active: phase === GamePhase.COUNTER_EFFECT_STEP,
     pendingEffects: gameState?.pendingCounterEffects,
@@ -2178,17 +2194,23 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     resolveAction: resolveCounterEffect,
     skipAction: skipCounterEffect,
     playSound: useCallback(() => playSound('play'), [playSound]),
+    playerId,
+    showInfoBanner,
+    fizzleCheck: counterFizzleCheck,
   });
   const { currentEffect: currentCounterEffect, validTargets: counterEffectValidTargets,
     selectedTargets: counterEffectSelectedTargets, setSelectedTargets: setCounterEffectSelectedTargets,
     handleUse: handleUseCounterEffect, handleSkip: handleSkipCounterEffect } = counterStep;
 
-  // Show info banner when entering COUNTER_EFFECT_STEP
+  // Show info banner when entering COUNTER_EFFECT_STEP (non-fizzle case)
   useEffect(() => {
-    if (phase === GamePhase.COUNTER_EFFECT_STEP && currentCounterEffect) {
-      showInfoBanner(`Counter: ${currentCounterEffect.description}`);
+    if (phase === GamePhase.COUNTER_EFFECT_STEP && currentCounterEffect && currentCounterEffect.playerId === playerId) {
+      // Only show the description banner when the effect is not going to fizzle
+      if (currentCounterEffect.conditionsMet && (currentCounterEffect.validTargets.length > 0 || currentCounterEffect.minTargets === 0)) {
+        showInfoBanner(`Counter: ${currentCounterEffect.description}`);
+      }
     }
-  }, [phase, currentCounterEffect, showInfoBanner]);
+  }, [phase, currentCounterEffect, playerId, showInfoBanner]);
 
   // =====================================================
   // ADDITIONAL COST STEP - Optional cost prompt
@@ -3885,7 +3907,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             : 'No targets needed — confirm to activate'}
           confirmLabel="Use"
           confirmDisabled={currentAttackEffect.requiresChoice && attackEffectSelectedTargets.length === 0}
-          showSkip={currentAttackEffect.isOptional}
+          showSkip={currentAttackEffect.isOptional || attackEffectValidTargets.size === 0}
           onConfirm={handleUseAttackEffect}
           onSkip={handleSkipAttackEffect}
         />
@@ -3907,7 +3929,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             : 'No targets needed — confirm to activate'}
           confirmLabel="Use"
           confirmDisabled={currentPlayEffect.requiresChoice && playEffectSelectedTargets.length === 0}
-          showSkip={currentPlayEffect.isOptional}
+          showSkip={currentPlayEffect.isOptional || playEffectValidTargets.size === 0}
           onConfirm={handleUsePlayEffect}
           onSkip={handleSkipPlayEffect}
         />
@@ -3925,7 +3947,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             : `Selected: ${activateEffectSelectedTargets.length}/${currentActivateEffect.maxTargets || 1}`}
           confirmLabel="Play"
           confirmDisabled={activateEffectSelectedTargets.length === 0}
-          showSkip={!!currentActivateEffect.optional}
+          showSkip={!!currentActivateEffect.optional || currentActivateEffect.validHandCardIds.length === 0}
           onConfirm={handleUseActivateEffect}
           onSkip={handleSkipActivateEffect}
         />
@@ -3963,7 +3985,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             : `Select target for ${currentCounterEffect.effectType}`}
           confirmLabel="Apply"
           confirmDisabled={counterEffectSelectedTargets.length === 0}
-          showSkip={!currentCounterEffect.conditionsMet || currentCounterEffect.validTargets.length === 0}
+          showSkip={!currentCounterEffect.conditionsMet || currentCounterEffect.validTargets.length === 0 || currentCounterEffect.minTargets === 0}
           onConfirm={handleUseCounterEffect}
           onSkip={handleSkipCounterEffect}
         />
