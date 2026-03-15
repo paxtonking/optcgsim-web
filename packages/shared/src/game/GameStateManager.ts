@@ -3089,15 +3089,12 @@ export class GameStateManager {
 
       const primaryAction = flattenedEffect.effects[0];
       const validTargets = this.getValidTargetsForEventEffect(flattenedEffect, playerId, removedCard);
-
-      // Check if ANY effect in the chain needs target selection (not just effects[0])
-      const targetingAction = flattenedEffect.effects.find(e => e.target != null);
-      const hasTargetSelection = Boolean(targetingAction?.target);
+      const hasTargetSelection = Boolean(primaryAction?.target);
       const maxTargets = hasTargetSelection
-        ? (targetingAction?.target?.maxCount || targetingAction?.target?.count || 1)
+        ? (primaryAction?.target?.maxCount || primaryAction?.target?.count || 1)
         : 0;
       const minTargets = hasTargetSelection
-        ? (targetingAction?.target?.optional ? 0 : 1)
+        ? (primaryAction?.target?.optional ? 0 : 1)
         : 0;
 
       const powerBoostAction = flattenedEffect.effects.find(
@@ -3112,7 +3109,7 @@ export class GameStateManager {
           playerId: playerId,
           description: flattenedEffect.description || `Resolve ${primaryAction?.type || 'counter'} effect`,
           validTargets,
-          effectType: targetingAction?.type?.toString() || primaryAction?.type?.toString() || 'UNKNOWN',
+          effectType: primaryAction?.type?.toString() || 'UNKNOWN',
           powerBoost,
           maxTargets,
           minTargets,
@@ -5068,7 +5065,29 @@ export class GameStateManager {
       : cardDef?.effects.find(e => e.trigger === EffectTrigger.COUNTER);
 
     if (sourceCard && player && counterEffect) {
-      this.resolveEffectWithEngine(counterEffect, sourceCard, player, selectedTargets, true);
+      // Flatten childEffects so that "Then" chain actions (draw, KO, bounce,
+      // rest, etc.) are resolved directly instead of going through
+      // processChildEffects which has incomplete handling.
+      const flattenedEffect = this.flattenCounterEffect(counterEffect);
+
+      if (flattenedEffect.effects.length <= 1) {
+        // Single effect — resolve normally with selected targets
+        this.resolveEffectWithEngine(flattenedEffect, sourceCard, player, selectedTargets, true);
+      } else {
+        // Multiple effects — resolve each action individually so that secondary
+        // effects (KO, bounce, rest) get their own auto-targeting instead of
+        // reusing the primary action's selectedTargets.
+        for (let i = 0; i < flattenedEffect.effects.length; i++) {
+          const singleActionEffect: CardEffectDefinition = {
+            ...flattenedEffect,
+            effects: [flattenedEffect.effects[i]],
+          };
+          // First action uses player-selected targets; subsequent actions use
+          // empty targets so the EffectEngine auto-selects via getValidTargets.
+          const targets = i === 0 ? selectedTargets : [];
+          this.resolveEffectWithEngine(singleActionEffect, sourceCard, player, targets, true);
+        }
+      }
     }
 
     this.state.pendingCounterEffects = pendingEffects.filter(e => e.id !== effectId);
