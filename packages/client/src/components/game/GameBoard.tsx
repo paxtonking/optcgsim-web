@@ -73,7 +73,6 @@ const CONCEDE_CONFIRM_STYLE: React.CSSProperties = {
   background: 'linear-gradient(135deg, #e74c3c, #c0392b)', color: 'white',
   cursor: 'pointer', fontSize: 14, fontWeight: 'bold',
 };
-
 // Animation types
 type DealingPhase = 'idle' | 'dealing-hand' | 'waiting-mulligan' | 'dealing-life' | 'complete';
 

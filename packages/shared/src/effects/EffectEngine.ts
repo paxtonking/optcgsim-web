@@ -3264,7 +3264,6 @@ export class EffectEngine {
     }
   }
 
-  /** Resolve a card's effective cost, preferring runtime-modified cost over definition cost. */
   /** Apply a turn-based restriction to a player (stored on both player.restrictions and leaderCard.temporaryKeywords). */
   private applyPlayerRestriction(
     action: EffectAction,
@@ -3301,6 +3300,7 @@ export class EffectEngine {
     }
   }
 
+  /** Resolve a card's effective cost, preferring runtime-modified cost over definition cost. */
   private getEffectiveCost(card: GameCard, def?: { cost?: number | null }): number {
     return card.modifiedCost ?? def?.cost ?? card.cost ?? 0;
   }
