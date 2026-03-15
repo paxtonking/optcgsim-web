@@ -2,6 +2,33 @@ import { create } from 'zustand';
 import { socketService } from '../services/socket';
 import { useDeckStore } from './deckStore';
 
+const EMIT_TIMEOUT_MS = 10000;
+
+let queueTimerInterval: ReturnType<typeof setInterval> | null = null;
+
+/** Wraps a socket emit callback with a timeout so the UI never hangs. */
+function emitWithTimeout<T extends { success: boolean; error?: string } = { success: boolean; error?: string }>(
+  event: string,
+  data: unknown,
+  onResponse: (response: T) => void,
+) {
+  let settled = false;
+  const timer = setTimeout(() => {
+    if (!settled) {
+      settled = true;
+      onResponse({ success: false, error: 'Request timed out. Please try again.' } as T);
+    }
+  }, EMIT_TIMEOUT_MS);
+
+  socketService.emit(event, data, (response: any) => {
+    if (!settled) {
+      settled = true;
+      clearTimeout(timer);
+      onResponse(response);
+    }
+  });
+}
+
 export type LobbyStatus = 'idle' | 'creating' | 'joining' | 'waiting' | 'ready' | 'starting';
 export type QueueStatus = 'idle' | 'searching' | 'matched' | 'starting';
 export type AIGameStatus = 'idle' | 'starting' | 'playing';
@@ -126,10 +153,10 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
 
     set({ lobbyStatus: 'creating', lobbyError: null });
 
-    socketService.emit('lobby:create', {
+    emitWithTimeout<{ success: boolean; lobby?: Lobby; error?: string }>('lobby:create', {
       deckId: serverDeckId,
       isRanked,
-    }, (response: { success: boolean; lobby?: any; error?: string }) => {
+    }, (response) => {
       if (response.success && response.lobby) {
         set({ lobby: response.lobby, lobbyStatus: 'waiting', lobbyError: null });
       } else {
@@ -159,10 +186,10 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
 
     set({ lobbyStatus: 'joining', lobbyError: null });
 
-    socketService.emit('lobby:join', {
+    emitWithTimeout<{ success: boolean; lobby?: Lobby; error?: string }>('lobby:join', {
       code,
       deckId: serverDeckId,
-    }, (response: { success: boolean; lobby?: any; error?: string }) => {
+    }, (response) => {
       if (response.success && response.lobby) {
         set({ lobby: response.lobby, lobbyStatus: 'waiting', lobbyError: null });
       } else {
@@ -215,9 +242,9 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
 
     set({ queueStatus: 'searching', queueError: null, queueTime: 0 });
 
-    socketService.emit('queue:join', {
+    emitWithTimeout<{ success: boolean; position?: number; error?: string }>('queue:join', {
       deckId: serverDeckId,
-    }, (response: { success: boolean; position?: number; error?: string }) => {
+    }, (response) => {
       if (!response.success) {
         set({ queueError: response.error || 'Failed to join queue', queueStatus: 'idle' });
         return;
@@ -225,18 +252,26 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
       console.log(`[LobbyStore] Joined queue at position ${response.position}`);
     });
 
+    // Clear any existing timer
+    if (queueTimerInterval) clearInterval(queueTimerInterval);
+
     // Start timer
-    const interval = setInterval(() => {
+    queueTimerInterval = setInterval(() => {
       const { queueStatus } = get();
       if (queueStatus === 'searching') {
         set((state) => ({ queueTime: state.queueTime + 1 }));
       } else {
-        clearInterval(interval);
+        clearInterval(queueTimerInterval!);
+        queueTimerInterval = null;
       }
     }, 1000);
   },
 
   leaveQueue: () => {
+    if (queueTimerInterval) {
+      clearInterval(queueTimerInterval);
+      queueTimerInterval = null;
+    }
     socketService.emit('queue:leave', {});
     set({ queueStatus: 'idle', queueTime: 0 });
   },
@@ -285,7 +320,7 @@ export const useLobbyStore = create<LobbyStore>((set, get) => ({
 
   startTutorialGame: () => {
     set({ aiGameStatus: 'starting', aiDifficulty: 'basic', aiError: null, tutorialGameId: null });
-    socketService.emit('ai:tutorial', {}, (response: { success: boolean; gameId?: string; error?: string }) => {
+    emitWithTimeout<{ success: boolean; gameId?: string; error?: string }>('ai:tutorial', {}, (response) => {
       if (!response?.success) {
         set({ aiError: response?.error || 'Failed to start tutorial', aiGameStatus: 'idle' });
       }
