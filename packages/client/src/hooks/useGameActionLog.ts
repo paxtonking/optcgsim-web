@@ -1,17 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { GameState, PlayerState, GamePhase } from '@optcgsim/shared';
+import { GameState, PlayerState, GamePhase, PHASE_DISPLAY_NAMES } from '@optcgsim/shared';
 import { GameLogEntry } from '../components/game/GameLog';
-
-export const PHASE_LOG_LABELS: Partial<Record<GamePhase, string>> = {
-  [GamePhase.REFRESH_PHASE]: 'Refresh Phase',
-  [GamePhase.DRAW_PHASE]: 'Draw Phase',
-  [GamePhase.DON_PHASE]: 'DON Phase',
-  [GamePhase.MAIN_PHASE]: 'Main Phase',
-  [GamePhase.BLOCKER_STEP]: 'Blocker Step',
-  [GamePhase.COUNTER_STEP]: 'Counter Step',
-  [GamePhase.TRIGGER_STEP]: 'Trigger Step',
-  [GamePhase.END_PHASE]: 'End Phase',
-};
 
 interface PrevState {
   myHandCount: number;
@@ -54,9 +43,8 @@ export function useGameActionLog({ gameState, myPlayer, opponent, phase }: UseGa
         type,
         timestamp: Date.now(),
       };
-      const updated = [...prev, entry];
-      // Keep last 100 entries
-      return updated.length > 100 ? updated.slice(-100) : updated;
+      // Keep last 100 entries (single allocation)
+      return prev.length >= 100 ? [...prev.slice(-99), entry] : [...prev, entry];
     });
   }, []);
 
@@ -83,6 +71,24 @@ export function useGameActionLog({ gameState, myPlayer, opponent, phase }: UseGa
 
     const prev = prevStateRef.current;
     if (prev) {
+      // Early-exit: skip if no zone counts or phase changed
+      if (
+        current.myHandCount === prev.myHandCount &&
+        current.oppHandCount === prev.oppHandCount &&
+        current.myFieldCount === prev.myFieldCount &&
+        current.oppFieldCount === prev.oppFieldCount &&
+        current.myTrashCount === prev.myTrashCount &&
+        current.oppTrashCount === prev.oppTrashCount &&
+        current.myLifeCount === prev.myLifeCount &&
+        current.oppLifeCount === prev.oppLifeCount &&
+        current.myDonCount === prev.myDonCount &&
+        current.oppDonCount === prev.oppDonCount &&
+        current.phase === prev.phase &&
+        current.turn === prev.turn
+      ) {
+        return;
+      }
+
       // Detect draws
       const myDrawn = current.myHandCount - prev.myHandCount;
       if (myDrawn > 0 && current.myFieldCount <= prev.myFieldCount) {
@@ -129,7 +135,7 @@ export function useGameActionLog({ gameState, myPlayer, opponent, phase }: UseGa
 
       // Log phase changes
       if (current.phase !== prev.phase) {
-        const label = current.phase ? PHASE_LOG_LABELS[current.phase] : null;
+        const label = current.phase ? PHASE_DISPLAY_NAMES[current.phase] : null;
         if (label) {
           addLogEntry(label, 'phase', 'system');
         }
