@@ -26,10 +26,13 @@ import {
   PowerBuff,
   BuffDuration,
   CardImmunity,
+  PlayerRestriction,
   DEFAULT_GAME_CONFIG,
 } from '../types/game';
 
 import { normalizeColors } from '../game/cardHelpers';
+
+import { KW_UNBLOCKABLE, KW_CAN_ATTACK_ACTIVE, KW_BLOCKER, KW_IMMUNE_COMBAT, KW_IMMUNE_EFFECTS, KW_SILENCED, KW_KO_PROTECTOR, KW_PREVENT_LIFE_ADD, KW_IMMUNE_KO, KW_CANT_BE_RESTED, KW_CANT_PLAY_CARDS, KW_CANT_PLAY_CHARACTERS, KW_DISABLE_EFFECT_DRAWS, KW_NO_ON_PLAYS, KW_DON_EQUALIZATION } from '../constants/keywords.js';
 
 // Card definition with effects (from database)
 export interface CardDefinition {
@@ -274,14 +277,23 @@ export class EffectEngine {
         });
       }
 
-      // Check life cards for trigger effects
+      // Check trash for ON_KO and TRASH_SELF effects (card is moved to trash before trigger fires)
+      if (event.type === EffectTrigger.ON_KO || event.type === EffectTrigger.TRASH_SELF) {
+        const trashedCard = player.trash.find(card => card.id === event.cardId);
+        if (trashedCard) {
+          const cardEffects = this.getTriggeredEffects(trashedCard, player, event, gameState);
+          triggered.push(...cardEffects);
+        }
+      }
+
+      // Check for trigger effects — the life card has already been moved to hand
+      // by the time triggers are checked, so find it by event.cardId in hand
       if (event.type === EffectTrigger.TRIGGER) {
-        player.lifeCards.forEach(card => {
-          if (card.faceUp) {
-            const cardEffects = this.getTriggeredEffects(card, player, event, gameState);
-            triggered.push(...cardEffects);
-          }
-        });
+        const triggerCard = player.hand.find(card => card.id === event.cardId);
+        if (triggerCard) {
+          const cardEffects = this.getTriggeredEffects(triggerCard, player, event, gameState);
+          triggered.push(...cardEffects);
+        }
       }
     });
 
@@ -748,7 +760,8 @@ export class EffectEngine {
         const targetCardCostLess = this.findCard(gameState, context.selectedTargets[0]);
         if (!targetCardCostLess) return true;
         const targetDefCostLess = this.cardDefinitions.get(targetCardCostLess.cardId);
-        return (targetDefCostLess?.cost || 0) <= (condition.value || 0);
+        const currentCost = this.getEffectiveCost(targetCardCostLess, targetDefCostLess);
+        return currentCost <= (condition.value || 0);
       }
 
       case ConditionType.TARGET_COST_OR_MORE: {
@@ -756,7 +769,8 @@ export class EffectEngine {
         const targetCardCostMore = this.findCard(gameState, context.selectedTargets[0]);
         if (!targetCardCostMore) return true;
         const targetDefCostMore = this.cardDefinitions.get(targetCardCostMore.cardId);
-        return (targetDefCostMore?.cost || 0) >= (condition.value || 0);
+        const currentCost = this.getEffectiveCost(targetCardCostMore, targetDefCostMore);
+        return currentCost >= (condition.value || 0);
       }
 
       case ConditionType.TARGET_POWER_OR_LESS: {
@@ -910,7 +924,9 @@ export class EffectEngine {
 
     const changes: StateChange[] = [];
     const { gameState, sourcePlayer } = context;
-    const targets = context.selectedTargets || [];
+    const targets = context.selectedTargets !== undefined && context.selectedTargets.length > 0
+      ? context.selectedTargets
+      : (action.target ? this.getValidTargets(action, context) : []);
 
     switch (action.type) {
       // ============ KEYWORD EFFECTS ============
@@ -930,7 +946,7 @@ export class EffectEngine {
         changes.push({
           type: 'KEYWORD_ADDED',
           cardId: context.sourceCard.id,
-          value: 'Blocker',
+          value: KW_BLOCKER,
         });
         break;
 
@@ -1082,6 +1098,10 @@ export class EffectEngine {
 
       // ============ DRAW EFFECTS ============
       case EffectType.DRAW_CARDS:
+        if (this.hasActivePlayerRestriction(sourcePlayer, KW_DISABLE_EFFECT_DRAWS, gameState.turn)) {
+          console.log('[resolveAction] Draw blocked by DisableEffectDraws restriction');
+          break;
+        }
         for (let i = 0; i < (action.value || 1); i++) {
           if (sourcePlayer.deck.length > 0) {
             const drawnCard = sourcePlayer.deck.shift()!;
@@ -1325,7 +1345,8 @@ export class EffectEngine {
           if (this.isRemovalBlocked(gameState, targetId, 'KO', sourcePlayer.id)) return;
           const card = this.findCard(gameState, targetId);
           const cardDef = card ? this.cardDefinitions.get(card.cardId) : undefined;
-          if (card && ((cardDef?.cost ?? card.cost) || 0) <= (action.value || 0)) {
+          const currentCost = card ? this.getEffectiveCost(card, cardDef) : 0;
+          if (card && currentCost <= (action.value || 0)) {
             const result = this.koCard(gameState, targetId);
             changes.push(...result);
           }
@@ -1569,7 +1590,7 @@ export class EffectEngine {
           const card = this.findCard(gameState, targetId);
           if (card) {
             if (!card.temporaryKeywords) card.temporaryKeywords = [];
-            card.temporaryKeywords.push('Unblockable');
+            card.temporaryKeywords.push(KW_UNBLOCKABLE);
             changes.push({
               type: 'EFFECT_APPLIED',
               cardId: targetId,
@@ -1780,8 +1801,8 @@ export class EffectEngine {
         // This is typically a DON!! x1 passive ability
         if (context.sourceCard) {
           if (!context.sourceCard.temporaryKeywords) context.sourceCard.temporaryKeywords = [];
-          if (!context.sourceCard.temporaryKeywords.includes('CanAttackActive')) {
-            context.sourceCard.temporaryKeywords.push('CanAttackActive');
+          if (!context.sourceCard.temporaryKeywords.includes(KW_CAN_ATTACK_ACTIVE)) {
+            context.sourceCard.temporaryKeywords.push(KW_CAN_ATTACK_ACTIVE);
           }
           changes.push({
             type: 'EFFECT_APPLIED',
@@ -1895,8 +1916,8 @@ export class EffectEngine {
       case EffectType.IMMUNE_EFFECTS:
         if (context.sourceCard) {
           if (!context.sourceCard.temporaryKeywords) context.sourceCard.temporaryKeywords = [];
-          if (!context.sourceCard.temporaryKeywords.includes('ImmuneEffects')) {
-            context.sourceCard.temporaryKeywords.push('ImmuneEffects');
+          if (!context.sourceCard.temporaryKeywords.includes(KW_IMMUNE_EFFECTS)) {
+            context.sourceCard.temporaryKeywords.push(KW_IMMUNE_EFFECTS);
           }
           changes.push({
             type: 'EFFECT_APPLIED',
@@ -1934,8 +1955,8 @@ export class EffectEngine {
           if (card) {
             // Add silenced keyword to disable the card's effects
             if (!card.temporaryKeywords) card.temporaryKeywords = [];
-            if (!card.temporaryKeywords.includes('Silenced')) {
-              card.temporaryKeywords.push('Silenced');
+            if (!card.temporaryKeywords.includes(KW_SILENCED)) {
+              card.temporaryKeywords.push(KW_SILENCED);
             }
             changes.push({
               type: 'EFFECT_APPLIED',
@@ -1958,8 +1979,8 @@ export class EffectEngine {
         if (context.sourceCard) {
           // Mark this card as providing KO protection
           if (!context.sourceCard.temporaryKeywords) context.sourceCard.temporaryKeywords = [];
-          if (!context.sourceCard.temporaryKeywords.includes('KOProtector')) {
-            context.sourceCard.temporaryKeywords.push('KOProtector');
+          if (!context.sourceCard.temporaryKeywords.includes(KW_KO_PROTECTOR)) {
+            context.sourceCard.temporaryKeywords.push(KW_KO_PROTECTOR);
           }
 
           // Store protection info on the card (which cards it protects)
@@ -2061,7 +2082,7 @@ export class EffectEngine {
       case EffectType.PREVENT_LIFE_ADD:
         if (context.sourceCard) {
           if (!context.sourceCard.temporaryKeywords) context.sourceCard.temporaryKeywords = [];
-          context.sourceCard.temporaryKeywords.push('PreventLifeAdd');
+          context.sourceCard.temporaryKeywords.push(KW_PREVENT_LIFE_ADD);
           changes.push({
             type: 'EFFECT_APPLIED',
             cardId: context.sourceCard.id,
@@ -2079,8 +2100,8 @@ export class EffectEngine {
           const card = this.findCard(gameState, targetId);
           if (card) {
             if (!card.temporaryKeywords) card.temporaryKeywords = [];
-            if (!card.temporaryKeywords.includes('ImmuneKO')) {
-              card.temporaryKeywords.push('ImmuneKO');
+            if (!card.temporaryKeywords.includes(KW_IMMUNE_KO)) {
+              card.temporaryKeywords.push(KW_IMMUNE_KO);
             }
             changes.push({
               type: 'EFFECT_APPLIED',
@@ -2100,8 +2121,8 @@ export class EffectEngine {
           const card = this.findCard(gameState, targetId);
           if (card) {
             if (!card.temporaryKeywords) card.temporaryKeywords = [];
-            if (!card.temporaryKeywords.includes('CantBeRested')) {
-              card.temporaryKeywords.push('CantBeRested');
+            if (!card.temporaryKeywords.includes(KW_CANT_BE_RESTED)) {
+              card.temporaryKeywords.push(KW_CANT_BE_RESTED);
             }
             changes.push({
               type: 'EFFECT_APPLIED',
@@ -2322,13 +2343,13 @@ export class EffectEngine {
           const card = this.findCard(gameState, targetId);
           if (card) {
             if (!card.temporaryKeywords) card.temporaryKeywords = [];
-            if (!card.temporaryKeywords.includes('Blocker')) {
-              card.temporaryKeywords.push('Blocker');
+            if (!card.temporaryKeywords.includes(KW_BLOCKER)) {
+              card.temporaryKeywords.push(KW_BLOCKER);
             }
             changes.push({
               type: 'KEYWORD_ADDED',
               cardId: targetId,
-              value: 'Blocker',
+              value: KW_BLOCKER,
             });
           }
         });
@@ -2343,13 +2364,13 @@ export class EffectEngine {
           const card = this.findCard(gameState, targetId);
           if (card) {
             if (!card.temporaryKeywords) card.temporaryKeywords = [];
-            if (!card.temporaryKeywords.includes('Unblockable')) {
-              card.temporaryKeywords.push('Unblockable');
+            if (!card.temporaryKeywords.includes(KW_UNBLOCKABLE)) {
+              card.temporaryKeywords.push(KW_UNBLOCKABLE);
             }
             changes.push({
               type: 'KEYWORD_ADDED',
               cardId: targetId,
-              value: 'Unblockable',
+              value: KW_UNBLOCKABLE,
             });
           }
         });
@@ -2401,8 +2422,8 @@ export class EffectEngine {
           const card = this.findCard(gameState, targetId);
           if (card) {
             if (!card.temporaryKeywords) card.temporaryKeywords = [];
-            if (!card.temporaryKeywords.includes('ImmuneCombat')) {
-              card.temporaryKeywords.push('ImmuneCombat');
+            if (!card.temporaryKeywords.includes(KW_IMMUNE_COMBAT)) {
+              card.temporaryKeywords.push(KW_IMMUNE_COMBAT);
             }
             changes.push({
               type: 'EFFECT_APPLIED',
@@ -2499,6 +2520,269 @@ export class EffectEngine {
         console.log('[WIN_GAME] Player', sourcePlayer.id, 'wins by card effect!');
         break;
 
+      // ============================================
+      // LOSE_KEYWORD - Remove a keyword from target card
+      // ============================================
+      case EffectType.LOSE_KEYWORD: {
+        const keyword = action.keyword || String(action.value || '');
+        targets.forEach(targetId => {
+          const target = this.findCard(gameState, targetId);
+          if (target && keyword) {
+            // Remove from keywords array
+            if (target.keywords) {
+              target.keywords = target.keywords.filter(k => k !== keyword);
+            }
+            // Remove from temporaryKeywords
+            if (target.temporaryKeywords) {
+              target.temporaryKeywords = target.temporaryKeywords.filter(k => k !== keyword);
+            }
+            // Remove from grantedEffects that grant this keyword
+            if (target.grantedEffects) {
+              target.grantedEffects = target.grantedEffects.filter(
+                ge => !(ge.effectType === 'GRANT_KEYWORD' && ge.keyword === keyword)
+              );
+            }
+            // Add restriction to prevent re-granting
+            if (!target.restrictions) target.restrictions = [];
+            target.restrictions.push({
+              type: 'LOSE_KEYWORD',
+              until: action.duration === EffectDuration.UNTIL_END_OF_OPPONENT_TURN
+                ? 'END_OF_OPPONENT_TURN'
+                : action.duration === EffectDuration.UNTIL_END_OF_TURN
+                  ? 'END_OF_TURN'
+                  : 'PERMANENT',
+              turnApplied: gameState.turn,
+              keyword,
+            });
+            changes.push({
+              type: 'KEYWORD_REMOVED',
+              cardId: targetId,
+              value: keyword,
+            });
+            console.log('[LOSE_KEYWORD] Removed', keyword, 'from card:', targetId);
+          }
+        });
+        break;
+      }
+
+      // ============================================
+      // CANT_PLAY_CARDS - Target player can't play cards from hand
+      // ============================================
+      case EffectType.CANT_PLAY_CARDS: {
+        this.applyPlayerRestriction(action, gameState, sourcePlayer, KW_CANT_PLAY_CARDS, 'CANT_PLAY_CARDS', changes);
+        break;
+      }
+
+      // ============================================
+      // CANT_PLAY_CHARACTERS - Target player can't play characters
+      // ============================================
+      case EffectType.CANT_PLAY_CHARACTERS: {
+        this.applyPlayerRestriction(action, gameState, sourcePlayer, KW_CANT_PLAY_CHARACTERS, 'CANT_PLAY_CHARACTERS', changes);
+        break;
+      }
+
+      // ============================================
+      // DISABLE_EFFECT_DRAWS - Target player can't draw via effects this turn
+      // ============================================
+      case EffectType.DISABLE_EFFECT_DRAWS: {
+        this.applyPlayerRestriction(action, gameState, sourcePlayer, KW_DISABLE_EFFECT_DRAWS, 'DISABLE_EFFECT_DRAWS', changes);
+        break;
+      }
+
+      // ============================================
+      // GRANT_ATTRIBUTE - Give a card an attribute (e.g., Slash)
+      // ============================================
+      case EffectType.GRANT_ATTRIBUTE: {
+        const attribute = action.keyword || String(action.value || '');
+        targets.forEach(targetId => {
+          const target = this.findCard(gameState, targetId);
+          if (target && attribute) {
+            // Use temporaryKeywords to track granted attributes
+            if (!target.temporaryKeywords) target.temporaryKeywords = [];
+            const attrTag = `Attribute:${attribute}`;
+            if (!target.temporaryKeywords.includes(attrTag)) {
+              target.temporaryKeywords.push(attrTag);
+            }
+            changes.push({
+              type: 'EFFECT_APPLIED',
+              cardId: targetId,
+              value: `GRANT_ATTRIBUTE:${attribute}`,
+            });
+            console.log('[GRANT_ATTRIBUTE] Granted attribute', attribute, 'to card:', targetId);
+          }
+        });
+        break;
+      }
+
+      // ============================================
+      // FIELD_EFFECT_IMMUNITY - All current field characters immune to effects
+      // ============================================
+      case EffectType.FIELD_EFFECT_IMMUNITY: {
+        for (const card of sourcePlayer.field) {
+          if (!card.grantedEffects) card.grantedEffects = [];
+          card.grantedEffects.push({
+            id: `immunity-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            sourceCardId: context.sourceCard.id,
+            trigger: 'PASSIVE',
+            effectType: 'IMMUNE_EFFECTS',
+            keyword: KW_IMMUNE_EFFECTS,
+            duration: 'THIS_TURN',
+            turnGranted: gameState.turn,
+          });
+          // Also add to temporaryKeywords for immediate checking
+          if (!card.temporaryKeywords) card.temporaryKeywords = [];
+          if (!card.temporaryKeywords.includes(KW_IMMUNE_EFFECTS)) {
+            card.temporaryKeywords.push(KW_IMMUNE_EFFECTS);
+          }
+        }
+        changes.push({
+          type: 'EFFECT_APPLIED',
+          playerId: sourcePlayer.id,
+          value: 'FIELD_EFFECT_IMMUNITY',
+        });
+        console.log('[FIELD_EFFECT_IMMUNITY] All field characters immune to effects for player:', sourcePlayer.id);
+        break;
+      }
+
+      // ============================================
+      // NO_ON_PLAYS_NEXT_TURN - Opponent can't activate On Play abilities next turn
+      // ============================================
+      case EffectType.NO_ON_PLAYS_NEXT_TURN: {
+        const opponent = this.getOpponent(gameState, sourcePlayer.id);
+        if (opponent?.leaderCard) {
+          this.addPlayerRestriction(opponent, KW_NO_ON_PLAYS, 'END_OF_OPPONENT_TURN', gameState.turn);
+          // Also store in grantedEffects with proper duration for cleanup
+          if (!opponent.leaderCard.grantedEffects) opponent.leaderCard.grantedEffects = [];
+          opponent.leaderCard.grantedEffects.push({
+            id: `no-on-plays-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            sourceCardId: context.sourceCard.id,
+            trigger: 'PASSIVE',
+            effectType: 'NO_ON_PLAYS_NEXT_TURN',
+            duration: 'UNTIL_END_OF_OPPONENT_TURN',
+            turnGranted: gameState.turn,
+          });
+          changes.push({
+            type: 'EFFECT_APPLIED',
+            playerId: opponent.id,
+            value: 'NO_ON_PLAYS_NEXT_TURN',
+          });
+          console.log('[NO_ON_PLAYS_NEXT_TURN] Opponent', opponent.id, 'cannot activate On Play abilities next turn');
+        }
+        break;
+      }
+
+      // ============================================
+      // CONFUSION_TAX - Target must trash X cards from hand to attack
+      // ============================================
+      case EffectType.CONFUSION_TAX: {
+        const taxAmount = action.value || 1;
+        targets.forEach(targetId => {
+          const target = this.findCard(gameState, targetId);
+          if (target) {
+            if (!target.restrictions) target.restrictions = [];
+            const until = this.getPlayerRestrictionUntil(action.duration);
+            const alreadyApplied = target.restrictions.some(
+              restriction =>
+                restriction.type === 'CONFUSION_TAX' &&
+                restriction.until === until &&
+                restriction.turnApplied === gameState.turn &&
+                restriction.value === taxAmount
+            );
+            if (!alreadyApplied) {
+              target.restrictions.push({
+                type: 'CONFUSION_TAX',
+                until,
+                turnApplied: gameState.turn,
+                value: taxAmount,
+              });
+            }
+            changes.push({
+              type: 'EFFECT_APPLIED',
+              cardId: targetId,
+              value: `CONFUSION_TAX:${taxAmount}`,
+            });
+            console.log('[CONFUSION_TAX] Card', targetId, 'must trash', taxAmount, 'cards from hand to attack');
+          }
+        });
+        break;
+      }
+
+      // ============================================
+      // DON_EQUALIZATION - Return DON to match opponent's count at end of turn
+      // ============================================
+      case EffectType.DON_EQUALIZATION: {
+        if (sourcePlayer.leaderCard) {
+          this.addPlayerRestriction(sourcePlayer, KW_DON_EQUALIZATION, 'END_OF_TURN', gameState.turn);
+          changes.push({
+            type: 'EFFECT_APPLIED',
+            playerId: sourcePlayer.id,
+            value: 'DON_EQUALIZATION',
+          });
+          console.log('[DON_EQUALIZATION] Player', sourcePlayer.id, 'marked for DON equalization at end of turn');
+        }
+        break;
+      }
+
+      // ============================================
+      // FLIP_LIFE_FACE_UP - Turn top life card face-up
+      // ============================================
+      case EffectType.FLIP_LIFE_FACE_UP: {
+        const revealCount = Math.max(1, action.value || 1);
+        const cardsToReveal = sourcePlayer.lifeCards.slice(-revealCount);
+        for (const lifeCard of cardsToReveal) {
+          lifeCard.faceUp = true;
+          changes.push({
+            type: 'LIFE_CHANGED',
+            cardId: lifeCard.id,
+            playerId: sourcePlayer.id,
+            value: 'FACE_UP',
+          });
+        }
+        console.log('[FLIP_LIFE_FACE_UP] Turned face-up life cards:', cardsToReveal.map(card => card.id));
+        break;
+      }
+
+      // ============================================
+      // FLIP_LIFE_FACE_DOWN - Turn top life card face-down
+      // ============================================
+      case EffectType.FLIP_LIFE_FACE_DOWN: {
+        const concealCount = Math.max(1, action.value || 1);
+        const cardsToConceal = sourcePlayer.lifeCards.slice(-concealCount);
+        for (const lifeCard of cardsToConceal) {
+          lifeCard.faceUp = false;
+          changes.push({
+            type: 'LIFE_CHANGED',
+            cardId: lifeCard.id,
+            playerId: sourcePlayer.id,
+            value: 'FACE_DOWN',
+          });
+        }
+        console.log('[FLIP_LIFE_FACE_DOWN] Turned face-down life cards:', cardsToConceal.map(card => card.id));
+        break;
+      }
+
+      // ============================================
+      // DEPLOY_SWAP - Replace a character when field is at max (5)
+      // ============================================
+      case EffectType.DEPLOY_SWAP: {
+        targets.forEach(targetId => {
+          const targetIndex = sourcePlayer.field.findIndex(c => c.id === targetId);
+          if (targetIndex !== -1) {
+            const card = sourcePlayer.field.splice(targetIndex, 1)[0];
+            card.zone = CardZone.TRASH;
+            sourcePlayer.trash.push(card);
+            changes.push({
+              type: 'CARD_MOVED',
+              cardId: targetId,
+              from: CardZone.FIELD,
+              to: CardZone.TRASH,
+            });
+            console.log('[DEPLOY_SWAP] Swapped out character', targetId, 'to trash');
+          }
+        });
+        break;
+      }
+
       default:
         console.warn(`Unhandled effect type: ${action.type}`);
     }
@@ -2592,7 +2876,7 @@ export class EffectEngine {
 
   public canBlock(card: GameCard, gameState?: GameState): boolean {
     // Card must have Blocker keyword and be active
-    return this.hasKeyword(card, 'Blocker', gameState) && card.state === CardState.ACTIVE;
+    return this.hasKeyword(card, KW_BLOCKER, gameState) && card.state === CardState.ACTIVE;
   }
 
   public hasBanish(card: GameCard, gameState?: GameState): boolean {
@@ -2605,9 +2889,9 @@ export class EffectEngine {
 
   public isUnblockable(card: GameCard, gameState?: GameState): boolean {
     // Check permanent Unblockable keyword
-    if (this.hasKeyword(card, 'Unblockable', gameState)) return true;
+    if (this.hasKeyword(card, KW_UNBLOCKABLE, gameState)) return true;
     // Also check temporary keywords granted by effects (e.g., CANT_BE_BLOCKED)
-    return card.temporaryKeywords?.includes('Unblockable') || false;
+    return card.temporaryKeywords?.includes(KW_UNBLOCKABLE) || false;
   }
 
   // ============================================
@@ -2881,6 +3165,142 @@ export class EffectEngine {
     });
   }
 
+  private normalizePlayerRestriction(
+    restriction: PlayerRestriction | string,
+    currentTurn: number
+  ): PlayerRestriction {
+    if (typeof restriction !== 'string') {
+      return restriction;
+    }
+    return {
+      keyword: restriction,
+      until: 'END_OF_TURN',
+      turnApplied: currentTurn,
+    };
+  }
+
+  private isPlayerRestrictionActive(
+    restriction: PlayerRestriction | string,
+    currentTurn: number
+  ): boolean {
+    const normalized = this.normalizePlayerRestriction(restriction, currentTurn);
+    if (normalized.until === 'PERMANENT') return true;
+    if (normalized.until === 'END_OF_OPPONENT_TURN') {
+      return currentTurn <= normalized.turnApplied + 1;
+    }
+    return currentTurn === normalized.turnApplied;
+  }
+
+  private hasActivePlayerRestriction(
+    player: PlayerState,
+    keyword: string,
+    currentTurn: number
+  ): boolean {
+    return (player.restrictions ?? []).some(restriction => {
+      const normalized = this.normalizePlayerRestriction(restriction, currentTurn);
+      return normalized.keyword === keyword && this.isPlayerRestrictionActive(normalized, currentTurn);
+    });
+  }
+
+  private getPlayerRestrictionUntil(duration?: EffectDuration): PlayerRestriction['until'] {
+    if (duration === EffectDuration.UNTIL_END_OF_OPPONENT_TURN) {
+      return 'END_OF_OPPONENT_TURN';
+    }
+    if (duration === EffectDuration.UNTIL_END_OF_TURN || duration === undefined) {
+      return 'END_OF_TURN';
+    }
+    return 'PERMANENT';
+  }
+
+  private samePlayerRestrictionFilters(
+    left?: PlayerRestriction['filters'],
+    right?: TargetFilter[],
+  ): boolean {
+    return JSON.stringify(left ?? []) === JSON.stringify(right ?? []);
+  }
+
+  private addPlayerRestriction(
+    player: PlayerState,
+    keyword: string,
+    until: PlayerRestriction['until'],
+    turnApplied: number,
+    filters?: TargetFilter[],
+  ): void {
+    if (!player.restrictions) {
+      player.restrictions = [];
+    }
+
+    const alreadyApplied = player.restrictions.some(restriction => {
+      const normalized = this.normalizePlayerRestriction(restriction, turnApplied);
+      return normalized.keyword === keyword &&
+        normalized.until === until &&
+        normalized.turnApplied === turnApplied &&
+        this.samePlayerRestrictionFilters(normalized.filters, filters);
+    });
+
+    if (!alreadyApplied) {
+      const playerRestriction: PlayerRestriction = {
+        keyword,
+        until,
+        turnApplied,
+      };
+      if (filters?.length) {
+        playerRestriction.filters = filters.map(filter => ({ ...filter }));
+      }
+      player.restrictions.push(playerRestriction);
+    }
+
+    if (player.leaderCard) {
+      if (!player.leaderCard.temporaryKeywords) {
+        player.leaderCard.temporaryKeywords = [];
+      }
+      if (!player.leaderCard.temporaryKeywords.includes(keyword)) {
+        player.leaderCard.temporaryKeywords.push(keyword);
+      }
+    }
+  }
+
+  /** Resolve a card's effective cost, preferring runtime-modified cost over definition cost. */
+  /** Apply a turn-based restriction to a player (stored on both player.restrictions and leaderCard.temporaryKeywords). */
+  private applyPlayerRestriction(
+    action: EffectAction,
+    gameState: GameState,
+    sourcePlayer: PlayerState,
+    keyword: string,
+    changeValue: string,
+    changes: StateChange[],
+  ): void {
+    const opponentTargetTypes = new Set<TargetType>([
+      TargetType.OPPONENT_CHARACTER,
+      TargetType.OPPONENT_LEADER,
+      TargetType.OPPONENT_LEADER_OR_CHARACTER,
+      TargetType.OPPONENT_FIELD,
+      TargetType.OPPONENT_HAND,
+      TargetType.OPPONENT_TRASH,
+      TargetType.OPPONENT_LIFE,
+      TargetType.OPPONENT_DON,
+      TargetType.OPPONENT_STAGE,
+    ]);
+    const targetPlayer = action.target?.type && opponentTargetTypes.has(action.target.type)
+      ? this.getOpponent(gameState, sourcePlayer.id)
+      : sourcePlayer;
+    if (targetPlayer) {
+      this.addPlayerRestriction(
+        targetPlayer,
+        keyword,
+        this.getPlayerRestrictionUntil(action.duration),
+        gameState.turn,
+        action.target?.filters,
+      );
+      changes.push({ type: 'EFFECT_APPLIED', playerId: targetPlayer.id, value: changeValue });
+      console.log(`[${changeValue}] Player`, targetPlayer.id, 'restriction applied');
+    }
+  }
+
+  private getEffectiveCost(card: GameCard, def?: { cost?: number | null }): number {
+    return card.modifiedCost ?? def?.cost ?? card.cost ?? 0;
+  }
+
   private findCard(gameState: GameState, cardId: string): GameCard | undefined {
     for (const player of Object.values(gameState.players)) {
       const allCards = [
@@ -2942,13 +3362,13 @@ export class EffectEngine {
     const isOpponentEffect = effectOwnerId != null && cardOwner != null && effectOwnerId !== cardOwner.id;
 
     // ImmuneEffects blocks opponent removal effects
-    if (isOpponentEffect && card.temporaryKeywords?.includes('ImmuneEffects')) {
+    if (isOpponentEffect && card.temporaryKeywords?.includes(KW_IMMUNE_EFFECTS)) {
       console.log(`[IMMUNITY] Card ${cardId} is immune to opponent effects (ImmuneEffects)`);
       return true;
     }
 
     // ImmuneKO blocks KO from any source
-    if (removalType === 'KO' && card.temporaryKeywords?.includes('ImmuneKO')) {
+    if (removalType === 'KO' && card.temporaryKeywords?.includes(KW_IMMUNE_KO)) {
       console.log(`[IMMUNITY] Card ${cardId} is immune to KO (ImmuneKO)`);
       return true;
     }
@@ -3011,13 +3431,13 @@ export class EffectEngine {
     const isOpponentEffect = effectOwnerId != null && cardOwner != null && effectOwnerId !== cardOwner.id;
 
     // CantBeRested blocks rest from any source
-    if (card.temporaryKeywords?.includes('CantBeRested')) {
+    if (card.temporaryKeywords?.includes(KW_CANT_BE_RESTED)) {
       console.log(`[IMMUNITY] Card ${cardId} cannot be rested (CantBeRested)`);
       return true;
     }
 
     // ImmuneEffects blocks opponent rest effects
-    if (isOpponentEffect && card.temporaryKeywords?.includes('ImmuneEffects')) {
+    if (isOpponentEffect && card.temporaryKeywords?.includes(KW_IMMUNE_EFFECTS)) {
       console.log(`[IMMUNITY] Card ${cardId} is immune to opponent rest (ImmuneEffects)`);
       return true;
     }
@@ -3667,7 +4087,7 @@ export class EffectEngine {
       return filters.every(filter => {
         switch (filter.property) {
           case 'COST':
-            const cardCost = def.cost || 0;
+            const cardCost = this.getEffectiveCost(card, def);
             // Resolve dynamic value if context provided
             const costValue = context ? this.resolveDynamicValue(filter.value, context) : (filter.value as number);
             if (filter.operator === 'OR_LESS' || filter.operator === 'LESS_THAN_OR_EQUAL') return cardCost <= costValue;
@@ -3794,6 +4214,25 @@ export class EffectEngine {
     });
 
     return changes;
+  }
+
+  public cleanupExpiredGrantedEffects(gameState: GameState): void {
+    for (const player of Object.values(gameState.players)) {
+      // Only field/leader/stage cards can have active granted effects
+      const cardsWithEffects = [
+        ...player.field,
+        player.leaderCard,
+        player.stage,
+      ].filter(Boolean) as GameCard[];
+
+      for (const card of cardsWithEffects) {
+        if (card.grantedEffects && card.grantedEffects.length > 0) {
+          card.grantedEffects = card.grantedEffects.filter(
+            ge => this.isGrantedEffectActive(ge, gameState)
+          );
+        }
+      }
+    }
   }
 
   private shouldRemoveEffect(

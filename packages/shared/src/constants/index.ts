@@ -1,4 +1,5 @@
-import type { CardColor, GamePhase } from '../types';
+import type { CardColor, GamePhase as LegacyGamePhase } from '../types';
+import { GamePhase, type GameState } from '../types/game.js';
 
 // Game Constants
 export const DECK_SIZE = 50;
@@ -41,13 +42,41 @@ export const COLORS: Record<CardColor, { name: string; hex: string }> = {
 };
 
 // Phase Order
-export const PHASE_ORDER: GamePhase[] = [
+export const PHASE_ORDER: LegacyGamePhase[] = [
   'REFRESH',
   'DRAW',
   'DON',
   'MAIN',
   'END',
 ];
+
+// Phases where BOTH players can act simultaneously
+export const SIMULTANEOUS_PHASES = new Set([
+  GamePhase.PRE_GAME_SETUP,  // Both players select start-of-game cards (e.g., Imu's stage)
+  GamePhase.START_MULLIGAN,  // Both players decide on mulligan
+]);
+
+// Phases where the NON-ACTIVE (defending) player primarily acts
+export const DEFENSIVE_PHASES = new Set([
+  GamePhase.COUNTER_STEP,         // Defender uses counter cards
+  GamePhase.COUNTER_EFFECT_STEP,  // Defender resolves event counter targets
+  GamePhase.BLOCKER_STEP,         // Defender declares blockers
+  GamePhase.TRIGGER_STEP,         // Defender resolves life triggers
+]);
+
+/** Get the player who owns the current attack/play effect step, if any. */
+export function getPendingEffectOwnerId(state: GameState): string | undefined {
+  if (state.phase === GamePhase.ATTACK_EFFECT_STEP) {
+    return state.pendingAttackEffects?.[0]?.playerId;
+  }
+  if (state.phase === GamePhase.PLAY_EFFECT_STEP) {
+    return state.pendingPlayEffects?.[0]?.playerId;
+  }
+  return undefined;
+}
+
+// Turn-based player restrictions cleared at end of turn
+export const TURN_BASED_RESTRICTIONS = ['CantPlayCards', 'CantPlayCharacters', 'DisableEffectDraws', 'NoOnPlays'] as const;
 
 // Card Set Information
 export const CARD_SETS = [

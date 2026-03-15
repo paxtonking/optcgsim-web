@@ -26,6 +26,8 @@ interface ActionButtonsProps {
   // Trigger card info
   triggerCardName?: string;
   triggerCardEffect?: string;
+  // Double Attack info
+  doubleAttackPending?: boolean;
 }
 
 export const ActionButtons: React.FC<ActionButtonsProps> = ({
@@ -50,6 +52,7 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
   onCancelAttack,
   triggerCardName,
   triggerCardEffect,
+  doubleAttackPending = false,
 }) => {
   // Note: These props are kept for interface compatibility but are handled elsewhere
   // Combat actions are handled by CombatModal, mulligan actions by MulliganModal
@@ -101,11 +104,19 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
   if (phase === GamePhase.TRIGGER_STEP) {
     return (
       <div className="action-buttons">
+        {doubleAttackPending && (
+          <div className="action-info-badge action-info-badge--double-attack">
+            <strong>Double Attack</strong>
+            <div className="action-info-badge__detail">
+              Remaining damage will be dealt after trigger resolution
+            </div>
+          </div>
+        )}
         {triggerCardName && (
-          <div style={{ color: '#ffd700', textAlign: 'center', fontSize: '11px', padding: '4px 8px', marginBottom: '4px', background: 'rgba(255,215,0,0.1)', borderRadius: '4px' }}>
+          <div className="action-info-badge action-info-badge--trigger">
             <strong>[Trigger] {triggerCardName}</strong>
             {triggerCardEffect && (
-              <div style={{ color: '#a0aec0', fontSize: '10px', marginTop: '2px' }}>
+              <div className="action-info-badge__detail">
                 {triggerCardEffect}
               </div>
             )}

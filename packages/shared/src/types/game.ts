@@ -108,11 +108,26 @@ export interface GrantedEffect {
 
 // Card restriction (e.g., CANT_ATTACK)
 export interface CardRestriction {
-  type: 'CANT_ATTACK' | 'CANT_BLOCK' | 'CANT_BE_TARGETED';
+  type: 'CANT_ATTACK' | 'CANT_BLOCK' | 'CANT_BE_TARGETED' | 'LOSE_KEYWORD' | 'CONFUSION_TAX';
   until: 'END_OF_TURN' | 'END_OF_OPPONENT_TURN' | 'PERMANENT';
   turnApplied: number;
   source?: 'STAGE_CONTINUOUS' | 'EFFECT';
   sourceCardId?: string;
+  keyword?: string;      // For LOSE_KEYWORD: the keyword that was removed
+  value?: number;        // For CONFUSION_TAX: number of cards to trash to attack
+}
+
+export interface PlayerRestrictionFilter {
+  property: 'COST' | 'POWER' | 'COLOR' | 'TRAIT' | 'TYPE' | 'NAME' | 'STATE' | 'BASE_COST' | 'BASE_POWER';
+  operator: 'EQUALS' | 'OR_MORE' | 'OR_LESS' | 'LESS_THAN_OR_EQUAL' | 'CONTAINS' | 'NOT_CONTAINS' | 'NOT_EQUALS' | 'NOT' | 'IN';
+  value: string | number | string[];
+}
+
+export interface PlayerRestriction {
+  keyword: string;
+  until: 'END_OF_TURN' | 'END_OF_OPPONENT_TURN' | 'PERMANENT';
+  turnApplied: number;
+  filters?: PlayerRestrictionFilter[];
 }
 
 // Card immunity (e.g., IMMUNE_KO)
@@ -142,6 +157,7 @@ export interface PlayerState {
   isActive: boolean;   // Is it this player's turn?
   turnCount: number;   // Number of turns this player has taken
   extraTurns?: number; // Queued extra turns from TAKE_ANOTHER_TURN effects
+  restrictions?: Array<PlayerRestriction | string>; // Turn-based player restrictions (legacy string entries are still tolerated)
 }
 
 export interface CombatInfo {
@@ -182,6 +198,9 @@ export interface PendingAttackEffect {
   description: string;         // Human-readable effect description
   validTargets?: string[];     // IDs of cards that can be selected as targets
   requiresChoice: boolean;
+  isOptional: boolean;
+  maxTargets?: number;
+  minTargets?: number;
 }
 
 // Pending effect for ON_PLAY abilities that require target selection
@@ -192,6 +211,7 @@ export interface PendingPlayEffect {
   description: string;         // Human-readable effect description
   validTargets?: string[];     // IDs of cards that can be selected as targets
   requiresChoice: boolean;
+  isOptional: boolean;
   effectType: string;          // e.g., 'ATTACH_DON', 'BUFF_POWER'
   maxTargets?: number;         // Maximum number of targets to select
   minTargets?: number;         // Minimum number of targets (0 = optional)

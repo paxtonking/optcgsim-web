@@ -28,6 +28,7 @@ import {
   extractKeywords,
   extractAction,
   extractTarget,
+  extractFilters,
   extractDuration,
   extractConditions,
   extractCosts,
@@ -60,7 +61,61 @@ export class EffectTextParser {
       console.error(`[EffectParser] Errors for ${cardId}:`, result.errors);
     }
 
-    return this.buildDefinitions(result, cardId);
+    const effects = this.buildDefinitions(result, cardId);
+
+    // Check for dual triggers and duplicate effects with the second trigger
+    const dualTriggerMap: Array<{pattern: RegExp, triggers: [EffectTrigger, EffectTrigger]}> = [
+      { pattern: /\[On Play\]\/\[When Attacking\]/i, triggers: [EffectTrigger.ON_PLAY, EffectTrigger.ON_ATTACK] },
+      { pattern: /\[Main\]\/\[Counter\]/i, triggers: [EffectTrigger.MAIN, EffectTrigger.COUNTER] },
+    ];
+
+    for (const dual of dualTriggerMap) {
+      if (dual.pattern.test(effectText)) {
+        const newEffects: CardEffectDefinition[] = [];
+        for (const effect of effects) {
+          if (effect.trigger === dual.triggers[0]) {
+            const copy: CardEffectDefinition = {
+              ...effect,
+              id: effect.id + '-dual',
+              trigger: dual.triggers[1],
+              effects: [...effect.effects],
+              conditions: effect.conditions ? [...effect.conditions] : undefined,
+              costs: effect.costs ? [...effect.costs] : undefined,
+            };
+            newEffects.push(copy);
+          }
+        }
+        effects.push(...newEffects);
+      }
+    }
+
+    // Handle "[Trigger] Activate this card's [On Play]/[Main] effect"
+    const selfRefTrigger = effectText.match(/\[Trigger\]\s*Activate this card'?s?\s*\[([^\]]+)\]\s*effect/i);
+    if (selfRefTrigger) {
+      const refTriggerName = selfRefTrigger[1];
+      let refTrigger: EffectTrigger | undefined;
+      if (/On Play/i.test(refTriggerName)) refTrigger = EffectTrigger.ON_PLAY;
+      else if (/When Attacking/i.test(refTriggerName)) refTrigger = EffectTrigger.ON_ATTACK;
+      else if (/Main/i.test(refTriggerName)) refTrigger = EffectTrigger.MAIN;
+
+      if (refTrigger) {
+        // Find the referenced effect and create a trigger copy
+        const referencedEffect = effects.find(e => e.trigger === refTrigger);
+        if (referencedEffect) {
+          const triggerCopy: CardEffectDefinition = {
+            ...referencedEffect,
+            id: referencedEffect.id + '-trigger-ref',
+            trigger: EffectTrigger.TRIGGER,
+            effects: [...referencedEffect.effects],
+            conditions: referencedEffect.conditions ? [...referencedEffect.conditions] : undefined,
+            costs: undefined, // Triggers don't pay costs
+          };
+          effects.push(triggerCopy);
+        }
+      }
+    }
+
+    return effects;
   }
 
   /**
@@ -245,9 +300,24 @@ export class EffectTextParser {
     // Split on "Then" or ". Then" but preserve the text
     const parts = actionText.split(/\.?\s*Then[,:]?\s*/i).filter(p => p.trim());
 
+    // Secondary split: handle ", and" between independent actions
+    const andSplitParts: string[] = [];
+    for (const part of parts) {
+      const subParts = part.split(/,\s+and\s+(?=[a-z])/i).filter(p => p.trim());
+      andSplitParts.push(...subParts);
+    }
+
+    // Split on period-separated sentences that start with action verbs
+    const expandedParts: string[] = [];
+    for (const part of andSplitParts) {
+      // Split on ". " followed by "It " or a capital letter that starts an action
+      const sentences = part.split(/\.\s+(?=(?:It|This|That|Your|The|All|Draw|Add|Play|Rest|Set|Give|Place|Trash|Return|Look|Search|KO|Activate)\b)/i).filter(p => p.trim());
+      expandedParts.push(...sentences);
+    }
+
     const actions: ParsedAction[] = [];
 
-    for (const part of parts) {
+    for (const part of expandedParts) {
       const action = this.parseActionPart(part);
       if (action) {
         actions.push(action);
@@ -274,13 +344,19 @@ export class EffectTextParser {
       return null;
     }
 
-    // Extract target
-    const target = extractTarget(text);
-    if (target) {
-      action.target = target;
-    } else {
-      // Try to infer target from action type
+    // CANT_PLAY_CHARACTERS restrictions need subject-aware inference so
+    // "Your opponent cannot play Character cards..." applies to the opponent,
+    // while still preserving any parsed cost/base-cost filters.
+    if (action.type === EffectType.CANT_PLAY_CHARACTERS) {
       action.target = this.inferTarget(action.type, text);
+    } else {
+      const target = extractTarget(text);
+      if (target) {
+        action.target = target;
+      } else {
+        // Try to infer target from action type
+        action.target = this.inferTarget(action.type, text);
+      }
     }
 
     // Extract duration
@@ -296,6 +372,14 @@ export class EffectTextParser {
    * Infer target based on action type and text context
    */
   private inferTarget(actionType: EffectType, text: string): ParsedTarget | undefined {
+    if (actionType === EffectType.CANT_PLAY_CHARACTERS) {
+      return {
+        type: /your opponent/i.test(text) ? TargetType.OPPONENT_CHARACTER : TargetType.YOUR_CHARACTER,
+        optional: false,
+        filters: extractFilters(text),
+      };
+    }
+
     // Self-buff patterns
     if (
       actionType === EffectType.BUFF_POWER ||

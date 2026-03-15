@@ -16,6 +16,9 @@ import {
   ActionType,
   CardState,
   EffectTrigger,
+  SIMULTANEOUS_PHASES,
+  DEFENSIVE_PHASES,
+  getPendingEffectOwnerId,
 } from '@optcgsim/shared';
 import { prisma } from '../services/prisma.js';
 import { cardLoaderService } from '../services/CardLoaderService.js';
@@ -569,11 +572,12 @@ export class AIGameManager {
 
       // Continue if still AI's turn and not waiting for the human to respond
       const waitingForHuman =
+        getPendingEffectOwnerId(updatedState) === game.humanPlayerId ||
         updatedState.phase === GamePhase.BLOCKER_STEP ||
         updatedState.phase === GamePhase.COUNTER_STEP ||
         updatedState.phase === GamePhase.COUNTER_EFFECT_STEP ||
         updatedState.phase === GamePhase.TRIGGER_STEP;
-      if (updatedState.activePlayerId === aiId && !waitingForHuman) {
+      if ((getPendingEffectOwnerId(updatedState) === aiId || updatedState.activePlayerId === aiId) && !waitingForHuman) {
         this.scheduleTrackedTimeout(gameId, () => {
           this.processTutorialAITurn(gameId);
         }, game.aiThinkDelay);
@@ -891,25 +895,19 @@ export class AIGameManager {
 
     const state = game.stateManager.getState();
 
-    // Phases where BOTH players can act simultaneously
-    const simultaneousPhases = [
-      GamePhase.PRE_GAME_SETUP,  // Both players select start-of-game cards
-      GamePhase.START_MULLIGAN,  // Both players decide on mulligan
-    ];
-
-    // Phases where the NON-ACTIVE (defending) player primarily acts
-    const defensivePhases = [
-      GamePhase.COUNTER_STEP,    // Defender uses counter cards
-      GamePhase.COUNTER_EFFECT_STEP, // Defender resolves event counter targets
-      GamePhase.BLOCKER_STEP,    // Defender declares blockers
-      GamePhase.TRIGGER_STEP,    // Defender resolves life triggers
-    ];
+    const pendingEffectOwnerId = getPendingEffectOwnerId(state);
 
     // Check if action is allowed for this player in this phase
-    const isSimultaneousPhase = simultaneousPhases.includes(state.phase as GamePhase);
-    const isDefensivePhase = defensivePhases.includes(state.phase as GamePhase);
+    const isSimultaneousPhase = SIMULTANEOUS_PHASES.has(state.phase);
+    const isDefensivePhase = DEFENSIVE_PHASES.has(state.phase);
 
-    if (!isSimultaneousPhase) {
+    if (pendingEffectOwnerId) {
+      if (pendingEffectOwnerId !== socket.userId) {
+        const error = pendingEffectOwnerId === state.activePlayerId ? 'Not your turn' : 'Waiting for opponent';
+        callback?.({ success: false, error });
+        return;
+      }
+    } else if (!isSimultaneousPhase) {
       if (isDefensivePhase) {
         // During defensive phases, the NON-active player (defender) should act
         if (state.activePlayerId === socket.userId) {
@@ -980,12 +978,15 @@ export class AIGameManager {
       return;
     }
 
-    // Check if it's now AI's turn OR if AI needs to respond defensively
-    if (postSkipState.activePlayerId === game.aiPlayer.getPlayerId()) {
+    const aiId = game.aiPlayer.getPlayerId();
+    const currentEffectOwnerId = getPendingEffectOwnerId(postSkipState);
+
+    // Check if it's now AI's turn, AI owns the current effect step, or AI needs to respond defensively
+    if (postSkipState.activePlayerId === aiId || currentEffectOwnerId === aiId) {
       // In tutorial Turn 3, pause after combat resolves so player can read results.
       // The client will emit ai:tutorial-resume when the player clicks "Next".
       // Only pause during AI turn 3 (the scripted combat teaching turn), not after.
-      const aiTurnCount = postSkipState.players[game.aiPlayer.getPlayerId()]?.turnCount ?? 0;
+      const aiTurnCount = postSkipState.players[aiId]?.turnCount ?? 0;
       // During tutorial combat, don't schedule AI turns when waiting for human
       // response (BLOCKER/COUNTER steps). activePlayerId stays as AI throughout
       // combat, so without this check we'd schedule stale processAITurn timeouts.
@@ -1039,16 +1040,36 @@ export class AIGameManager {
 
     let skipped = false;
     let state = game.stateManager.getState();
+    const aiId = game.aiPlayer.getPlayerId();
+    const maxIterations = 20; // Guard against infinite loops
 
-    while (true) {
+    for (let i = 0; i < maxIterations; i++) {
       if (state.phase === GamePhase.ATTACK_EFFECT_STEP && state.pendingAttackEffects?.length) {
-        console.log('[AIGameManager] Tutorial: auto-skipping ATTACK_EFFECT_STEP');
-        game.stateManager.skipAttackEffect(state.pendingAttackEffects[0].id);
+        const currentEffect = state.pendingAttackEffects[0];
+        if (currentEffect.playerId !== aiId) {
+          break;
+        }
+        console.log('[AIGameManager] Tutorial: auto-advancing ATTACK_EFFECT_STEP');
+        if (currentEffect.isOptional) {
+          game.stateManager.skipAttackEffect(currentEffect.id, aiId);
+        } else {
+          const targets = currentEffect.requiresChoice ? (currentEffect.validTargets?.slice(0, 1) || []) : [];
+          game.stateManager.resolveAttackEffect(currentEffect.id, targets, aiId);
+        }
         skipped = true;
         state = game.stateManager.getState();
       } else if (state.phase === GamePhase.PLAY_EFFECT_STEP && state.pendingPlayEffects?.length) {
-        console.log('[AIGameManager] Tutorial: auto-skipping PLAY_EFFECT_STEP');
-        game.stateManager.skipPlayEffect(state.pendingPlayEffects[0].id);
+        const currentEffect = state.pendingPlayEffects[0];
+        if (currentEffect.playerId !== aiId) {
+          break;
+        }
+        console.log('[AIGameManager] Tutorial: auto-advancing PLAY_EFFECT_STEP');
+        if (currentEffect.isOptional) {
+          game.stateManager.skipPlayEffect(currentEffect.id, aiId);
+        } else {
+          const targets = currentEffect.requiresChoice ? (currentEffect.validTargets?.slice(0, 1) || []) : [];
+          game.stateManager.resolvePlayEffect(currentEffect.id, targets, aiId);
+        }
         skipped = true;
         state = game.stateManager.getState();
       } else if (state.phase === GamePhase.TRIGGER_STEP) {
@@ -1402,8 +1423,9 @@ export class AIGameManager {
         return;
       }
 
-      // Continue AI turn if still AI's turn
-      if (updatedState.activePlayerId === game.aiPlayer.getPlayerId()) {
+      // Continue AI turn if it still owns priority for the current state.
+      if (updatedState.activePlayerId === game.aiPlayer.getPlayerId() ||
+          getPendingEffectOwnerId(updatedState) === game.aiPlayer.getPlayerId()) {
         // Delay next action
         this.scheduleTrackedTimeout(gameId, () => {
           this.processAITurn(gameId);

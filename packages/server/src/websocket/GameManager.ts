@@ -8,7 +8,10 @@ import {
   GamePhase,
   RPSChoice,
   RPSState,
-  ActionType
+  ActionType,
+  SIMULTANEOUS_PHASES,
+  DEFENSIVE_PHASES,
+  getPendingEffectOwnerId,
 } from '@optcgsim/shared';
 import { prisma } from '../services/prisma.js';
 import { cardLoaderService } from '../services/CardLoaderService.js';
@@ -627,25 +630,19 @@ export class GameManager {
 
     const state = game.stateManager.getState();
 
-    // Phases where BOTH players can act simultaneously
-    const simultaneousPhases = [
-      GamePhase.PRE_GAME_SETUP,  // Both players select start-of-game cards (e.g., Imu's stage)
-      GamePhase.START_MULLIGAN,  // Both players decide on mulligan
-    ];
-
-    // Phases where the NON-ACTIVE (defending) player primarily acts
-    const defensivePhases = [
-      GamePhase.COUNTER_STEP,    // Defender uses counter cards
-      GamePhase.COUNTER_EFFECT_STEP, // Defender resolves event counter targets
-      GamePhase.BLOCKER_STEP,    // Defender declares blockers
-      GamePhase.TRIGGER_STEP,    // Defender resolves life triggers
-    ];
+    const pendingEffectOwnerId = getPendingEffectOwnerId(state);
 
     // Check if action is allowed for this player in this phase
-    const isSimultaneousPhase = simultaneousPhases.includes(state.phase as GamePhase);
-    const isDefensivePhase = defensivePhases.includes(state.phase as GamePhase);
+    const isSimultaneousPhase = SIMULTANEOUS_PHASES.has(state.phase);
+    const isDefensivePhase = DEFENSIVE_PHASES.has(state.phase);
 
-    if (!isSimultaneousPhase) {
+    if (pendingEffectOwnerId) {
+      if (pendingEffectOwnerId !== socket.userId) {
+        const error = pendingEffectOwnerId === state.activePlayerId ? 'Not your turn' : 'Waiting for opponent';
+        if (callback) callback({ success: false, error });
+        return;
+      }
+    } else if (!isSimultaneousPhase) {
       if (isDefensivePhase) {
         // During defensive phases, the NON-active player should act
         if (state.activePlayerId === socket.userId) {
@@ -1084,4 +1081,5 @@ export class GameManager {
       this.games.delete(gameId);
     }
   }
+
 }

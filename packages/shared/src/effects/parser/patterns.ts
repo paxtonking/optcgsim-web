@@ -30,8 +30,8 @@ export const TRIGGER_PATTERNS: TriggerPattern[] = [
   // NOTE: DON!! x requirements are now handled as CONDITIONS, not triggers
   // See CONDITION_PATTERNS for DON_ATTACHED_OR_MORE
 
-  // Dual triggers
-  { pattern: /\[On Play\]\/\[When Attacking\]/i, trigger: EffectTrigger.ON_PLAY }, // Dual trigger - treat as On Play
+  // Dual triggers - first trigger only; EffectTextParser.parse() duplicates effect with second trigger
+  { pattern: /\[On Play\]\/\[When Attacking\]/i, trigger: EffectTrigger.ON_PLAY }, // Dual trigger - second trigger (ON_ATTACK) added by parser
 
   // Basic triggers
   { pattern: /\[On Play\]/i, trigger: EffectTrigger.ON_PLAY },
@@ -43,7 +43,7 @@ export const TRIGGER_PATTERNS: TriggerPattern[] = [
 
   // Main phase triggers
   { pattern: /\[Activate:\s*Main\]/i, trigger: EffectTrigger.ACTIVATE_MAIN },
-  { pattern: /\[Main\]\/\[Counter\]/i, trigger: EffectTrigger.MAIN }, // Dual trigger - treat as Main
+  { pattern: /\[Main\]\/\[Counter\]/i, trigger: EffectTrigger.MAIN }, // Dual trigger - second trigger (COUNTER) added by parser
   { pattern: /\[Main\]/i, trigger: EffectTrigger.MAIN },
 
   // Turn-based triggers
@@ -80,6 +80,100 @@ interface ActionPattern {
 }
 
 export const ACTION_PATTERNS: ActionPattern[] = [
+  // ============================================
+  // RESTRICTION / DISABLE EFFECTS (specific patterns first)
+  // ============================================
+
+  // Lose Keyword / Remove Blocker - "remove Blocker from" / "loses Blocker"
+  {
+    pattern: /(?:remove|lose[s]?)\s+(?:the\s+)?Blocker(?:\s+from|\s+of)?/i,
+    actionType: EffectType.LOSE_KEYWORD,
+    extractKeyword: () => 'Blocker',
+  },
+  // "can't block" / "cannot block" (active: target can't use Blocker ability)
+  {
+    pattern: /(?:can'?t|cannot)\s+(?:use\s+|activate\s+)?(?:\[?Blocker\]?|block)(?!\s*ed)/i,
+    actionType: EffectType.LOSE_KEYWORD,
+    extractKeyword: () => 'Blocker',
+  },
+
+  // Can't play cards from hand
+  {
+    pattern: /(?:can'?t|cannot)\s+play\s+(?:any\s+)?cards?\s+(?:from\s+(?:your\s+)?hand)?/i,
+    actionType: EffectType.CANT_PLAY_CARDS,
+  },
+  // Can't play characters
+  {
+    pattern: /(?:can'?t|cannot)\s+play\s+(?:any\s+)?[Cc]haracters?\s+(?:to\s+(?:the\s+)?[Ff]ield|from\s+(?:your\s+)?hand)?/i,
+    actionType: EffectType.CANT_PLAY_CHARACTERS,
+  },
+
+  // Can't draw cards via effects
+  {
+    pattern: /(?:can'?t|cannot)\s+(?:draw|add)\s+(?:cards?\s+)?(?:via|through|from)\s+effects/i,
+    actionType: EffectType.DISABLE_EFFECT_DRAWS,
+  },
+
+  // Opponent can't activate On Play abilities
+  {
+    pattern: /opponent'?s?\s+(?:can'?t|cannot)\s+(?:activate|use)\s+\[?[Oo]n\s*[Pp]lay\]?\s*(?:abilities|effects)?/i,
+    actionType: EffectType.NO_ON_PLAYS_NEXT_TURN,
+  },
+
+  // Confusion Tax - "must trash X cards in order to attack"
+  {
+    pattern: /must\s+[Tt]rash\s+(\d+)\s+[Cc]ards?\s+(?:in\s+order\s+to|before)\s+[Aa]ttack/i,
+    actionType: EffectType.CONFUSION_TAX,
+    extractValue: (m) => parseInt(m[1]) || 1,
+  },
+
+  // Flip life face-up - "turn X life card(s) face-up"
+  {
+    pattern: /(?:turn|flip)\s+(?:(\d+)\s+)?(?:top\s+)?(?:life\s+)?(?:cards?\s+)?face[\s-]?up/i,
+    actionType: EffectType.FLIP_LIFE_FACE_UP,
+    extractValue: (m) => m[1] ? parseInt(m[1]) : 1,
+  },
+  // Flip life face-down - "turn X life card(s) face-down"
+  {
+    pattern: /(?:turn|flip)\s+(?:(\d+)\s+)?(?:top\s+)?(?:life\s+)?(?:cards?\s+)?face[\s-]?down/i,
+    actionType: EffectType.FLIP_LIFE_FACE_DOWN,
+    extractValue: (m) => m[1] ? parseInt(m[1]) : 1,
+  },
+
+  // Field effect immunity - "all characters are immune to effects"
+  {
+    pattern: /(?:all\s+(?:of\s+)?(?:your\s+)?)?[Cc]haracters\s+(?:are|gain|become)\s+[Ii]mmune\s+(?:to\s+(?:effects|KO))?/i,
+    actionType: EffectType.FIELD_EFFECT_IMMUNITY,
+  },
+
+  // DON equalization - "return DON to match opponent's DON count"
+  {
+    pattern: /[Rr]eturn\s+[Dd][Oo][Nn].*?(?:match|equal).*?opponent'?s?\s+[Dd][Oo][Nn]/i,
+    actionType: EffectType.DON_EQUALIZATION,
+  },
+
+  // Grant Slash attribute - "give X Slash" / "grant X Slash attribute"
+  {
+    pattern: /(?:give|grant)\s+.*?(?:the\s+)?[Ss]lash(?:\s+[Aa]ttribute)?/i,
+    actionType: EffectType.GRANT_ATTRIBUTE,
+    extractKeyword: () => 'Slash',
+  },
+
+  // Scaled power buffs - "gains +X power for every Y" (MUST BE BEFORE general BUFF_POWER)
+  {
+    pattern: /(?:gains?|gets?)\s+\+(\d+)\s*(?:000)?\s*(?:power\s+)?for\s+(?:every|each)\s+(.+?)(?:\.|$)/i,
+    actionType: EffectType.BUFF_POWER,
+    extractValue: (m) => {
+      // Return the per-unit value; actual scaling happens at resolution time
+      const val = parseInt(m[1]);
+      return val >= 1000 ? val : val * 1000;
+    },
+  },
+
+  // ============================================
+  // DRAW EFFECTS
+  // ============================================
+
   // Draw effects
   {
     pattern: /Draw (\d+) cards?/i,
@@ -178,6 +272,11 @@ export const ACTION_PATTERNS: ActionPattern[] = [
   {
     pattern: /[Gg]ive\s+(?:up to\s+)?(\d+)?\s*rested\s+DON!!/i,
     actionType: EffectType.ATTACH_DON,
+    extractValue: (m) => m[1] ? parseInt(m[1]) : 1
+  },
+  {
+    pattern: /[Aa]dd\s+(?:up to\s+)?(\d+)?\s*DON!!\s*(?:cards?\s+)?from\s+(?:your\s+)?DON!!\s*deck\s*(?:and\s+)?(?:set\s+(?:it|them)\s+as\s+active|in\s+the\s+active\s+state)/i,
+    actionType: EffectType.GAIN_ACTIVE_DON,
     extractValue: (m) => m[1] ? parseInt(m[1]) : 1
   },
   {
@@ -704,6 +803,13 @@ export const TARGET_PATTERNS: TargetPattern[] = [
     extractCount: (m) => ({ maxCount: m[1] ? parseInt(m[1]) : 1 })
   },
 
+  // Your targets - "all" without trait filter (must come before general count-based patterns)
+  {
+    pattern: /all\s+(?:of\s+)?your\s+Characters?/i,
+    targetType: TargetType.YOUR_CHARACTER,
+    extractCount: () => ({ count: -1 })
+  },
+
   // Your targets - general (SPECIFIC patterns first, greedy patterns after)
   {
     pattern: /your Leader or (?:\d+ of your )?Characters?/i,
@@ -738,8 +844,20 @@ export const TARGET_PATTERNS: TargetPattern[] = [
 
   // Combined targets
   {
-    pattern: /(?:your )?(?:Leader or )?Character cards?/i,
+    pattern: /your opponent'?s?\s*Leader or Character cards?/i,
+    targetType: TargetType.OPPONENT_LEADER_OR_CHARACTER
+  },
+  {
+    pattern: /your opponent'?s?\s*Character cards?/i,
+    targetType: TargetType.OPPONENT_CHARACTER
+  },
+  {
+    pattern: /(?:your )?Leader or Character cards?/i,
     targetType: TargetType.YOUR_LEADER_OR_CHARACTER
+  },
+  {
+    pattern: /(?:your )?Character cards?/i,
+    targetType: TargetType.YOUR_CHARACTER
   },
 
   // Zone targets
@@ -839,6 +957,11 @@ export const FILTER_PATTERNS: FilterPattern[] = [
     buildFilter: (m) => ({ property: 'BASE_POWER', operator: 'OR_MORE', value: parseInt(m[1]) })
   },
 
+  // Trait filters - {Type1} or {Type2} type (multi-trait OR, must come before single-trait)
+  {
+    pattern: /\{([^}]+)\}\s*or\s*\{([^}]+)\}\s*(?:type\s*)?/i,
+    buildFilter: (m) => ({ property: 'TRAIT', operator: 'CONTAINS', value: [m[1], m[2]] })
+  },
   // Trait filters - {Type} type
   {
     pattern: /\{([^}]+)\}\s*type/i,
@@ -942,6 +1065,12 @@ export const CONDITION_PATTERNS: ConditionPattern[] = [
     conditionType: ConditionType.LEADER_HAS_TRAIT,
     extractValue: (m) => [m[1]]
   },
+  // Leader "type includes" with double-quoted trait name (39 cards use this format)
+  {
+    pattern: /(?:your )?[Ll]eader'?s?\s*type includes\s*"([^"]+)"/i,
+    conditionType: ConditionType.LEADER_HAS_TRAIT,
+    extractValue: (m) => [m[1]]
+  },
   // "If your Leader is [Name]" pattern - matches [Imu], [Luffy], etc.
   {
     pattern: /(?:if\s+)?(?:your\s+)?[Ll]eader\s+is\s+\[([^\]]+)\]/i,
@@ -1036,7 +1165,7 @@ export const CONDITION_PATTERNS: ConditionPattern[] = [
     extractValue: (m) => [m[1]]
   },
   {
-    pattern: /(?:you have|if you have)\s+(?:a\s+)?\[([^\]]+)\]\s+(?:on\s+(?:the\s+)?field|in\s+play)/i,
+    pattern: /(?:you have|if you have)\s+(?:a\s+)?\[([^\]]+)\](?:\s+(?:on\s+(?:the\s+)?field|in\s+play))?/i,
     conditionType: ConditionType.HAS_CHARACTER_WITH_NAME,
     extractValue: (m) => [m[1]]
   },

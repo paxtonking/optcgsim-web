@@ -60,6 +60,7 @@ interface PlayerAreaProps {
   fieldSelectValidTargets?: ReadonlySet<string>;  // Valid character IDs for field selection
   fieldSelectSelectedTargets?: ReadonlySet<string>;  // Currently selected character IDs
   onFieldSelectClick?: (cardId: string) => void;  // Called when a field card is clicked during selection
+  combatTargetId?: string | null;  // Card ID being attacked during combat (for persistent highlight)
 }
 
 export const PlayerArea: React.FC<PlayerAreaProps> = ({
@@ -99,7 +100,8 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
   fieldSelectMode = false,
   fieldSelectValidTargets = EMPTY_SET,
   fieldSelectSelectedTargets = EMPTY_SET,
-  onFieldSelectClick
+  onFieldSelectClick,
+  combatTargetId
 }) => {
   // DON attached to cards are inactive (dimmed) when it's not the card owner's turn
   // For player's cards: inactive when it's opponent's turn
@@ -107,12 +109,17 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
   const isDonInactiveForArea = isOpponent ? true : !isMyTurn;
   // Helper to get attack animation class for a card
   const getAttackAnimationClass = (cardId: string): string => {
-    if (!attackAnimation) return '';
-    if (attackAnimation.attackerId === cardId) {
-      if (attackAnimation.phase === 'jumping') return 'game-card--attack-jumping';
-      if (attackAnimation.phase === 'returning') return 'game-card--attack-returning';
+    if (attackAnimation) {
+      if (attackAnimation.attackerId === cardId) {
+        if (attackAnimation.phase === 'jumping') return 'game-card--attack-jumping';
+        if (attackAnimation.phase === 'returning') return 'game-card--attack-returning';
+      }
+      if (attackAnimation.targetId === cardId && attackAnimation.phase === 'jumping') {
+        return 'game-card--attack-target';
+      }
     }
-    if (attackAnimation.targetId === cardId && attackAnimation.phase === 'jumping') {
+    // Persistent combat target highlight during BLOCKER_STEP/COUNTER_STEP
+    if (combatTargetId && combatTargetId === cardId) {
       return 'game-card--attack-target';
     }
     return '';
