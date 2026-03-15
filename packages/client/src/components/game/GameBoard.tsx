@@ -28,6 +28,9 @@ import { useTutorialStore } from '../../stores/tutorialStore';
 import { useTimedBanner } from '../../hooks/useTimedBanner';
 import { useEffectStep } from '../../hooks/useEffectStep';
 import { resolveCardImageUrl as resolveCardImageUrlBase } from '../../utils/cardImage';
+import { GameLog } from './GameLog';
+import { TurnBanner } from './TurnBanner';
+import { useGameActionLog } from '../../hooks/useGameActionLog';
 import './GameBoard.css';
 import './RPSModal.css';
 import './EffectToast.css';
@@ -35,6 +38,41 @@ import './EffectAnimation.css';
 import './ChatPopup.css';
 
 const RELATIVE_STYLE = { position: 'relative' } as const;
+
+// Phase display names for banners (uppercase)
+const PHASE_BANNER_NAMES: Partial<Record<GamePhase, string>> = {
+  [GamePhase.REFRESH_PHASE]: 'REFRESH PHASE',
+  [GamePhase.DRAW_PHASE]: 'DRAW PHASE',
+  [GamePhase.DON_PHASE]: 'DON PHASE',
+  [GamePhase.MAIN_PHASE]: 'MAIN PHASE',
+  [GamePhase.END_PHASE]: 'END PHASE',
+};
+
+
+// Concede modal styles (hoisted to avoid per-render allocation)
+const CONCEDE_OVERLAY_STYLE: React.CSSProperties = {
+  position: 'fixed', inset: 0, zIndex: 2000,
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  backgroundColor: 'rgba(0,0,0,0.7)',
+};
+const CONCEDE_MODAL_STYLE: React.CSSProperties = {
+  background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
+  border: '1px solid rgba(255,255,255,0.2)',
+  borderRadius: 12, padding: '24px 32px',
+  textAlign: 'center', color: 'white', maxWidth: 360,
+};
+const CONCEDE_TITLE_STYLE: React.CSSProperties = { margin: '0 0 12px', fontSize: 18 };
+const CONCEDE_DESC_STYLE: React.CSSProperties = { margin: '0 0 20px', fontSize: 14, color: 'rgba(255,255,255,0.7)' };
+const CONCEDE_BTNS_STYLE: React.CSSProperties = { display: 'flex', gap: 12, justifyContent: 'center' };
+const CONCEDE_CANCEL_STYLE: React.CSSProperties = {
+  padding: '8px 20px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.3)',
+  background: 'rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer', fontSize: 14,
+};
+const CONCEDE_CONFIRM_STYLE: React.CSSProperties = {
+  padding: '8px 20px', borderRadius: 6, border: 'none',
+  background: 'linear-gradient(135deg, #e74c3c, #c0392b)', color: 'white',
+  cursor: 'pointer', fontSize: 14, fontWeight: 'bold',
+};
 
 // Animation types
 type DealingPhase = 'idle' | 'dealing-hand' | 'waiting-mulligan' | 'dealing-life' | 'complete';
@@ -128,6 +166,13 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   const { messages } = useChatStore();
   const prevMessageCountRef = useRef(0);
 
+  // Turn/Phase banners
+  const [turnBanner, setTurnBanner] = useState<{ type: 'your-turn' | 'opponent-turn' | 'phase'; text: string; subtext?: string } | null>(null);
+  const [phaseBanner, setPhaseBanner] = useState<{ text: string } | null>(null);
+
+  // Concede confirmation
+  const [showConcedeConfirm, setShowConcedeConfirm] = useState(false);
+
   // Track previous turn for turn start sound
   const previousTurnRef = useRef<number | null>(null);
   const previousIsMyTurnRef = useRef<boolean | null>(null);
@@ -184,6 +229,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     setHoveredCard,
     getTargetZone
   } = useGameState(playerId);
+
+  // Game action log
+  const gameLogEntries = useGameActionLog({ gameState, myPlayer, opponent, phase });
 
   // Calculate if current player is the defender in combat
   // Defender is the player who does NOT own the attacking card
@@ -296,6 +344,44 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     previousTurnRef.current = turn;
     previousIsMyTurnRef.current = isMyTurn;
   }, [turn, isMyTurn, playSound]);
+
+  // Turn announcement banner
+  const prevIsMyTurnBannerRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (gameState && prevIsMyTurnBannerRef.current !== null && prevIsMyTurnBannerRef.current !== isMyTurn) {
+      // Don't show during initial setup phases
+      if (phase && ![GamePhase.START_WAITING, GamePhase.RPS_PHASE, GamePhase.FIRST_CHOICE, GamePhase.START_MULLIGAN, GamePhase.START_SETUP, GamePhase.PRE_GAME_SETUP].includes(phase)) {
+        setTurnBanner({
+          type: isMyTurn ? 'your-turn' : 'opponent-turn',
+          text: isMyTurn ? 'YOUR TURN' : "OPPONENT'S TURN",
+          subtext: `Turn ${gameState.turn || 1}`,
+        });
+      }
+    }
+    prevIsMyTurnBannerRef.current = isMyTurn;
+  }, [isMyTurn, gameState?.turn, phase]);
+
+  // Phase transition banners
+  const prevPhaseRef2 = useRef<string | null>(null);
+  useEffect(() => {
+    if (!phase || phase === prevPhaseRef2.current) return;
+    prevPhaseRef2.current = phase;
+
+    const phaseName = PHASE_BANNER_NAMES[phase as GamePhase];
+    if (phaseName && isMyTurn) {
+      setPhaseBanner({ text: phaseName });
+    }
+  }, [phase, isMyTurn]);
+
+  // Concede confirmation handlers
+  const handleSurrender = useCallback(() => {
+    setShowConcedeConfirm(true);
+  }, []);
+
+  const confirmSurrender = useCallback(() => {
+    setShowConcedeConfirm(false);
+    onLeave();
+  }, [onLeave]);
 
   // Track unread messages when chat is closed
   useEffect(() => {
@@ -3227,6 +3313,13 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     }
   }, [phase, dealingPhase, startDealingLife]);
 
+  // Get leader card color for playmat tinting
+  const getLeaderColor = useCallback((cardId: string | undefined): string | undefined => {
+    if (!cardId) return undefined;
+    const def = cardDefinitions.get(cardId);
+    return def?.color ?? def?.colors?.[0];
+  }, [cardDefinitions]);
+
   // Get phase display name
   const getPhaseDisplay = (p: GamePhase | null): string => {
     if (!p) return '';
@@ -3301,6 +3394,25 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
       {/* Effect toast notifications */}
       <EffectToastContainer toasts={toasts} onRemove={removeToast} />
+
+      {/* Turn announcement banner */}
+      {turnBanner && (
+        <TurnBanner
+          type={turnBanner.type}
+          text={turnBanner.text}
+          subtext={turnBanner.subtext}
+          duration={2000}
+          onDismiss={() => setTurnBanner(null)}
+        />
+      )}
+      {phaseBanner && (
+        <TurnBanner
+          type="phase"
+          text={phaseBanner.text}
+          duration={1200}
+          onDismiss={() => setPhaseBanner(null)}
+        />
+      )}
 
       {/* Effect animations layer (particles, trails, etc.) */}
       <EffectAnimationLayer apiRef={effectAnimationRef} />
@@ -3470,7 +3582,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           </button>
           <button
             className="game-board__surrender-btn"
-            onClick={onLeave}
+            onClick={handleSurrender}
             title={isAIGame ? 'Surrender' : 'Leave Game'}
           >
             {isAIGame ? 'Surrender' : 'Leave'}
@@ -3519,6 +3631,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             playmatImage={opponentPlaymat}
             isMyTurn={isMyTurn}
             combatTargetId={combatTargetId}
+            leaderColor={getLeaderColor(opponent?.leaderCard?.cardId)}
           />
         )}
 
@@ -3560,6 +3673,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             fieldSelectSelectedTargets={fieldSelectSelectedCards}
             onFieldSelectClick={handleFieldSelectCardClick}
             combatTargetId={combatTargetId}
+            leaderColor={getLeaderColor(myPlayer?.leaderCard?.cardId)}
           />
         )}
 
@@ -3609,6 +3723,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           onCancelActivation={handleCancelActivation}
           onSkipActivation={handleSkipActivation}
           playEffectInfo={playEffectInfo}
+        />
+        <GameLog
+          entries={gameLogEntries}
+          maxVisible={50}
         />
         {/* Hide action buttons during pre-game setup */}
         {phase !== GamePhase.PRE_GAME_SETUP && (
@@ -4105,6 +4223,26 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             getSocket().emit('ai:surrender');
           }}
         />
+      )}
+
+      {/* Concede confirmation modal */}
+      {showConcedeConfirm && (
+        <div style={CONCEDE_OVERLAY_STYLE}>
+          <div style={CONCEDE_MODAL_STYLE}>
+            <h3 style={CONCEDE_TITLE_STYLE}>Concede Match?</h3>
+            <p style={CONCEDE_DESC_STYLE}>
+              Are you sure you want to surrender? This cannot be undone.
+            </p>
+            <div style={CONCEDE_BTNS_STYLE}>
+              <button onClick={() => setShowConcedeConfirm(false)} style={CONCEDE_CANCEL_STYLE}>
+                Cancel
+              </button>
+              <button onClick={confirmSurrender} style={CONCEDE_CONFIRM_STYLE}>
+                Surrender
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Game over overlay */}

@@ -3839,3 +3839,22 @@
   z-index: 5;
   pointer-events: none;
 }
+
+/* ==========================================
+   GAME LOG SIDEBAR INTEGRATION
+   ========================================== */
+
+.game-board__sidebar .game-log {
+  margin: 8px 0;
+  max-height: 280px;
+  flex-shrink: 0;
+}
+
+/* ==========================================
+   PHASE BANNER ANIMATIONS (supplement TurnBanner.css)
+   ========================================== */
+
+/* Ensure turn banner sits above everything */
+.turn-banner-overlay {
+  z-index: 1500;
+}

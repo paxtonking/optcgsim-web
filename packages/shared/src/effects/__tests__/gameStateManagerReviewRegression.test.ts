@@ -106,34 +106,32 @@ describe('GameStateManager review regressions', () => {
     state.phase = GamePhase.MAIN_PHASE;
 
     expect(manager.declareAttack(attacker.id, attackTarget.id, 'character')).toBe(true);
+    expect(state.phase).toBe(GamePhase.ATTACK_EFFECT_STEP);
 
     const pendingEffect = state.pendingAttackEffects?.find(
       effect => effect.sourceCardId === reactiveDefender.id
     );
 
-    if (pendingEffect) {
-      expect(state.phase).toBe(GamePhase.ATTACK_EFFECT_STEP);
-      expect(pendingEffect).toEqual(expect.objectContaining({
-        playerId: 'player2',
-        validTargets: [attacker.id],
-      }));
+    expect(pendingEffect).toEqual(expect.objectContaining({
+      playerId: 'player2',
+      validTargets: [attacker.id],
+    }));
 
-      expect(manager.processAction({
-        id: 'attacker-cannot-resolve-defender-effect',
-        type: ActionType.RESOLVE_ATTACK_EFFECT,
-        playerId: 'player1',
-        timestamp: Date.now(),
-        data: { effectId: pendingEffect.id, selectedTargets: [attacker.id] },
-      })).toBe(false);
+    expect(manager.processAction({
+      id: 'attacker-cannot-resolve-defender-effect',
+      type: ActionType.RESOLVE_ATTACK_EFFECT,
+      playerId: 'player1',
+      timestamp: Date.now(),
+      data: { effectId: pendingEffect!.id, selectedTargets: [attacker.id] },
+    })).toBe(false);
 
-      expect(manager.processAction({
-        id: 'defender-resolves-opponent-attack-effect',
-        type: ActionType.RESOLVE_ATTACK_EFFECT,
-        playerId: 'player2',
-        timestamp: Date.now(),
-        data: { effectId: pendingEffect.id, selectedTargets: [attacker.id] },
-      })).toBe(true);
-    }
+    expect(manager.processAction({
+      id: 'defender-resolves-opponent-attack-effect',
+      type: ActionType.RESOLVE_ATTACK_EFFECT,
+      playerId: 'player2',
+      timestamp: Date.now(),
+      data: { effectId: pendingEffect!.id, selectedTargets: [attacker.id] },
+    })).toBe(true);
 
     expect(state.phase).toBe(GamePhase.BLOCKER_STEP);
     expect(attacker.powerBuffs).toEqual(
