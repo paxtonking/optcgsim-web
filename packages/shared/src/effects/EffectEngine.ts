@@ -99,7 +99,7 @@ export class EffectEngine {
   /**
    * Map EffectDuration to BuffDuration
    */
-  private mapDurationToBuff(duration?: EffectDuration): BuffDuration {
+  public mapDurationToBuff(duration?: EffectDuration): BuffDuration {
     switch (duration) {
       case EffectDuration.UNTIL_END_OF_TURN:
         return 'THIS_TURN';
@@ -123,7 +123,7 @@ export class EffectEngine {
   /**
    * Add a power buff to a card with proper tracking
    */
-  private addPowerBuff(
+  public addPowerBuff(
     card: GameCard,
     value: number,
     duration: BuffDuration,

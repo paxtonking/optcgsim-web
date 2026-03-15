@@ -6065,29 +6065,133 @@ export class GameStateManager {
         break;
       }
 
-      case EffectType.RETURN_TO_HAND: {
-        // This would require target selection from field - needs different UI
-        console.warn('[setupChildEffectChoice] RETURN_TO_HAND childEffect not yet fully implemented');
-        break;
-      }
-
       case EffectType.KO_CHARACTER:
       case EffectType.KO_COST_OR_LESS:
-      case EffectType.KO_POWER_OR_LESS: {
-        // These require target selection - would need to set up pending effect for target selection
-        console.warn('[setupChildEffectChoice] KO childEffect requires target selection - not yet implemented');
-        break;
-      }
-
+      case EffectType.KO_POWER_OR_LESS:
       case EffectType.BUFF_POWER:
-      case EffectType.DEBUFF_POWER: {
-        // These require target selection
-        console.warn('[setupChildEffectChoice] Buff/Debuff childEffect requires target selection - not yet implemented');
+      case EffectType.DEBUFF_POWER:
+      case EffectType.RETURN_TO_HAND:
+      case EffectType.SEND_TO_DECK_BOTTOM:
+      case EffectType.SEND_TO_DECK_TOP:
+      case EffectType.SEND_TO_TRASH:
+      case EffectType.REST_CHARACTER: {
+        this.setupChildEffectAsPlayStep(effect, playerId, sourceCardId);
         break;
       }
 
       default:
         console.warn('[setupChildEffectChoice] Unhandled choice effect type:', effect.type);
+    }
+  }
+
+  /**
+   * Convert a child effect that requires target selection into a pending play
+   * effect so the player gets the standard target-selection UI
+   * (PLAY_EFFECT_STEP).
+   */
+  private setupChildEffectAsPlayStep(
+    effect: EffectAction,
+    playerId: string,
+    sourceCardId: string
+  ): void {
+    const player = this.state.players[playerId];
+    const sourceCard = this.findCard(sourceCardId);
+    if (!player || !sourceCard) {
+      console.warn('[setupChildEffectAsPlayStep] Missing player or source card');
+      return;
+    }
+
+    // Build a CardEffectDefinition wrapping this single action
+    const uniqueId = `child-play-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    const effectDef: CardEffectDefinition = {
+      id: uniqueId,
+      trigger: EffectTrigger.ON_PLAY, // Reuse ON_PLAY so advancePlayEffectStep picks it up
+      effects: [effect],
+      description: this.describeChildEffect(effect),
+      isOptional: effect.target?.optional ?? false,
+    };
+
+    // Create and register a PendingEffect in the EffectEngine
+    const pendingEffect: PendingEffect = {
+      id: uniqueId,
+      sourceCardId,
+      playerId,
+      effect: effectDef,
+      trigger: EffectTrigger.ON_PLAY,
+      requiresChoice: true,
+      priority: 0,
+    };
+
+    this.effectEngine.addPendingEffect(pendingEffect);
+
+    // Compute valid targets through the existing engine path
+    const validTargets = this.getValidTargetsForEffect(uniqueId);
+    const maxTargets = effect.target?.maxCount || effect.target?.count || 1;
+    const isOptional = effect.target?.optional ?? false;
+    const minTargets = isOptional ? 0 : 1;
+
+    console.log('[setupChildEffectAsPlayStep]', effect.type,
+      'validTargets:', validTargets.length, 'max:', maxTargets, 'optional:', isOptional);
+
+    // If no valid targets exist, auto-skip or auto-resolve
+    if (validTargets.length === 0) {
+      if (isOptional) {
+        this.effectEngine.removePendingEffect(uniqueId);
+        console.log('[setupChildEffectAsPlayStep] No valid targets, skipping optional effect');
+      } else {
+        this.resolveEffect(uniqueId, []);
+        console.log('[setupChildEffectAsPlayStep] No valid targets, resolved with empty targets');
+      }
+      return;
+    }
+
+    // Build the UI payload and enter PLAY_EFFECT_STEP
+    const playEffect: PendingPlayEffect = {
+      id: uniqueId,
+      sourceCardId,
+      playerId,
+      description: effectDef.description,
+      validTargets,
+      requiresChoice: true,
+      isOptional,
+      effectType: effect.type.toString(),
+      maxTargets,
+      minTargets,
+    };
+
+    this.state.pendingPlayEffects = [playEffect];
+    this.state.phase = GamePhase.PLAY_EFFECT_STEP;
+  }
+
+  /**
+   * Build a human-readable description for a child effect.
+   */
+  private describeChildEffect(effect: EffectAction): string {
+    const count = effect.target?.maxCount || effect.target?.count || 1;
+    const optional = effect.target?.optional ? 'up to ' : '';
+    switch (effect.type) {
+      case EffectType.KO_CHARACTER:
+        return `K.O. ${optional}${count} of your opponent's Characters`;
+      case EffectType.KO_COST_OR_LESS:
+        return `K.O. ${optional}${count} of your opponent's Characters with cost ${effect.value} or less`;
+      case EffectType.KO_POWER_OR_LESS:
+        return `K.O. ${optional}${count} of your opponent's Characters with power ${effect.value} or less`;
+      case EffectType.BUFF_POWER:
+        return `Give ${optional}${count} Character(s) +${effect.value} power this turn`;
+      case EffectType.DEBUFF_POWER:
+        return `Give ${optional}${count} Character(s) -${effect.value} power this turn`;
+      case EffectType.RETURN_TO_HAND:
+        return `Return ${optional}${count} Character(s) to the owner's hand`;
+      case EffectType.SEND_TO_DECK_BOTTOM:
+        return `Place ${optional}${count} Character(s) at the bottom of the owner's deck`;
+      case EffectType.SEND_TO_DECK_TOP:
+        return `Place ${optional}${count} Character(s) on top of the owner's deck`;
+      case EffectType.SEND_TO_TRASH:
+        return `Trash ${optional}${count} Character(s)`;
+      case EffectType.REST_CHARACTER:
+        return `Rest ${optional}${count} of your opponent's Characters`;
+      default:
+        return `Then effect: ${effect.type}`;
     }
   }
 
@@ -6116,19 +6220,9 @@ export class GameStateManager {
       case EffectType.BUFF_SELF: {
         const card = this.findCard(sourceCardId);
         if (card) {
-          // Add power buff with proper tracking
           const buffValue = effect.value || 0;
-          if (!card.powerBuffs) {
-            card.powerBuffs = [];
-          }
-          const buff: PowerBuff = {
-            id: `child-buff-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-            sourceCardId: card.cardId || sourceCardId,
-            value: buffValue,
-            duration: 'THIS_TURN',
-            appliedTurn: this.state.turn,
-          };
-          card.powerBuffs.push(buff);
+          const buffDuration = this.effectEngine.mapDurationToBuff(effect.duration);
+          this.effectEngine.addPowerBuff(card, buffValue, buffDuration, card.cardId || sourceCardId, this.state);
           console.log('[executeChildEffectImmediately] Buffed self by', buffValue, 'with tracking');
         }
         break;
@@ -6157,6 +6251,68 @@ export class GameStateManager {
           }
         }
         console.log('[executeChildEffectImmediately] Activated', activated, 'DON');
+        break;
+      }
+
+      case EffectType.MILL_DECK: {
+        const millCount = effect.value || 1;
+        let milled = 0;
+        for (let i = 0; i < millCount && player.deck.length > 0; i++) {
+          const milledCard = player.deck.shift()!;
+          milledCard.zone = CardZone.TRASH;
+          player.trash.push(milledCard);
+          milled++;
+        }
+        console.log('[executeChildEffectImmediately] Milled', milled, 'cards from deck to trash');
+        break;
+      }
+
+      case EffectType.GAIN_ACTIVE_DON:
+      case EffectType.ADD_DON:
+      case EffectType.GAIN_RESTED_DON: {
+        const donState = effect.type === EffectType.GAIN_ACTIVE_DON ? CardState.ACTIVE : CardState.RESTED;
+        const gainCount = effect.value || 1;
+        const now = Date.now();
+        let gained = 0;
+        for (let i = 0; i < gainCount; i++) {
+          if (player.donDeck > 0 && player.donField.length < DEFAULT_GAME_CONFIG.maxDon) {
+            player.donDeck--;
+            const newDon: GameCard = {
+              id: `${player.id}-don-${now}-${i}`,
+              cardId: 'DON',
+              zone: CardZone.DON_FIELD,
+              state: donState,
+              owner: player.id,
+            };
+            player.donField.push(newDon);
+            gained++;
+          }
+        }
+        console.log('[executeChildEffectImmediately] Gained', gained, donState === CardState.ACTIVE ? 'active' : 'rested', 'DON');
+        break;
+      }
+
+      case EffectType.BUFF_FIELD: {
+        const sourceCard = this.findCard(sourceCardId);
+        if (sourceCard) {
+          // Get all own field characters, optionally filtered
+          let fieldCards = [...player.field];
+          if (effect.target?.filters && fieldCards.length > 0) {
+            const context: EffectContext = {
+              gameState: this.state,
+              sourceCard,
+              sourcePlayer: player,
+            };
+            const validIds = this.effectEngine.getValidTargets(effect, context);
+            fieldCards = fieldCards.filter(c => validIds.includes(c.id));
+          }
+          const buffValue = effect.value || 0;
+          const buffDuration = this.effectEngine.mapDurationToBuff(effect.duration);
+          for (const card of fieldCards) {
+            this.effectEngine.addPowerBuff(card, buffValue, buffDuration, sourceCard.cardId || sourceCardId, this.state);
+          }
+          console.log('[executeChildEffectImmediately] Buffed', fieldCards.length, 'field cards by', buffValue);
+        }
         break;
       }
 
@@ -6223,18 +6379,11 @@ export class GameStateManager {
       case EffectType.BUFF_POWER: {
         // Apply power buff to targets
         const buffValue = action.value || 0;
+        const buffDuration = this.effectEngine.mapDurationToBuff(action.duration);
         for (const targetId of targetIds) {
           const targetCard = this.findCard(targetId);
           if (targetCard) {
-            if (!targetCard.powerBuffs) {
-              targetCard.powerBuffs = [];
-            }
-            targetCard.powerBuffs.push({
-              id: `event-buff-${Date.now()}`,
-              sourceCardId: context.sourceCard.id,
-              value: buffValue,
-              duration: action.duration === 'UNTIL_END_OF_BATTLE' ? 'THIS_BATTLE' : 'THIS_TURN',
-            });
+            this.effectEngine.addPowerBuff(targetCard, buffValue, buffDuration, context.sourceCard.id, this.state);
           }
         }
         break;
@@ -6243,18 +6392,11 @@ export class GameStateManager {
       case EffectType.DEBUFF_POWER: {
         // Apply power debuff to targets
         const debuffValue = -(action.value || 0);
+        const debuffDuration = this.effectEngine.mapDurationToBuff(action.duration);
         for (const targetId of targetIds) {
           const targetCard = this.findCard(targetId);
           if (targetCard) {
-            if (!targetCard.powerBuffs) {
-              targetCard.powerBuffs = [];
-            }
-            targetCard.powerBuffs.push({
-              id: `event-debuff-${Date.now()}`,
-              sourceCardId: context.sourceCard.id,
-              value: debuffValue,
-              duration: action.duration === 'UNTIL_END_OF_BATTLE' ? 'THIS_BATTLE' : 'THIS_TURN',
-            });
+            this.effectEngine.addPowerBuff(targetCard, debuffValue, debuffDuration, context.sourceCard.id, this.state);
           }
         }
         break;
