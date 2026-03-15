@@ -76,11 +76,19 @@ export const KEYWORD_PATTERNS: Array<{ pattern: RegExp; keyword: string }> = [
 // ACTION PATTERNS
 // ============================================
 
+interface ScalingInfo {
+  scalePerCount: number;
+  scaleDivisor: number;
+  scaleCountTarget: string;
+  scaleCountFilter?: ParsedFilter[];
+}
+
 interface ActionPattern {
   pattern: RegExp;
   actionType: EffectType;
   extractValue?: (match: RegExpMatchArray) => number | undefined;
   extractKeyword?: (match: RegExpMatchArray) => string | undefined;
+  extractScaling?: (match: RegExpMatchArray) => ScalingInfo | undefined;
   targetType?: TargetType;
 }
 
@@ -95,11 +103,56 @@ export const ACTION_PATTERNS: ActionPattern[] = [
     actionType: EffectType.LOSE_KEYWORD,
     extractKeyword: () => 'Blocker',
   },
+
+  // Blocker cost restrictions (must appear before generic "can't block" patterns)
+  // "Characters with a cost of X or less cannot activate [Blocker]"
+  // keyword encodes who CANNOT block: OR_LESS = cost X or less cannot block
+  {
+    pattern: /[Cc]haracters?\s+with\s+a\s+cost\s+of\s+(\d+)\s+or\s+less\s+(?:can'?t|cannot)\s+(?:activate|use)\s+\[?Blocker\]?/i,
+    actionType: EffectType.BLOCKER_COST_RESTRICTION,
+    extractValue: (m) => parseInt(m[1]),
+    extractKeyword: () => 'OR_LESS',
+  },
+  // "cannot activate [Blocker] using Characters with a cost of X or less"
+  {
+    pattern: /(?:can'?t|cannot)\s+(?:activate|use)\s+\[?Blocker\]?\s+(?:using|with)\s+[Cc]haracters?\s+with\s+a\s+cost\s+of\s+(\d+)\s+or\s+less/i,
+    actionType: EffectType.BLOCKER_COST_RESTRICTION,
+    extractValue: (m) => parseInt(m[1]),
+    extractKeyword: () => 'OR_LESS',
+  },
+  // "Characters with a cost of X or more cannot activate [Blocker]"
+  {
+    pattern: /[Cc]haracters?\s+with\s+a\s+cost\s+of\s+(\d+)\s+or\s+more\s+(?:can'?t|cannot)\s+(?:activate|use)\s+\[?Blocker\]?/i,
+    actionType: EffectType.BLOCKER_COST_RESTRICTION,
+    extractValue: (m) => parseInt(m[1]),
+    extractKeyword: () => 'OR_MORE',
+  },
+  // "cannot activate [Blocker] using Characters with a cost of X or more"
+  {
+    pattern: /(?:can'?t|cannot)\s+(?:activate|use)\s+\[?Blocker\]?\s+(?:using|with)\s+[Cc]haracters?\s+with\s+a\s+cost\s+of\s+(\d+)\s+or\s+more/i,
+    actionType: EffectType.BLOCKER_COST_RESTRICTION,
+    extractValue: (m) => parseInt(m[1]),
+    extractKeyword: () => 'OR_MORE',
+  },
+
   // "can't block" / "cannot block" (active: target can't use Blocker ability)
   {
     pattern: /(?:can'?t|cannot)\s+(?:use\s+|activate\s+)?(?:\[?Blocker\]?|block)(?!\s*ed)/i,
     actionType: EffectType.LOSE_KEYWORD,
     extractKeyword: () => 'Blocker',
+  },
+
+  // Opponent cannot activate [Blocker] / opponent's Characters cannot use [Blocker]
+  {
+    pattern: /opponent'?s?\s+(?:Characters?\s+)?(?:can'?t|cannot)\s+(?:activate|use)\s+\[?Blocker\]?/i,
+    actionType: EffectType.DISABLE_BLOCKER,
+    targetType: TargetType.OPPONENT_FIELD,
+  },
+  // "cannot activate [Blocker] during this turn" (when opponent is implied by context)
+  {
+    pattern: /(?:can'?t|cannot)\s+activate\s+\[?Blocker\]?\s+(?:during|for)\s+this\s+turn/i,
+    actionType: EffectType.DISABLE_BLOCKER,
+    targetType: TargetType.OPPONENT_FIELD,
   },
 
   // Can't play cards from hand
@@ -168,9 +221,60 @@ export const ACTION_PATTERNS: ActionPattern[] = [
   {
     pattern: /(?:gains?|gets?)\s+\+(\d+)\s*(?:000)?\s*(?:power\s+)?for\s+(?:every|each)\s+(.+?)(?:\.|$)/i,
     actionType: EffectType.BUFF_POWER,
-    extractValue: (m) => {
-      // Return the per-unit value; actual scaling happens at resolution time
-      return normalizePower(parseInt(m[1]));
+    extractValue: (_m) => {
+      // Return 0 as a placeholder; actual value is computed at resolution time from scaling
+      return 0;
+    },
+    extractScaling: (m) => {
+      const perUnit = normalizePower(parseInt(m[1]));
+      const remainder = m[2].trim();
+
+      // Parse "every 2 ..." vs "each ..." - extract optional numeric divisor
+      let divisor = 1;
+      let target = remainder;
+      const divisorMatch = target.match(/^(\d+)\s+(.+)/);
+      if (divisorMatch) {
+        divisor = parseInt(divisorMatch[1]);
+        target = divisorMatch[2];
+      }
+
+      // Determine the count target and optional trait filter
+      let countTarget = 'characters';
+      const filters: ParsedFilter[] = [];
+
+      const trashMatch = target.match(/cards?\s+in\s+(?:your\s+)?trash/i);
+      const restedDonMatch = target.match(/rested\s+DON!*\s*(?:cards?)?/i);
+      const donMatch = target.match(/^DON!*\s*(?:cards?)?(?:\s+(?:you\s+)?(?:have|control))?$/i);
+
+      if (trashMatch) {
+        countTarget = 'trash';
+      } else if (restedDonMatch) {
+        countTarget = 'rested_don';
+      } else if (donMatch) {
+        countTarget = 'don';
+      } else {
+        // Character-based counting
+        countTarget = 'characters';
+
+        // Extract trait filter from patterns like "{Straw Hat Crew} type Characters"
+        // or "Straw Hat Crew Characters"
+        const traitMatch = target.match(/\{([^}]+)\}\s*type\s*/i)
+          || target.match(/([A-Z][A-Za-z\s\-]+?)\s+(?:type\s+)?[Cc]haracters?/i);
+        if (traitMatch) {
+          filters.push({
+            property: 'TRAIT',
+            operator: 'CONTAINS',
+            value: traitMatch[1].trim(),
+          });
+        }
+      }
+
+      return {
+        scalePerCount: perUnit,
+        scaleDivisor: divisor,
+        scaleCountTarget: countTarget,
+        scaleCountFilter: filters.length > 0 ? filters : undefined,
+      };
     },
   },
 
@@ -465,6 +569,25 @@ export const ACTION_PATTERNS: ActionPattern[] = [
     pattern: /[Ss]et\s+(?:the\s+)?base\s+power\s+(?:of\s+)?.*?to\s+(\d+)/i,
     actionType: EffectType.SET_BASE_POWER,
     extractValue: (m) => parseInt(m[1])
+  },
+
+  // Match power - "This Character's power becomes equal to the power of ..."
+  {
+    pattern: /power\s+becomes?\s+equal\s+to\s+(?:the\s+)?power\s+of/i,
+    actionType: EffectType.MATCH_POWER,
+    targetType: TargetType.OPPONENT_CHARACTER,
+  },
+  // Match power - "Set this Character's power to the same value as ..."
+  {
+    pattern: /[Ss]et\s+(?:this\s+)?Character'?s?\s+power\s+to\s+(?:the\s+)?same\s+(?:value|power)\s+as/i,
+    actionType: EffectType.MATCH_POWER,
+    targetType: TargetType.OPPONENT_CHARACTER,
+  },
+  // Match power - "gains power equal to ..."
+  {
+    pattern: /gains?\s+power\s+equal\s+to/i,
+    actionType: EffectType.MATCH_POWER,
+    targetType: TargetType.OPPONENT_CHARACTER,
   },
 
   // Set cost to 0 - "Set the cost of ... to 0"
@@ -1338,14 +1461,23 @@ export function extractKeywords(text: string): string[] {
 }
 
 export function extractAction(text: string): ParsedAction | null {
-  for (const { pattern, actionType, extractValue, extractKeyword } of ACTION_PATTERNS) {
+  for (const { pattern, actionType, extractValue, extractKeyword, extractScaling } of ACTION_PATTERNS) {
     const match = text.match(pattern);
     if (match) {
-      return {
+      const action: ParsedAction = {
         type: actionType,
         value: extractValue?.(match),
         keyword: extractKeyword?.(match),
       };
+      // Attach scaling info if present (for scaled power buffs)
+      const scaling = extractScaling?.(match);
+      if (scaling) {
+        action.scalePerCount = scaling.scalePerCount;
+        action.scaleDivisor = scaling.scaleDivisor;
+        action.scaleCountTarget = scaling.scaleCountTarget;
+        action.scaleCountFilter = scaling.scaleCountFilter;
+      }
+      return action;
     }
   }
   return null;

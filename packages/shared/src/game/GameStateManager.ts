@@ -43,7 +43,7 @@ import {
 
 import { normalizeColors } from './cardHelpers';
 import { TURN_BASED_RESTRICTIONS } from '../constants/index.js';
-import { KW_CANT_PLAY_CARDS, KW_CANT_PLAY_CHARACTERS, KW_NO_ON_PLAYS, KW_DON_EQUALIZATION, KW_KO_PROTECTOR, KW_PREFIX_CONFUSION_TAX, KW_CAN_ATTACK_ACTIVE } from '../constants/keywords.js';
+import { KW_CANT_PLAY_CARDS, KW_CANT_PLAY_CHARACTERS, KW_NO_ON_PLAYS, KW_DON_EQUALIZATION, KW_KO_PROTECTOR, KW_PREFIX_CONFUSION_TAX, KW_CAN_ATTACK_ACTIVE, KW_DISABLE_BLOCKER } from '../constants/keywords.js';
 
 /** Remove all keywords starting with `prefix` from a card's keyword arrays. */
 function clearKeywordPrefix(card: GameCard, prefix: string): void {
@@ -2929,6 +2929,13 @@ export class GameStateManager {
 
     // Check if card can block using effect engine
     if (!this.effectEngine.canBlock(blocker, this.state)) return false;
+
+    // Check if the defending player has a DISABLE_BLOCKER restriction (opponent cannot activate Blocker)
+    const defender = this.state.players[playerId];
+    if (defender && this.hasPlayerRestriction(defender, KW_DISABLE_BLOCKER)) {
+      console.log('[declareBlocker] Blocked: defender has DisableBlocker restriction');
+      return false;
+    }
 
     // Check if attacker is unblockable
     if (this.effectEngine.isUnblockable(attacker, this.state)) return false;

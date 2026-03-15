@@ -33,7 +33,7 @@ import {
 
 import { normalizeColors } from '../game/cardHelpers';
 
-import { KW_UNBLOCKABLE, KW_CAN_ATTACK_ACTIVE, KW_BLOCKER, KW_IMMUNE_COMBAT, KW_IMMUNE_EFFECTS, KW_SILENCED, KW_KO_PROTECTOR, KW_PREVENT_LIFE_ADD, KW_IMMUNE_KO, KW_CANT_BE_RESTED, KW_CANT_PLAY_CARDS, KW_CANT_PLAY_CHARACTERS, KW_DISABLE_EFFECT_DRAWS, KW_NO_ON_PLAYS, KW_DON_EQUALIZATION } from '../constants/keywords.js';
+import { KW_UNBLOCKABLE, KW_CAN_ATTACK_ACTIVE, KW_BLOCKER, KW_IMMUNE_COMBAT, KW_IMMUNE_EFFECTS, KW_SILENCED, KW_KO_PROTECTOR, KW_PREVENT_LIFE_ADD, KW_IMMUNE_KO, KW_CANT_BE_RESTED, KW_CANT_PLAY_CARDS, KW_CANT_PLAY_CHARACTERS, KW_DISABLE_EFFECT_DRAWS, KW_NO_ON_PLAYS, KW_DON_EQUALIZATION, KW_BLOCKER_COST_OR_MORE, KW_BLOCKER_COST_OR_LESS, KW_DISABLE_BLOCKER } from '../constants/keywords.js';
 
 // Card definition with effects (from database)
 export interface CardDefinition {
@@ -49,6 +49,7 @@ export interface CardDefinition {
   effectText?: string;  // Raw effect text for parsing leader restrictions, etc.
   effects: CardEffectDefinition[];
   keywords: string[];
+  cantBeDeployedViaEffect?: boolean;  // Card cannot be played using effects (only normal play from hand)
 }
 
 // Effect context for resolving effects
@@ -970,9 +971,10 @@ export class EffectEngine {
       // ============ POWER EFFECTS ============
       case EffectType.BUFF_SELF: {
         const buffDuration = this.mapDurationToBuff(action.duration);
+        const selfBuffValue = this.getBuffValue(action, context);
         this.addPowerBuff(
           context.sourceCard,
-          action.value || 0,
+          selfBuffValue,
           buffDuration,
           context.sourceCard.id,
           gameState
@@ -980,7 +982,7 @@ export class EffectEngine {
         changes.push({
           type: StateChangeType.POWER_CHANGED,
           cardId: context.sourceCard.id,
-          value: action.value,
+          value: selfBuffValue,
         });
         break;
       }
@@ -988,12 +990,13 @@ export class EffectEngine {
       case EffectType.BUFF_POWER:
       case EffectType.BUFF_ANY: {
         const buffDuration = this.mapDurationToBuff(action.duration);
+        const scaledBuffValue = this.getBuffValue(action, context);
         targets.forEach(targetId => {
           const card = this.findCard(gameState, targetId);
           if (card) {
             this.addPowerBuff(
               card,
-              action.value || 0,
+              scaledBuffValue,
               buffDuration,
               context.sourceCard.id,
               gameState
@@ -1001,12 +1004,12 @@ export class EffectEngine {
             // During combat, track effectBuffPower only for defender-side buffs (not attacker)
             if (gameState.currentCombat && targetId !== gameState.currentCombat.attackerId) {
               gameState.currentCombat.effectBuffPower =
-                (gameState.currentCombat.effectBuffPower || 0) + (action.value || 0);
+                (gameState.currentCombat.effectBuffPower || 0) + scaledBuffValue;
             }
             changes.push({
               type: StateChangeType.POWER_CHANGED,
               cardId: targetId,
-              value: action.value,
+              value: scaledBuffValue,
             });
           }
         });
@@ -1096,6 +1099,48 @@ export class EffectEngine {
           }
         });
         break;
+
+      case EffectType.MATCH_POWER: {
+        // Set source card's base power to match target card's effective power
+        // "This Character's power becomes equal to the power of 1 of your opponent's Characters"
+        // targets = the opponent's character whose power we want to copy
+        const matchTargetId = targets[0];
+        if (matchTargetId) {
+          const matchTargetCard = this.findCard(gameState, matchTargetId);
+          if (matchTargetCard) {
+            const matchTargetOwner = this.findCardOwner(gameState, matchTargetId);
+            const targetEffectivePower = matchTargetOwner
+              ? this.getEffectivePower(matchTargetCard, gameState, matchTargetOwner)
+              : (matchTargetCard.basePower ?? matchTargetCard.power ?? 0);
+
+            // Calculate current effective power of source card
+            const sourceOwner = this.findCardOwner(gameState, context.sourceCard.id);
+            const sourceEffectivePower = sourceOwner
+              ? this.getEffectivePower(context.sourceCard, gameState, sourceOwner)
+              : (context.sourceCard.basePower ?? context.sourceCard.power ?? 0);
+
+            // Apply as a power buff that brings the source card's effective power to the target value
+            const buffValue = targetEffectivePower - sourceEffectivePower;
+            const buffDuration = this.mapDurationToBuff(action.duration);
+
+            this.addPowerBuff(
+              context.sourceCard,
+              buffValue,
+              buffDuration,
+              context.sourceCard.id,
+              gameState
+            );
+
+            changes.push({
+              type: StateChangeType.POWER_CHANGED,
+              cardId: context.sourceCard.id,
+              value: targetEffectivePower,
+            });
+            console.log(`[MATCH_POWER] ${context.sourceCard.id} power set to ${targetEffectivePower} (buff ${buffValue >= 0 ? '+' : ''}${buffValue}) matching ${matchTargetId}`);
+          }
+        }
+        break;
+      }
 
       // ============ DRAW EFFECTS ============
       case EffectType.DRAW_CARDS:
@@ -2174,10 +2219,12 @@ export class EffectEngine {
           fieldCards = this.applyFilters(fieldCards, action.target.filters, context);
         }
 
+        const fieldBuffValue = this.getBuffValue(action, context);
+
         fieldCards.forEach(card => {
           this.addPowerBuff(
             card,
-            action.value || 0,
+            fieldBuffValue,
             buffDuration,
             context.sourceCard.id,
             gameState
@@ -2185,10 +2232,10 @@ export class EffectEngine {
           changes.push({
             type: StateChangeType.POWER_CHANGED,
             cardId: card.id,
-            value: action.value,
+            value: fieldBuffValue,
           });
         });
-        console.log('[BUFF_FIELD] Buffed', fieldCards.length, 'field characters by', action.value);
+        console.log('[BUFF_FIELD] Buffed', fieldCards.length, 'field characters by', fieldBuffValue);
         break;
       }
 
@@ -2591,6 +2638,14 @@ export class EffectEngine {
       }
 
       // ============================================
+      // DISABLE_BLOCKER - Opponent cannot activate [Blocker] this turn
+      // ============================================
+      case EffectType.DISABLE_BLOCKER: {
+        this.applyPlayerRestriction(action, gameState, sourcePlayer, KW_DISABLE_BLOCKER, 'DISABLE_BLOCKER', changes);
+        break;
+      }
+
+      // ============================================
       // GRANT_ATTRIBUTE - Give a card an attribute (e.g., Slash)
       // ============================================
       case EffectType.GRANT_ATTRIBUTE: {
@@ -2720,6 +2775,39 @@ export class EffectEngine {
             value: 'DON_EQUALIZATION',
           });
           console.log('[DON_EQUALIZATION] Player', sourcePlayer.id, 'marked for DON equalization at end of turn');
+        }
+        break;
+      }
+
+      // ============================================
+      // BLOCKER_COST_RESTRICTION - Restrict opponent's blockers by cost
+      // ============================================
+      case EffectType.BLOCKER_COST_RESTRICTION: {
+        const costThreshold = action.value ?? 0;
+        const opponent = this.getOpponent(gameState, sourcePlayer.id);
+        if (opponent) {
+          // action.keyword encodes who CANNOT block:
+          //   'OR_LESS' = characters with cost <= X cannot block
+          //   'OR_MORE' = characters with cost >= X cannot block
+          const direction = action.keyword === 'OR_MORE' ? 'OR_MORE' : 'OR_LESS';
+          const keyword = direction === 'OR_MORE' ? KW_BLOCKER_COST_OR_MORE : KW_BLOCKER_COST_OR_LESS;
+          const until = this.getPlayerRestrictionUntil(action.duration);
+
+          // Store the cost threshold in a filter
+          const filters: TargetFilter[] = [{
+            property: 'COST',
+            operator: direction,
+            value: costThreshold,
+          }];
+
+          this.addPlayerRestriction(opponent, keyword, until, gameState.turn, filters);
+
+          changes.push({
+            type: StateChangeType.EFFECT_APPLIED,
+            playerId: opponent.id,
+            value: `BLOCKER_COST_RESTRICTION:${direction}:${costThreshold}`,
+          });
+          console.log(`[BLOCKER_COST_RESTRICTION] Opponent ${opponent.id}: characters with cost ${costThreshold} ${direction === 'OR_MORE' ? 'or more' : 'or less'} cannot block`);
         }
         break;
       }
@@ -2877,7 +2965,35 @@ export class EffectEngine {
 
   public canBlock(card: GameCard, gameState?: GameState): boolean {
     // Card must have Blocker keyword and be active
-    return this.hasKeyword(card, KW_BLOCKER, gameState) && card.state === CardState.ACTIVE;
+    if (!this.hasKeyword(card, KW_BLOCKER, gameState) || card.state !== CardState.ACTIVE) {
+      return false;
+    }
+
+    // Check blocker cost restrictions on the card's owner
+    if (gameState) {
+      const owner = gameState.players[card.owner];
+      if (owner) {
+        const cardDef = this.cardDefinitions.get(card.cardId);
+        const cardCost = card.modifiedCost ?? cardDef?.cost ?? card.cost ?? 0;
+
+        for (const restriction of owner.restrictions ?? []) {
+          const normalized = this.normalizePlayerRestriction(restriction, gameState.turn);
+          if (!this.isPlayerRestrictionActive(normalized, gameState.turn)) continue;
+
+          if (normalized.keyword === KW_BLOCKER_COST_OR_MORE) {
+            const threshold = normalized.filters?.[0]?.value as number ?? 0;
+            if (cardCost >= threshold) return false;
+          }
+
+          if (normalized.keyword === KW_BLOCKER_COST_OR_LESS) {
+            const threshold = normalized.filters?.[0]?.value as number ?? 0;
+            if (cardCost <= threshold) return false;
+          }
+        }
+      }
+    }
+
+    return true;
   }
 
   public hasBanish(card: GameCard, gameState?: GameState): boolean {
@@ -3133,6 +3249,12 @@ export class EffectEngine {
     const cardToPlay = sourceArray[index];
     const cardDef = this.getCardDefinition(cardToPlay.cardId);
 
+    // Check if the card cannot be deployed via effects (only when played from trash or deck, not hand)
+    if (sourceZone !== CardZone.HAND && this.cardCantBeDeployedViaEffect(cardDef)) {
+      console.warn(`[PLAY_FROM_${sourceZone}] Card "${cardDef?.name}" cannot be played using effects, skipping`);
+      return;
+    }
+
     // Remove from source
     sourceArray.splice(index, 1);
 
@@ -3167,6 +3289,26 @@ export class EffectEngine {
       to: destinationZone,
     });
 
+  }
+
+  /**
+   * Check if a card cannot be deployed via effects (only normal play from hand is allowed).
+   * Checks both the explicit flag and the effect text for "cannot be played using effects".
+   */
+  private cardCantBeDeployedViaEffect(cardDef: CardDefinition | undefined): boolean {
+    if (!cardDef) return false;
+    if (cardDef.cantBeDeployedViaEffect) return true;
+    // Also check effectText for the restriction phrase
+    if (cardDef.effectText) {
+      const text = cardDef.effectText.toLowerCase();
+      if (text.includes('cannot be played using effects') ||
+          text.includes("can't be played using effects") ||
+          text.includes('cannot be played by effects') ||
+          text.includes("can't be played by effects")) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private normalizePlayerRestriction(
@@ -4167,6 +4309,63 @@ export class EffectEngine {
         return true;
       });
     });
+  }
+
+  /** Returns the buff value for an action, resolving scaling if present. */
+  private getBuffValue(action: EffectAction, context: EffectContext): number {
+    return action.scalePerCount
+      ? this.resolveScaledBuff(action, context)
+      : (action.value || 0);
+  }
+
+  /**
+   * Resolve a scaled power buff value.
+   * For effects like "+1000 power for each Character you control", this method
+   * counts the relevant items and calculates the total buff.
+   *
+   * totalBuff = scalePerCount * Math.floor(count / scaleDivisor)
+   */
+  private resolveScaledBuff(action: EffectAction, context: EffectContext): number {
+    if (!action.scalePerCount || !action.scaleCountTarget) {
+      return action.value || 0;
+    }
+
+    const { sourcePlayer } = context;
+    const perCount = action.scalePerCount;
+    const divisor = action.scaleDivisor || 1;
+
+    let count = 0;
+
+    switch (action.scaleCountTarget) {
+      case 'characters': {
+        // Count characters on the source player's field
+        if (action.scaleCountFilter && action.scaleCountFilter.length > 0) {
+          count = this.applyFilters([...sourcePlayer.field], action.scaleCountFilter, context).length;
+        } else {
+          count = sourcePlayer.field.length;
+        }
+        break;
+      }
+      case 'trash': {
+        count = sourcePlayer.trash.length;
+        break;
+      }
+      case 'rested_don': {
+        count = sourcePlayer.donField.filter(d => d.state === CardState.RESTED).length;
+        break;
+      }
+      case 'don': {
+        count = sourcePlayer.donField.length;
+        break;
+      }
+      default:
+        console.warn('[resolveScaledBuff] Unknown scaleCountTarget:', action.scaleCountTarget);
+        return action.value || 0;
+    }
+
+    const total = perCount * Math.floor(count / divisor);
+    console.log(`[resolveScaledBuff] ${perCount} x floor(${count} / ${divisor}) = ${total}`);
+    return total;
   }
 
   /**

@@ -123,6 +123,9 @@ export const IMPLEMENTED_EFFECT_TYPES: ReadonlySet<EffectType> = new Set([
   // Replacement effects
   EffectType.PREVENT_KO,
 
+  // Power matching
+  EffectType.MATCH_POWER,
+
   // New complex effects
   EffectType.SWAP_POWER,
   EffectType.REDIRECT_ATTACK,
@@ -146,6 +149,12 @@ export const IMPLEMENTED_EFFECT_TYPES: ReadonlySet<EffectType> = new Set([
   EffectType.GRANT_EFFECT,
   EffectType.TAKE_ANOTHER_TURN,
   EffectType.WIN_GAME,
+
+  // Blocker suppression
+  EffectType.DISABLE_BLOCKER,
+
+  // Blocker cost restrictions
+  EffectType.BLOCKER_COST_RESTRICTION,
 ]);
 
 // ============================================

@@ -11,6 +11,7 @@ import {
   EffectDuration,
   TargetType,
   TargetFilter,
+  ScaleCountTarget,
 } from '../types';
 
 import {
@@ -509,6 +510,16 @@ export class EffectTextParser {
 
     if (parsed.childActions && parsed.childActions.length > 0) {
       action.childEffects = parsed.childActions.map(a => this.convertAction(a));
+    }
+
+    // Pass through scaling fields for scaled power buffs
+    if (parsed.scalePerCount !== undefined) {
+      action.scalePerCount = parsed.scalePerCount;
+      action.scaleDivisor = parsed.scaleDivisor;
+      action.scaleCountTarget = parsed.scaleCountTarget as ScaleCountTarget;
+      if (parsed.scaleCountFilter && parsed.scaleCountFilter.length > 0) {
+        action.scaleCountFilter = parsed.scaleCountFilter.map(f => this.convertFilter(f));
+      }
     }
 
     return action;
