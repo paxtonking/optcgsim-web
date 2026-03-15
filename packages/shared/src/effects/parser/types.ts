@@ -27,6 +27,11 @@ export interface ParsedAction {
   keyword?: string;
   childActions?: ParsedAction[];  // For "Then" effects
   conditions?: ParsedCondition[];
+  // For scaled power buffs - "+X power for every/each Y"
+  scalePerCount?: number;         // Power per unit (e.g., 1000)
+  scaleDivisor?: number;          // "for every X" divisor (default 1; 2 for "every 2")
+  scaleCountTarget?: string;      // What to count: "characters", "trash", "rested_don", "don"
+  scaleCountFilter?: ParsedFilter[];  // Filters for what to count
 }
 
 export interface ParsedTarget {

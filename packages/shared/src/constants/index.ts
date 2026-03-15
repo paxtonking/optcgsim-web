@@ -89,7 +89,7 @@ export function getPendingEffectOwnerId(state: GameState): string | undefined {
 }
 
 // Turn-based player restrictions cleared at end of turn
-export const TURN_BASED_RESTRICTIONS = ['CantPlayCards', 'CantPlayCharacters', 'DisableEffectDraws', 'NoOnPlays'] as const;
+export const TURN_BASED_RESTRICTIONS = ['CantPlayCards', 'CantPlayCharacters', 'DisableEffectDraws', 'NoOnPlays', 'BlockerCostOrMore', 'BlockerCostOrLess', 'DisableBlocker'] as const;
 
 // Card Set Information
 export const CARD_SETS = [

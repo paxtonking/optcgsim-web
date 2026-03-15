@@ -139,6 +139,7 @@ export enum EffectType {
   REST_CHARACTER = 'REST_CHARACTER',
   ACTIVATE_CHARACTER = 'ACTIVATE_CHARACTER',
   REST_DON = 'REST_DON',             // Rest opponent's DON cards
+  MATCH_POWER = 'MATCH_POWER',       // Set source card's base power to match target's effective power
   SWAP_POWER = 'SWAP_POWER',         // Swap base power between characters
   REDIRECT_ATTACK = 'REDIRECT_ATTACK', // Change attack target
 
@@ -193,6 +194,8 @@ export enum EffectType {
   FLIP_LIFE_FACE_UP = 'FLIP_LIFE_FACE_UP',          // Turn top life card face-up
   FLIP_LIFE_FACE_DOWN = 'FLIP_LIFE_FACE_DOWN',      // Turn top life card face-down
   DEPLOY_SWAP = 'DEPLOY_SWAP',                      // Replace a character when field is at max (5)
+  BLOCKER_COST_RESTRICTION = 'BLOCKER_COST_RESTRICTION', // Restrict which blockers opponent can use based on cost
+  DISABLE_BLOCKER = 'DISABLE_BLOCKER',              // Opponent cannot activate [Blocker] this turn
 }
 
 // ============================================
@@ -441,6 +444,8 @@ export interface CardEffectDefinition {
   description: string;
 }
 
+export type ScaleCountTarget = 'characters' | 'trash' | 'rested_don' | 'don';
+
 export interface EffectAction {
   type: EffectType;
   target?: EffectTarget;
@@ -466,6 +471,11 @@ export interface EffectAction {
   condition?: any;                // Additional condition for the effect
   // For ADD_TO_LIFE effects
   faceUp?: boolean;               // Whether to add life card face-up (default: false)
+  // For scaled power buffs - "+X power for every/each Y"
+  scalePerCount?: number;         // Power per unit (e.g., 1000)
+  scaleDivisor?: number;          // "for every X" divisor (default 1; 2 for "every 2")
+  scaleCountTarget?: ScaleCountTarget;  // What to count
+  scaleCountFilter?: TargetFilter[];  // Filters for what to count (e.g., trait match)
 }
 
 // ============================================

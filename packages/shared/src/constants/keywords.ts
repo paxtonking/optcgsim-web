@@ -24,6 +24,13 @@ export const KW_DISABLE_EFFECT_DRAWS = 'DisableEffectDraws';
 export const KW_NO_ON_PLAYS = 'NoOnPlays';
 export const KW_DON_EQUALIZATION = 'DonEqualization';
 
+// Blocker suppression (opponent cannot activate Blocker this turn)
+export const KW_DISABLE_BLOCKER = 'DisableBlocker';
+
+// Blocker cost restriction keywords (applied to player.restrictions with filters)
+export const KW_BLOCKER_COST_OR_MORE = 'BlockerCostOrMore';
+export const KW_BLOCKER_COST_OR_LESS = 'BlockerCostOrLess';
+
 // Prefix-based keywords (checked with startsWith)
 export const KW_PREFIX_CONFUSION_TAX = 'ConfusionTax:';
 export const KW_PREFIX_ATTRIBUTE = 'Attribute:';
