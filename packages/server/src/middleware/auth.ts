@@ -40,28 +40,45 @@ export async function authenticate(
 
     const decoded = jwt.verify(token, secret) as { userId: string; isGuest?: boolean; username?: string };
 
-    // Guest users created before the DB-backed guest flow may still have
-    // tokens without a corresponding DB row. Handle them with a synthetic
-    // req.user so existing sessions are not broken.
-    if (decoded.isGuest) {
+    // Detect guest tokens by either the isGuest flag (new flow) or by the
+    // userId prefix (legacy tokens that pre-date the isGuest JWT field).
+    const isGuestToken = decoded.isGuest || decoded.userId?.startsWith('guest_');
+
+    if (isGuestToken) {
       // Try to find the guest in the DB first (new flow creates a real row).
-      const guestUser = await prisma.user.findUnique({
+      let guestUser = await prisma.user.findUnique({
         where: { id: decoded.userId },
         select: { id: true, email: true, username: true, isAdmin: true, isGuest: true },
       });
 
-      if (guestUser) {
-        req.user = guestUser;
-      } else {
-        // Legacy guest token without a DB row – build a synthetic user.
-        req.user = {
-          id: decoded.userId,
-          email: '',
-          username: decoded.username || 'Guest',
-          isAdmin: false,
-          isGuest: true,
-        };
+      if (!guestUser) {
+        // Legacy guest token without a DB row – create one so that foreign
+        // key constraints (e.g. Deck.userId) work correctly.
+        try {
+          guestUser = await prisma.user.create({
+            data: {
+              id: decoded.userId,
+              email: `${decoded.userId}@guest.local`,
+              username: decoded.username || `Guest_${decoded.userId.slice(-6)}`,
+              isGuest: true,
+            },
+            select: { id: true, email: true, username: true, isAdmin: true, isGuest: true },
+          });
+        } catch {
+          // If creation fails (e.g. duplicate email/username), fall back to
+          // a synthetic user – requests that need a real DB row will fail
+          // with a clear error rather than a mysterious 401.
+          guestUser = {
+            id: decoded.userId,
+            email: '',
+            username: decoded.username || 'Guest',
+            isAdmin: false,
+            isGuest: true,
+          };
+        }
       }
+
+      req.user = guestUser;
       return next();
     }
 

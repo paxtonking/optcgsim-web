@@ -123,6 +123,11 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: true,
             isLoading: false,
           });
+
+          // Sync decks with server after guest login (don't await to not block UI)
+          useDeckStore.getState().syncDecksWithServer().catch(err => {
+            console.error('[AuthStore] Failed to sync decks after guest login:', err);
+          });
         } catch (error: any) {
           set({
             error: error.response?.data?.message || 'Guest login failed',

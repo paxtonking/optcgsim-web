@@ -7,6 +7,22 @@ const API_URL = import.meta.env.VITE_API_URL
 let refreshPromise: Promise<string | null> | null = null;
 
 async function refreshAccessToken(): Promise<string | null> {
+  const { user } = useAuthStore.getState();
+
+  // Guests don't have refresh tokens. Instead, re-authenticate as a new
+  // guest so they get a fresh token with the latest server-side flow.
+  if (user?.isGuest) {
+    if (!refreshPromise) {
+      refreshPromise = useAuthStore.getState().loginAsGuest(
+        user.username?.replace(/^Guest_/, '') || undefined
+      )
+        .then(() => useAuthStore.getState().accessToken)
+        .catch(() => null)
+        .finally(() => { refreshPromise = null; });
+    }
+    return refreshPromise;
+  }
+
   if (!refreshPromise) {
     refreshPromise = useAuthStore.getState().refreshAuth()
       .then(() => useAuthStore.getState().accessToken)
