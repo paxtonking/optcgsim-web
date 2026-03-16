@@ -8,6 +8,7 @@ export interface AuthUser {
   email: string;
   username: string;
   isAdmin: boolean;
+  isGuest: boolean;
 }
 
 declare global {
@@ -37,7 +38,32 @@ export async function authenticate(
       throw new AppError('JWT secret not configured', 500);
     }
 
-    const decoded = jwt.verify(token, secret) as { userId: string };
+    const decoded = jwt.verify(token, secret) as { userId: string; isGuest?: boolean; username?: string };
+
+    // Guest users created before the DB-backed guest flow may still have
+    // tokens without a corresponding DB row. Handle them with a synthetic
+    // req.user so existing sessions are not broken.
+    if (decoded.isGuest) {
+      // Try to find the guest in the DB first (new flow creates a real row).
+      const guestUser = await prisma.user.findUnique({
+        where: { id: decoded.userId },
+        select: { id: true, email: true, username: true, isAdmin: true, isGuest: true },
+      });
+
+      if (guestUser) {
+        req.user = guestUser;
+      } else {
+        // Legacy guest token without a DB row – build a synthetic user.
+        req.user = {
+          id: decoded.userId,
+          email: '',
+          username: decoded.username || 'Guest',
+          isAdmin: false,
+          isGuest: true,
+        };
+      }
+      return next();
+    }
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
@@ -46,6 +72,7 @@ export async function authenticate(
         email: true,
         username: true,
         isAdmin: true,
+        isGuest: true,
       },
     });
 

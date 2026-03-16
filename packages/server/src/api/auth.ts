@@ -226,6 +226,18 @@ authRouter.post('/guest', async (req, res, next) => {
     // Generate a temporary guest ID
     const guestId = `guest_${uuidv4()}`;
 
+    // Create a real DB user for the guest so that deck syncing and other
+    // DB-backed features (foreign keys on Deck.userId, etc.) work correctly.
+    const guestEmail = `${guestId}@guest.local`;
+    await prisma.user.create({
+      data: {
+        id: guestId,
+        email: guestEmail,
+        username: guestUsername,
+        isGuest: true,
+      },
+    });
+
     // Generate a guest token (longer expiry since no refresh)
     const accessToken = jwt.sign(
       {
