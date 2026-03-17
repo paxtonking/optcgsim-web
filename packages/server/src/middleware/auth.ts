@@ -3,12 +3,20 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../services/prisma.js';
 import { AppError } from './errorHandler.js';
 
+/** Guest user identification constants. */
+export const GUEST_ID_PREFIX = 'guest_';
+export const GUEST_EMAIL_DOMAIN = '@guest.local';
+export const GUEST_USERNAME_PREFIX = 'Guest_';
+
 export interface AuthUser {
   id: string;
   email: string;
   username: string;
   isAdmin: boolean;
 }
+
+/** Prisma select clause matching the AuthUser interface. */
+const AUTH_USER_SELECT = { id: true, email: true, username: true, isAdmin: true } as const;
 
 declare global {
   namespace Express {
@@ -37,16 +45,50 @@ export async function authenticate(
       throw new AppError('JWT secret not configured', 500);
     }
 
-    const decoded = jwt.verify(token, secret) as { userId: string };
+    const decoded = jwt.verify(token, secret) as {
+      userId: string;
+      isGuest?: boolean;
+      username?: string;
+    };
+
+    // Handle guest users — create a DB row on first REST API call so that
+    // foreign-key constraints (e.g. Deck.userId) work correctly.
+    if (decoded.isGuest || decoded.userId?.startsWith(GUEST_ID_PREFIX)) {
+      let guestUser = await prisma.user.findUnique({
+        where: { id: decoded.userId },
+        select: AUTH_USER_SELECT,
+      });
+
+      if (!guestUser) {
+        try {
+          guestUser = await prisma.user.create({
+            data: {
+              id: decoded.userId,
+              email: `${decoded.userId}${GUEST_EMAIL_DOMAIN}`,
+              username: decoded.username || `${GUEST_USERNAME_PREFIX}${decoded.userId.slice(-6)}`,
+            },
+            select: AUTH_USER_SELECT,
+          });
+        } catch (err) {
+          // Race condition (duplicate key) — try finding again
+          console.warn('[auth] Guest user creation failed, retrying lookup:', err instanceof Error ? err.message : err);
+          guestUser = await prisma.user.findUnique({
+            where: { id: decoded.userId },
+            select: AUTH_USER_SELECT,
+          });
+          if (!guestUser) {
+            throw new AppError('Failed to create guest user', 500);
+          }
+        }
+      }
+
+      req.user = guestUser;
+      return next();
+    }
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      select: {
-        id: true,
-        email: true,
-        username: true,
-        isAdmin: true,
-      },
+      select: AUTH_USER_SELECT,
     });
 
     if (!user) {
@@ -90,8 +132,8 @@ export function optionalAuth(
     return next();
   }
 
-  // Call authenticate but swallow auth errors — this is optional auth,
-  // so expired/invalid tokens should just proceed without a user.
+  // Swallow auth errors — expired/invalid tokens should just proceed
+  // without a user rather than returning 401 on public endpoints.
   authenticate(req, _res, (err?: unknown) => {
     if (err) {
       req.user = undefined;

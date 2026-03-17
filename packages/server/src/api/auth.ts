@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { prisma } from '../services/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, GUEST_ID_PREFIX, GUEST_USERNAME_PREFIX } from '../middleware/auth.js';
 import { sendPasswordResetEmail } from '../services/emailService.js';
 
 export const authRouter = Router();
@@ -220,11 +220,11 @@ authRouter.post('/guest', async (req, res, next) => {
 
     // Generate a guest username if not provided
     const guestUsername = username
-      ? `Guest_${username.substring(0, 12)}`
-      : `Guest_${Math.random().toString(36).substring(2, 8)}`;
+      ? `${GUEST_USERNAME_PREFIX}${username.substring(0, 12)}`
+      : `${GUEST_USERNAME_PREFIX}${Math.random().toString(36).substring(2, 8)}`;
 
     // Generate a temporary guest ID
-    const guestId = `guest_${uuidv4()}`;
+    const guestId = `${GUEST_ID_PREFIX}${uuidv4()}`;
 
     // Generate a guest token (longer expiry since no refresh)
     const accessToken = jwt.sign(

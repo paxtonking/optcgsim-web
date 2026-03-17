@@ -454,17 +454,24 @@ export class GameManager {
       console.log(`[GameManager] Loaded ${cardDefinitions.length} card definitions for game ${gameId}`);
 
       // Load player decks
+      console.log(`[GameManager] Loading decks - P1: ${pending.player1DeckId}, P2: ${pending.player2DeckId}`);
+      if (!pending.player1DeckId || !pending.player2DeckId) {
+        throw new Error(`Missing deck ID: P1=${pending.player1DeckId}, P2=${pending.player2DeckId}`);
+      }
       const [deck1, deck2] = await Promise.all([
         this.loadPlayerDeck(pending.player1Id, pending.player1DeckId),
         this.loadPlayerDeck(pending.player2Id, pending.player2DeckId),
       ]);
+      console.log(`[GameManager] Decks loaded - P1: ${deck1.length} cards, P2: ${deck2.length} cards`);
 
       // Setup players with their decks
       stateManager.setupPlayer(pending.player1Id, pending.player1Username, deck1);
       stateManager.setupPlayer(pending.player2Id, pending.player2Username, deck2);
+      console.log(`[GameManager] Players set up, starting game`);
 
       // Start the game with determined first player
       stateManager.startGame(firstPlayerId);
+      console.log(`[GameManager] Game started, phase: ${stateManager.getState().phase}`);
 
       // Capture initial state for replay
       const initialState = JSON.parse(JSON.stringify(stateManager.getState()));
@@ -547,19 +554,26 @@ export class GameManager {
   }
 
   private async loadPlayerDeck(playerId: string, deckId: string) {
-    const deck = await prisma.deck.findUnique({
-      where: { id: deckId, userId: playerId }
-    });
+    console.log(`[GameManager] loadPlayerDeck: player=${playerId}, deck=${deckId}`);
+
+    const deck = await prisma.deck.findUnique({ where: { id: deckId } });
 
     if (!deck) {
-      throw new Error('Deck not found');
+      throw new Error(`Deck not found: deckId=${deckId}, playerId=${playerId}`);
+    }
+
+    if (deck.userId !== playerId) {
+      console.warn(`[GameManager] Deck ${deckId} belongs to ${deck.userId}, not ${playerId}`);
+      throw new Error(`Deck does not belong to player: deckId=${deckId}, owner=${deck.userId}, player=${playerId}`);
     }
 
     const deckCards = deck.cards as any[];
+    if (!Array.isArray(deckCards) || deckCards.length === 0) {
+      throw new Error(`Deck has no cards: deckId=${deckId}`);
+    }
 
     // Load actual card data (including leader)
     const cardIds = deckCards.map(c => c.cardId);
-    // Add leader to the card IDs to load
     if (deck.leaderId && !cardIds.includes(deck.leaderId)) {
       cardIds.push(deck.leaderId);
     }
@@ -568,29 +582,31 @@ export class GameManager {
       where: { id: { in: cardIds } }
     });
 
-    // Start with the leader card
-    const fullDeck: any[] = [];
-    const leaderCard = cards.find((c: any) => c.id === deck.leaderId);
-    if (leaderCard) {
-      fullDeck.push({
-        ...leaderCard,
-        instanceId: `${leaderCard.id}-leader`
-      });
+    if (cards.length === 0) {
+      throw new Error(`No card data found for deck: deckId=${deckId}, cardIds=${cardIds.slice(0, 5).join(',')}`);
     }
 
-    // Map deck cards with quantities
-    deckCards.forEach(deckCard => {
-      const card = cards.find((c: any) => c.id === deckCard.cardId);
+    // Build full deck with leader first
+    const cardMap = new Map(cards.map((c: any) => [c.id, c]));
+    const fullDeck: any[] = [];
+
+    const leaderCard = cardMap.get(deck.leaderId);
+    if (leaderCard) {
+      fullDeck.push({ ...leaderCard, instanceId: `${leaderCard.id}-leader` });
+    } else {
+      console.warn(`[GameManager] Leader card ${deck.leaderId} not found in card database`);
+    }
+
+    for (const deckCard of deckCards) {
+      const card = cardMap.get(deckCard.cardId);
       if (card) {
         for (let i = 0; i < deckCard.count; i++) {
-          fullDeck.push({
-            ...card,
-            instanceId: `${card.id}-${i}`
-          });
+          fullDeck.push({ ...card, instanceId: `${card.id}-${i}` });
         }
       }
-    });
+    }
 
+    console.log(`[GameManager] loadPlayerDeck: loaded ${fullDeck.length} cards (leader: ${!!leaderCard})`);
     return fullDeck;
   }
 
