@@ -556,18 +556,15 @@ export class GameManager {
   private async loadPlayerDeck(playerId: string, deckId: string) {
     console.log(`[GameManager] loadPlayerDeck: player=${playerId}, deck=${deckId}`);
 
-    // Try finding by id+userId first, fall back to id-only for backwards compat
-    let deck = await prisma.deck.findFirst({
-      where: { id: deckId, userId: playerId }
-    });
-
-    if (!deck) {
-      // Deck may have been created under a different userId (e.g. guest re-auth)
-      deck = await prisma.deck.findUnique({ where: { id: deckId } });
-    }
+    const deck = await prisma.deck.findUnique({ where: { id: deckId } });
 
     if (!deck) {
       throw new Error(`Deck not found: deckId=${deckId}, playerId=${playerId}`);
+    }
+
+    if (deck.userId !== playerId) {
+      console.warn(`[GameManager] Deck ${deckId} belongs to ${deck.userId}, not ${playerId}`);
+      throw new Error(`Deck does not belong to player: deckId=${deckId}, owner=${deck.userId}, player=${playerId}`);
     }
 
     const deckCards = deck.cards as any[];
@@ -577,7 +574,6 @@ export class GameManager {
 
     // Load actual card data (including leader)
     const cardIds = deckCards.map(c => c.cardId);
-    // Add leader to the card IDs to load
     if (deck.leaderId && !cardIds.includes(deck.leaderId)) {
       cardIds.push(deck.leaderId);
     }
@@ -590,30 +586,25 @@ export class GameManager {
       throw new Error(`No card data found for deck: deckId=${deckId}, cardIds=${cardIds.slice(0, 5).join(',')}`);
     }
 
-    // Start with the leader card
+    // Build full deck with leader first
+    const cardMap = new Map(cards.map((c: any) => [c.id, c]));
     const fullDeck: any[] = [];
-    const leaderCard = cards.find((c: any) => c.id === deck.leaderId);
+
+    const leaderCard = cardMap.get(deck.leaderId);
     if (leaderCard) {
-      fullDeck.push({
-        ...leaderCard,
-        instanceId: `${leaderCard.id}-leader`
-      });
+      fullDeck.push({ ...leaderCard, instanceId: `${leaderCard.id}-leader` });
     } else {
       console.warn(`[GameManager] Leader card ${deck.leaderId} not found in card database`);
     }
 
-    // Map deck cards with quantities
-    deckCards.forEach(deckCard => {
-      const card = cards.find((c: any) => c.id === deckCard.cardId);
+    for (const deckCard of deckCards) {
+      const card = cardMap.get(deckCard.cardId);
       if (card) {
         for (let i = 0; i < deckCard.count; i++) {
-          fullDeck.push({
-            ...card,
-            instanceId: `${card.id}-${i}`
-          });
+          fullDeck.push({ ...card, instanceId: `${card.id}-${i}` });
         }
       }
-    });
+    }
 
     console.log(`[GameManager] loadPlayerDeck: loaded ${fullDeck.length} cards (leader: ${!!leaderCard})`);
     return fullDeck;

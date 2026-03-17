@@ -10,6 +10,9 @@ export interface AuthUser {
   isAdmin: boolean;
 }
 
+/** Prisma select clause matching the AuthUser interface. */
+const AUTH_USER_SELECT = { id: true, email: true, username: true, isAdmin: true } as const;
+
 declare global {
   namespace Express {
     interface Request {
@@ -48,7 +51,7 @@ export async function authenticate(
     if (decoded.isGuest || decoded.userId?.startsWith('guest_')) {
       let guestUser = await prisma.user.findUnique({
         where: { id: decoded.userId },
-        select: { id: true, email: true, username: true, isAdmin: true },
+        select: AUTH_USER_SELECT,
       });
 
       if (!guestUser) {
@@ -59,13 +62,14 @@ export async function authenticate(
               email: `${decoded.userId}@guest.local`,
               username: decoded.username || `Guest_${decoded.userId.slice(-6)}`,
             },
-            select: { id: true, email: true, username: true, isAdmin: true },
+            select: AUTH_USER_SELECT,
           });
-        } catch {
-          // Race condition or duplicate — try finding again
+        } catch (err) {
+          // Race condition (duplicate key) — try finding again
+          console.warn('[auth] Guest user creation failed, retrying lookup:', err instanceof Error ? err.message : err);
           guestUser = await prisma.user.findUnique({
             where: { id: decoded.userId },
-            select: { id: true, email: true, username: true, isAdmin: true },
+            select: AUTH_USER_SELECT,
           });
           if (!guestUser) {
             throw new AppError('Failed to create guest user', 500);
@@ -79,12 +83,7 @@ export async function authenticate(
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      select: {
-        id: true,
-        email: true,
-        username: true,
-        isAdmin: true,
-      },
+      select: AUTH_USER_SELECT,
     });
 
     if (!user) {
