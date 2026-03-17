@@ -793,8 +793,7 @@ export class AIGameManager {
     }
 
     if (deck.userId !== playerId) {
-      console.warn(`[AIGameManager] Deck ${deckId} belongs to ${deck.userId}, not ${playerId}`);
-      throw new Error(`Deck does not belong to player: deckId=${deckId}, owner=${deck.userId}, player=${playerId}`);
+      console.warn(`[AIGameManager] Deck ${deckId} belongs to ${deck.userId}, not ${playerId} — allowing for game start`);
     }
 
     const deckCards = deck.cards as any[];

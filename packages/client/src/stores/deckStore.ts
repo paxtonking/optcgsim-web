@@ -92,6 +92,9 @@ interface DeckStore {
 
   // Copy public deck
   copyPublicDeck: (deckId: string) => Promise<{ success: boolean; localDeckId?: string; error?: string }>;
+
+  // Clear stale server IDs (used on logout/user switch)
+  clearServerIds: () => void;
 }
 
 function generateId(): string {
@@ -871,6 +874,15 @@ export const useDeckStore = create<DeckStore>()(
           const errorMessage = error?.response?.data?.error || error?.message || 'Failed to copy deck';
           return { success: false, error: errorMessage };
         }
+      },
+
+      clearServerIds: () => {
+        set((state) => ({
+          decks: state.decks.map(d => {
+            const { serverId, ...rest } = d;
+            return rest;
+          }),
+        }));
       },
     }),
     {

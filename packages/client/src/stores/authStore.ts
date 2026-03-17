@@ -116,6 +116,9 @@ export const useAuthStore = create<AuthState>()(
           }>('/auth/guest', { username });
           const { user, accessToken } = response.data;
 
+          // Clear stale server IDs before switching to guest session
+          useDeckStore.getState().clearServerIds();
+
           set({
             user,
             accessToken,
@@ -149,6 +152,9 @@ export const useAuthStore = create<AuthState>()(
           refreshToken: null,
           isAuthenticated: false,
         });
+
+        // Clear stale server IDs so decks don't reference the old user's DB records
+        useDeckStore.getState().clearServerIds();
       },
 
       refreshAuth: async () => {
