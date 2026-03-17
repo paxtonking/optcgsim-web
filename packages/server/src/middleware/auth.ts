@@ -65,7 +65,7 @@ export async function authenticate(
             data: {
               id: decoded.userId,
               email: `${decoded.userId}${GUEST_EMAIL_DOMAIN}`,
-              username: decoded.username || `${GUEST_USERNAME_PREFIX}${decoded.userId.slice(-6)}`,
+              username: decoded.username || `${GUEST_USERNAME_PREFIX}${decoded.userId.replace('guest_', '')}`,
             },
             select: AUTH_USER_SELECT,
           });

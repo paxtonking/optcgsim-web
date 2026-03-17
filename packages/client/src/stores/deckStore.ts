@@ -877,12 +877,15 @@ export const useDeckStore = create<DeckStore>()(
       },
 
       clearServerIds: () => {
-        set((state) => ({
-          decks: state.decks.map(d => {
-            const { serverId, ...rest } = d;
-            return rest;
-          }),
-        }));
+        set((state) => {
+          if (!state.decks.some(d => d.serverId)) return state;
+          return {
+            decks: state.decks.map(d => {
+              const { serverId, ...rest } = d;
+              return rest;
+            }),
+          };
+        });
       },
     }),
     {
