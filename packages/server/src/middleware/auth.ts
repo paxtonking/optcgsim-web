@@ -90,5 +90,13 @@ export function optionalAuth(
     return next();
   }
 
-  authenticate(req, _res, next);
+  // Call authenticate but swallow auth errors — this is optional auth,
+  // so expired/invalid tokens should just proceed without a user.
+  authenticate(req, _res, (err?: unknown) => {
+    if (err) {
+      req.user = undefined;
+      return next();
+    }
+    next();
+  });
 }
