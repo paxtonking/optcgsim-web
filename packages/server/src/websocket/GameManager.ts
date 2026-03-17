@@ -454,17 +454,24 @@ export class GameManager {
       console.log(`[GameManager] Loaded ${cardDefinitions.length} card definitions for game ${gameId}`);
 
       // Load player decks
+      console.log(`[GameManager] Loading decks - P1: ${pending.player1DeckId}, P2: ${pending.player2DeckId}`);
+      if (!pending.player1DeckId || !pending.player2DeckId) {
+        throw new Error(`Missing deck ID: P1=${pending.player1DeckId}, P2=${pending.player2DeckId}`);
+      }
       const [deck1, deck2] = await Promise.all([
         this.loadPlayerDeck(pending.player1Id, pending.player1DeckId),
         this.loadPlayerDeck(pending.player2Id, pending.player2DeckId),
       ]);
+      console.log(`[GameManager] Decks loaded - P1: ${deck1.length} cards, P2: ${deck2.length} cards`);
 
       // Setup players with their decks
       stateManager.setupPlayer(pending.player1Id, pending.player1Username, deck1);
       stateManager.setupPlayer(pending.player2Id, pending.player2Username, deck2);
+      console.log(`[GameManager] Players set up, starting game`);
 
       // Start the game with determined first player
       stateManager.startGame(firstPlayerId);
+      console.log(`[GameManager] Game started, phase: ${stateManager.getState().phase}`);
 
       // Capture initial state for replay
       const initialState = JSON.parse(JSON.stringify(stateManager.getState()));
@@ -547,15 +554,26 @@ export class GameManager {
   }
 
   private async loadPlayerDeck(playerId: string, deckId: string) {
-    const deck = await prisma.deck.findUnique({
+    console.log(`[GameManager] loadPlayerDeck: player=${playerId}, deck=${deckId}`);
+
+    // Try finding by id+userId first, fall back to id-only for backwards compat
+    let deck = await prisma.deck.findFirst({
       where: { id: deckId, userId: playerId }
     });
 
     if (!deck) {
-      throw new Error('Deck not found');
+      // Deck may have been created under a different userId (e.g. guest re-auth)
+      deck = await prisma.deck.findUnique({ where: { id: deckId } });
+    }
+
+    if (!deck) {
+      throw new Error(`Deck not found: deckId=${deckId}, playerId=${playerId}`);
     }
 
     const deckCards = deck.cards as any[];
+    if (!Array.isArray(deckCards) || deckCards.length === 0) {
+      throw new Error(`Deck has no cards: deckId=${deckId}`);
+    }
 
     // Load actual card data (including leader)
     const cardIds = deckCards.map(c => c.cardId);
@@ -568,6 +586,10 @@ export class GameManager {
       where: { id: { in: cardIds } }
     });
 
+    if (cards.length === 0) {
+      throw new Error(`No card data found for deck: deckId=${deckId}, cardIds=${cardIds.slice(0, 5).join(',')}`);
+    }
+
     // Start with the leader card
     const fullDeck: any[] = [];
     const leaderCard = cards.find((c: any) => c.id === deck.leaderId);
@@ -576,6 +598,8 @@ export class GameManager {
         ...leaderCard,
         instanceId: `${leaderCard.id}-leader`
       });
+    } else {
+      console.warn(`[GameManager] Leader card ${deck.leaderId} not found in card database`);
     }
 
     // Map deck cards with quantities
@@ -591,6 +615,7 @@ export class GameManager {
       }
     });
 
+    console.log(`[GameManager] loadPlayerDeck: loaded ${fullDeck.length} cards (leader: ${!!leaderCard})`);
     return fullDeck;
   }
 

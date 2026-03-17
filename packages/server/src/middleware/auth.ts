@@ -37,7 +37,45 @@ export async function authenticate(
       throw new AppError('JWT secret not configured', 500);
     }
 
-    const decoded = jwt.verify(token, secret) as { userId: string };
+    const decoded = jwt.verify(token, secret) as {
+      userId: string;
+      isGuest?: boolean;
+      username?: string;
+    };
+
+    // Handle guest users — create a DB row on first REST API call so that
+    // foreign-key constraints (e.g. Deck.userId) work correctly.
+    if (decoded.isGuest || decoded.userId?.startsWith('guest_')) {
+      let guestUser = await prisma.user.findUnique({
+        where: { id: decoded.userId },
+        select: { id: true, email: true, username: true, isAdmin: true },
+      });
+
+      if (!guestUser) {
+        try {
+          guestUser = await prisma.user.create({
+            data: {
+              id: decoded.userId,
+              email: `${decoded.userId}@guest.local`,
+              username: decoded.username || `Guest_${decoded.userId.slice(-6)}`,
+            },
+            select: { id: true, email: true, username: true, isAdmin: true },
+          });
+        } catch {
+          // Race condition or duplicate — try finding again
+          guestUser = await prisma.user.findUnique({
+            where: { id: decoded.userId },
+            select: { id: true, email: true, username: true, isAdmin: true },
+          });
+          if (!guestUser) {
+            throw new AppError('Failed to create guest user', 500);
+          }
+        }
+      }
+
+      req.user = guestUser;
+      return next();
+    }
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
@@ -90,5 +128,13 @@ export function optionalAuth(
     return next();
   }
 
-  authenticate(req, _res, next);
+  // Swallow auth errors — expired/invalid tokens should just proceed
+  // without a user rather than returning 401 on public endpoints.
+  authenticate(req, _res, (err?: unknown) => {
+    if (err) {
+      req.user = undefined;
+      return next();
+    }
+    next();
+  });
 }
