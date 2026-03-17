@@ -3,6 +3,11 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../services/prisma.js';
 import { AppError } from './errorHandler.js';
 
+/** Guest user identification constants. */
+export const GUEST_ID_PREFIX = 'guest_';
+export const GUEST_EMAIL_DOMAIN = '@guest.local';
+export const GUEST_USERNAME_PREFIX = 'Guest_';
+
 export interface AuthUser {
   id: string;
   email: string;
@@ -48,7 +53,7 @@ export async function authenticate(
 
     // Handle guest users — create a DB row on first REST API call so that
     // foreign-key constraints (e.g. Deck.userId) work correctly.
-    if (decoded.isGuest || decoded.userId?.startsWith('guest_')) {
+    if (decoded.isGuest || decoded.userId?.startsWith(GUEST_ID_PREFIX)) {
       let guestUser = await prisma.user.findUnique({
         where: { id: decoded.userId },
         select: AUTH_USER_SELECT,
@@ -59,8 +64,8 @@ export async function authenticate(
           guestUser = await prisma.user.create({
             data: {
               id: decoded.userId,
-              email: `${decoded.userId}@guest.local`,
-              username: decoded.username || `Guest_${decoded.userId.slice(-6)}`,
+              email: `${decoded.userId}${GUEST_EMAIL_DOMAIN}`,
+              username: decoded.username || `${GUEST_USERNAME_PREFIX}${decoded.userId.slice(-6)}`,
             },
             select: AUTH_USER_SELECT,
           });

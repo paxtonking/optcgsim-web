@@ -784,19 +784,26 @@ export class AIGameManager {
    * Load player deck from database
    */
   private async loadPlayerDeck(playerId: string, deckId: string) {
-    const deck = await prisma.deck.findUnique({
-      where: { id: deckId, userId: playerId }
-    });
+    console.log(`[AIGameManager] loadPlayerDeck: player=${playerId}, deck=${deckId}`);
+
+    const deck = await prisma.deck.findUnique({ where: { id: deckId } });
 
     if (!deck) {
-      throw new Error('Deck not found');
+      throw new Error(`Deck not found: deckId=${deckId}, playerId=${playerId}`);
     }
 
-    // Get all card IDs including the leader
-    const deckCards = deck.cards as any[];
-    const cardIds = deckCards.map(c => c.cardId);
+    if (deck.userId !== playerId) {
+      console.warn(`[AIGameManager] Deck ${deckId} belongs to ${deck.userId}, not ${playerId}`);
+      throw new Error(`Deck does not belong to player: deckId=${deckId}, owner=${deck.userId}, player=${playerId}`);
+    }
 
-    // Add leader ID to the list if it exists and isn't already included
+    const deckCards = deck.cards as any[];
+    if (!Array.isArray(deckCards) || deckCards.length === 0) {
+      throw new Error(`Deck has no cards: deckId=${deckId}`);
+    }
+
+    // Load actual card data (including leader)
+    const cardIds = deckCards.map(c => c.cardId);
     if (deck.leaderId && !cardIds.includes(deck.leaderId)) {
       cardIds.push(deck.leaderId);
     }
@@ -805,35 +812,31 @@ export class AIGameManager {
       where: { id: { in: cardIds } }
     });
 
+    if (cards.length === 0) {
+      throw new Error(`No card data found for deck: deckId=${deckId}, cardIds=${cardIds.slice(0, 5).join(',')}`);
+    }
+
+    // Build full deck with leader first
+    const cardMap = new Map(cards.map((c: any) => [c.id, c]));
     const fullDeck: any[] = [];
 
-    // Add leader card first (required for game setup)
-    if (deck.leaderId) {
-      const leaderCard = cards.find((c: any) => c.id === deck.leaderId);
-      if (leaderCard) {
-        fullDeck.push({
-          ...leaderCard,
-          instanceId: `${leaderCard.id}-leader`
-        });
-        console.log('[AIGameManager] Added leader card:', deck.leaderId);
-      } else {
-        console.error('[AIGameManager] Leader card not found:', deck.leaderId);
+    const leaderCard = cardMap.get(deck.leaderId);
+    if (leaderCard) {
+      fullDeck.push({ ...leaderCard, instanceId: `${leaderCard.id}-leader` });
+    } else {
+      console.warn(`[AIGameManager] Leader card ${deck.leaderId} not found in card database`);
+    }
+
+    for (const deckCard of deckCards) {
+      const card = cardMap.get(deckCard.cardId);
+      if (card) {
+        for (let i = 0; i < deckCard.count; i++) {
+          fullDeck.push({ ...card, instanceId: `${card.id}-${i}` });
+        }
       }
     }
 
-    // Add the rest of the deck cards
-    deckCards.forEach(deckCard => {
-      const card = cards.find((c: any) => c.id === deckCard.cardId);
-      if (card) {
-        for (let i = 0; i < deckCard.count; i++) {
-          fullDeck.push({
-            ...card,
-            instanceId: `${card.id}-${i}`
-          });
-        }
-      }
-    });
-
+    console.log(`[AIGameManager] loadPlayerDeck: loaded ${fullDeck.length} cards (leader: ${!!leaderCard})`);
     return fullDeck;
   }
 
